@@ -1,0 +1,28 @@
+name: check
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  engine:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 3.9 is the macOS system python3 the owner runs locally.
+        python: ["3.9", "3.10", "3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Engine tests (includes the answer test set against its baseline)
+        run: python3 engine/bin/brain test
+      - name: Answer test set
+        run: python3 engine/bin/brain eval
+      - name: Brain contracts, append-only files, credentials
+        run: python3 engine/bin/brain check --guard

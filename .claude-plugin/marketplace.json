@@ -1,0 +1,12 @@
+{
+  "name": "aibrain",
+  "description": "The AiBrain engine, served from this repository.",
+  "owner": { "name": "Muhammad Awais" },
+  "plugins": [
+    {
+      "name": "aibrain",
+      "source": "./engine",
+      "description": "Encode, consolidate, recall, rehearse and maintain a brain-modelled knowledge base."
+    }
+  ]
+}

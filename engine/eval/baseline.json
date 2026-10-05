@@ -1,0 +1,15 @@
+{
+  "k": 5,
+  "search": {
+    "questions": 13,
+    "hit_at_k": 0.885,
+    "all_at_k": 11,
+    "mrr": 0.776
+  },
+  "recall": {
+    "questions": 13,
+    "hit_at_k": 0.962,
+    "all_at_k": 12,
+    "mrr": 0.891
+  }
+}

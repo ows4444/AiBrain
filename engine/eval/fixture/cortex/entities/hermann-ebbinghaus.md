@@ -1,0 +1,24 @@
+---
+title: Hermann Ebbinghaus
+type: entity
+kind: person
+created: 2026-06-10
+updated: 2026-06-10
+aliases: [Ebbinghaus]
+tags: []
+---
+
+# Hermann Ebbinghaus
+
+## What it is
+
+A German psychologist (1850-1909) who measured his own forgetting with lists
+of nonsense syllables.
+
+## Why it appears here
+
+His experiments are the source of the [[forgetting-curve]].
+
+## Mentioned in
+
+[[ebbinghaus-1885]]

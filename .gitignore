@@ -1,0 +1,13 @@
+.DS_Store
+.obsidian/workspace*
+.obsidian/cache
+*.pyc
+__pycache__/
+.venv/
+node_modules/
+# graph exports (brain graph); a CSV dropped into senses/ is still tracked
+motor/graph/
+# exports (brain export): regenerated from cortex/ on demand
+motor/export/
+# search cache (brain cache): rebuilt on demand from the pages
+.cache/
