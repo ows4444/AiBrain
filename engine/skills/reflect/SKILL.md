@@ -1,7 +1,7 @@
 ---
 name: reflect
 description: >-
-  Periodic review of what the brain learned: what was added, where attention went, what is unresolved, what to read or write next, and a maintenance schedule if asked. Use for /reflect, "weekly review", "weekly digest", "what changed", "what next". Read-only but for the saved digest. Do NOT use for metrics (health) or answering a specific question (ask).
+  Periodic review of what the brain learned: what was added, what is unresolved, what next. Use for /reflect, "weekly review", "weekly digest", "what changed". Not for metrics (health).
 argument-hint: "[period] [save]"
 ---
 
@@ -27,7 +27,9 @@ The `reviewer` agent can run this whole review in its own context.
 3. **Unresolved:** `brain introspect --open` (`disputed` and `to-revisit`
    pages, `contradicts` links), open questions on concepts and insights,
    decisions still `open`, and decisions past their review date
-   (`brain introspect --decisions`).
+   (`brain introspect --decisions`). Concepts untouched for 90 days or more
+   (`brain introspect --stale`, oldest first): name the oldest few and ask
+   whether each still holds; only the owner's answer changes a page.
 4. **Decisions:** reviewed in the period and how they compared with what was
    expected. Once five or more are reviewed, say whether the outcomes lean
    `better` or `worse` than expected; that is a calibration signal. So is

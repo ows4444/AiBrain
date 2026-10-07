@@ -22,6 +22,8 @@ import sys
 
 FINGERPRINTS = os.path.join("hippocampus", "fingerprints.md")
 LINE = re.compile(r"^(\d{4}-\d{2}-\d{2}) ([0-9a-f]{64}) (.+)$")
+# `DATE forgotten <path>`: the owner had this input removed (brain forget). Its hash line stays above it.
+FORGOTTEN = re.compile(r"^(\d{4}-\d{2}-\d{2}) forgotten (.+)$")
 HEADER = """---
 title: Fingerprints
 type: fingerprints
@@ -31,7 +33,7 @@ type: fingerprints
 
 A SHA-256 hash of every file in `senses/`, recorded when it is encoded, one
 line each: `YYYY-MM-DD <sha256> <path>`. Written only by `brain fingerprint`
-(which `/ingest` runs); `brain check` fails when an input no longer matches
+(which `/ingest` runs) and, as `YYYY-MM-DD forgotten <path>`, by `brain forget`; `brain check` fails when an input no longer matches
 its hash, with or without git. Append only; never edit a previous line.
 """
 
@@ -63,9 +65,22 @@ def recorded(root):
         return {}
     out = {}
     with open(path, encoding="utf-8") as fh:
-        for m in filter(None, (LINE.match(line.rstrip("\n")) for line in fh)):
-            out.setdefault(m.group(3), m.group(2))
+        for line in fh:
+            m, gone = LINE.match(line.rstrip("\n")), FORGOTTEN.match(line.rstrip("\n"))
+            if m:
+                out.setdefault(m.group(3), m.group(2))
+            elif gone:
+                out.pop(gone.group(2), None)  # a file that lands there again later is a new input
     return out
+
+
+def forgotten(root):
+    """Paths the owner had removed with `brain forget`, from the fingerprints."""
+    path = os.path.join(root, FINGERPRINTS)
+    if not os.path.exists(path):
+        return set()
+    with open(path, encoding="utf-8") as fh:
+        return {m.group(2) for m in (FORGOTTEN.match(line.rstrip("\n")) for line in fh) if m}
 
 
 def fingerprint_problems(root):

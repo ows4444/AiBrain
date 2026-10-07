@@ -199,12 +199,12 @@ class MemoryCycle(unittest.TestCase):
             with open(os.path.join(self.dir, "hippocampus", "log.md"), "a") as fh:
                 fh.write("".join(line + "\n" for line in lines))
 
-        claude = os.path.join(self.dir, "CLAUDE.md")
+        claude = os.path.join(self.dir, "OWNER.md")
         with open(claude, encoding="utf-8") as fh:
             text = fh.read()
         goal = f"- Learn pricing by {on(60)} -> [[pricing]], [[tangent]]"
         with open(claude, "w", encoding="utf-8") as fh:
-            fh.write(re.sub(r"(### Goals\n\n).*?(?=\n## )", lambda m: m.group(1) + goal + "\n", text, flags=re.S))
+            fh.write(re.sub(r"(## Goals\n\n).*", lambda m: m.group(1) + goal + "\n", text, flags=re.S))
 
         # week 1: two clips of one article, then a second article
         ep = dict(type="episode", created=on(0), updated=on(0))

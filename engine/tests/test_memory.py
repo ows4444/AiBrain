@@ -23,6 +23,116 @@ class Memory(TempBrain):
         self.assertEqual(tally["karpathy"][1].stem, "karpathy")
         self.assertNotIn("not a candidate", tally)
 
+    def test_candidates_that_may_be_one_idea_are_paired_for_sleep(self):
+        self.write("cortex/episodes/e1.md", page("episode", "## Candidates\n- Illusion of fluency - rereading feels "
+                                                 "like learning\n- Optimal gap - the best gap between study "
+                                                 "sessions depends on the retention interval\n", url="https://a.example"))
+        self.write("cortex/episodes/e2.md", page("episode", "## Candidates\n- Fluency illusion - ease is mistaken for "
+                                                 "progress\n- Sleep - rest matters\n", url="https://b.example"))
+        self.write("cortex/episodes/e3.md", page("episode", "## Candidates\n- Fluent speech - talking smoothly\n",
+                                                 url="https://a.example"))
+        self.write("cortex/concepts/spacing.md", page("concept", title="Spacing effect", summary="Study spread over "
+                                                      "sessions lasts; the best gap depends on how long it must last."))
+        v = self.brain()
+        self.assertEqual({r["name"]: r["sources"] for r in v.candidate_tally()}["Illusion of fluency"], 1)
+        pairs = {(x["a"], x["b"]): x for x in v.candidate_pairs()}
+        self.assertEqual(sorted(pairs), [("Fluency illusion", "Illusion of fluency"), ("Optimal gap", "Spacing effect")])
+        self.assertEqual(pairs["Fluency illusion", "Illusion of fluency"]["why"], "names")
+        self.assertEqual(pairs["Optimal gap", "Spacing effect"]["page"].stem, "spacing")
+        out = subprocess.run([sys.executable, os.path.join(SCRIPTS, "introspect.py"), self.root, "--queue"],
+                             capture_output=True, text=True).stdout
+        self.assertIn("possibly one idea twice", out)
+        self.assertIn("Fluency illusion ~ Illusion of fluency  (shared: fluency, illusion)", out)
+        self.assertIn("Optimal gap ~ cortex/concepts/spacing.md", out)
+
+    def test_a_fact_that_goes_out_of_date_needs_a_date_or_a_pointer(self):
+        self.write("cortex/episodes/survey.md", page("episode", "The suite has 240 tests.\n"))
+        self.write("cortex/entities/tool.md", page("entity", "\n".join([
+            "The suite has 240 tests and all pass.", "",
+            "It is currently the largest of its kind.", "",
+            "It has 14 packages (as of 2026-10-07).", "",
+            "The store holds 9 tables, on one\nwrapped line ([[survey]]).", "",
+            "- It runs 71 tools; see the README.", "",
+            "Spacing means study spread over time.", "",
+            "In 1885 one man learned 2 lists."])))
+        self.write("cortex/episodes/own.md", page("episode", "It still has 5 open bugs.\n"))
+        v = self.brain()
+        self.assertEqual([(p.stem, line) for p, line in v.undated_facts()],
+                         [("tool", "The suite has 240 tests and all pass."),
+                          ("tool", "It is currently the largest of its kind.")])
+        run = subprocess.run([sys.executable, os.path.join(SCRIPTS, "link_check.py"), self.root],
+                             capture_output=True, text=True)
+        self.assertIn("with no date or pointer (/maintain: restamp, point or move): 2", run.stdout)
+        self.assertIn("cortex/entities/tool.md: The suite has 240 tests and all pass.", run.stdout)
+        # A warning: the check reads words, not meaning. A valid page holding such a line still passes.
+        for rel in ("cortex/episodes/survey.md", "cortex/episodes/own.md", "cortex/entities/tool.md"):
+            os.remove(os.path.join(self.root, rel))
+        self.write("cortex/entities/tool.md", page("entity", "The suite has 240 tests and all pass.\n", title="Tool",
+                                                   summary="A tool.", kind="tool", created="2026-01-01",
+                                                   updated="2026-01-01"))
+        self.write("hippocampus/index.md", page("index", "- [[tool]]\n"))
+        run = subprocess.run([sys.executable, os.path.join(SCRIPTS, "link_check.py"), self.root],
+                             capture_output=True, text=True)
+        self.assertIn("restamp, point or move): 1", run.stdout)
+        self.assertEqual(run.returncode, 0, run.stdout)
+
+    def test_forgetting_a_source_shows_what_rests_on_it_then_removes_it_whole(self):
+        def run(script, *args):
+            return subprocess.run([sys.executable, os.path.join(SCRIPTS, script), *args], capture_output=True, text=True)
+
+        self.write("senses/bad.md", "a bad source")
+        self.write("senses/good.md", "a good source")
+        self.write("cortex/episodes/bad.md", page("episode", "## Candidates\n- Held idea - only here\n",
+                                                  title="Bad", input="senses/bad.md"))
+        self.write("cortex/episodes/good.md", page("episode", "x\n", title="Good", input="senses/good.md"))
+        self.write("cortex/concepts/idea.md", page("concept", "Seen twice ([[bad]], [[good]]).\n", title="Idea"))
+        self.write("cortex/entities/tool.md", page("entity", "Named once ([[bad]]).\n", title="Tool"))
+        self.write("hippocampus/index.md", page("index", "- [[bad]] - x\n- [[good]] - y\n- [[idea]]\n- [[tool]]\n"))
+        self.log("2026-01-01 ingest senses/bad.md -> 1 episode")
+        run("fingerprint.py", self.root)
+
+        shown = run("forget.py", "--root", self.root, "senses/bad.md").stdout
+        for fragment in ("would forget: senses/bad.md", "cortex/episodes/bad.md", "go with it: Held idea",
+                         "cortex/concepts/idea.md  sources 2 -> 1: falls under the two-source bar: back to a "
+                         "candidate on [[good]]", "cortex/entities/tool.md  sources 1 -> 0: no source left",
+                         "Seen twice ([[bad]], [[good]]).", "nothing was changed"):
+            self.assertIn(fragment, shown)
+        self.assertTrue(os.path.exists(os.path.join(self.root, "senses", "bad.md")))  # showing writes nothing
+        self.assertEqual(run("forget.py", "--root", self.root, "bad").stdout, shown)   # by episode name too
+        self.assertIn("neither a file in senses/ nor an episode", run("forget.py", "--root", self.root, "idea").stderr)
+
+        done = run("forget.py", "--root", self.root, "senses/bad.md", "--yes").stdout
+        self.assertIn("forgotten: senses/bad.md", done)
+        for gone in ("senses/bad.md", "cortex/episodes/bad.md"):
+            self.assertFalse(os.path.exists(os.path.join(self.root, gone)), gone)
+        self.assertTrue(os.path.exists(os.path.join(self.root, "senses", "good.md")))
+        with open(os.path.join(self.root, "hippocampus", "log.md"), encoding="utf-8") as fh:
+            self.assertRegex(fh.read(), r"\d{4}-\d\d-\d\d forget senses/bad.md -> 1 episodes and 1 input files removed "
+                                        r"on the owner's yes; 2 pages cited them")
+        with open(os.path.join(self.root, "hippocampus", "fingerprints.md"), encoding="utf-8") as fh:
+            prints = fh.read()
+        self.assertRegex(prints, r"[0-9a-f]{64} senses/bad.md\n")       # that it was once held stays on record
+        self.assertRegex(prints, r"\d{4}-\d\d-\d\d forgotten senses/bad.md\n")
+        with open(os.path.join(self.root, "hippocampus", "index.md"), encoding="utf-8") as fh:
+            index = fh.read()
+        self.assertNotIn("[[bad]]", index)
+        self.assertIn("[[good]]", index)
+        check = json.loads(run("link_check.py", self.root, "--json").stdout)
+        self.assertEqual(check["history"], [])  # removed on purpose: not a tampered input
+        self.assertEqual(sorted(b["page"] for b in check["broken"]),  # the work left for /forget
+                         ["cortex/concepts/idea.md", "cortex/entities/tool.md"])
+
+    def test_only_the_owner_can_let_an_input_be_forgotten(self):
+        def hook(command):
+            return self.run_hook("protect_senses.py", {"tool_name": "Bash", "tool_input": {"command": command}})
+
+        asked = hook("brain forget senses/bad.md --yes")
+        self.assertEqual(asked.returncode, 0)
+        self.assertEqual(json.loads(asked.stdout)["hookSpecificOutput"]["permissionDecision"], "ask")
+        self.assertEqual(hook("brain forget senses/bad.md").stdout, "")       # showing needs no one
+        self.assertEqual(hook("rm senses/bad.md").returncode, 2)               # every other way is still shut
+        self.assertEqual(hook("echo forget it --yes").stdout, "")
+
     def test_recall_strengthens_and_schedules(self):
         self.write("cortex/concepts/fresh.md", page("concept", updated=ago(2)))
         self.write("cortex/concepts/rehearsed.md", page("concept", updated=ago(100)))

@@ -19,7 +19,7 @@ import sqlite3
 
 # Raise when tokens(), stem(), STOP_WORDS or FIELD_WEIGHTS change meaning:
 # every cached row was computed by the old rules.
-CACHE_VERSION = "1"
+CACHE_VERSION = "2"
 CACHE_DIR = ".cache"
 CACHE_FILE = "search.sqlite"
 
@@ -49,7 +49,7 @@ class TermCache:
             except (sqlite3.Error, OSError):
                 self.db = None
 
-    def _open(self):
+    def _open(self, again=True):
         os.makedirs(os.path.dirname(self.path), exist_ok=True)
         db = sqlite3.connect(self.path, timeout=2)
         try:
@@ -60,11 +60,18 @@ class TermCache:
                 with db:
                     db.execute("DELETE FROM terms")
                     db.execute("INSERT OR REPLACE INTO meta VALUES ('version', ?)", (CACHE_VERSION,))
+        except sqlite3.OperationalError:
+            # Locked by another process, or read-only: the file may be sound, so it is left
+            # alone and this run goes without it.
+            db.close()
+            raise
         except sqlite3.DatabaseError:
             db.close()
-            # Not a database, or a damaged one: it is only a cache, start it over.
+            if not again:
+                raise  # the fresh file failed too: go without, rather than start over for ever
+            # Not a database, or a damaged one: it is only a cache, start it over, once.
             os.remove(self.path)
-            return self._open()
+            return self._open(again=False)
         return db
 
     def get_many(self, pages, compute):

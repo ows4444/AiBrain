@@ -1,7 +1,7 @@
 ---
 name: write
 description: >-
-  Produce something for outside the brain from its pages: an outline, a draft, a cited research report, or a handoff brief, saved to motor/. Use for /write, "draft", "write an article", "research report on", "handoff". Do NOT use for a quick answer (ask) or for writing with no grounding in the brain's pages.
+  Produce a piece for outside the brain from its pages: outline, draft, cited report or handoff, saved to motor/. Use for /write, "draft", "write an article", "research report on". Not for quick answers
 argument-hint: "[outline | draft | report | handoff] <topic>"
 ---
 

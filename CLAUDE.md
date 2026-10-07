@@ -5,18 +5,8 @@ owner puts material into `senses/` and asks questions; `cortex/` and
 `hippocampus/` are yours to write and keep correct. The procedures are the
 `aibrain` plugin's skills (`/ingest`, `/sleep`, `/ask`, ...; `/aibrain:ask` on
 a name clash) and the `brain` command. This file holds only the rules every
-procedure shares.
-
-## Owner
-
-_Not filled in yet. Run `/start` for a guided first run, or `/owner` for
-just the interview: who they are, goals with dates, how to
-talk to them, active projects._
-
-### Goals
-
-_None yet. One line each: `- <goal> by YYYY-MM-DD -> [[page]], [[project]]`;
-end it with `(done)` or `(dropped)` when it is over._
+procedure shares, and changes only when a rule does. Who the owner is and
+their goals are in `OWNER.md`, which the wake-up briefing prints.
 
 ## Anatomy
 
@@ -56,7 +46,7 @@ engine/          the aibrain plugin
   the owner, and only their answer is recorded.
 - **Rehearse**: only `/rehearse` moves a page's rehearsal date. A pass pushes
   it out, a miss starts it over; the model reading or editing a page moves nothing.
-- **Purpose**: pages linked from live goals (Owner > Goals) and projects not
+- **Purpose**: pages linked from live goals (`OWNER.md` > Goals) and projects not
   `done` are rehearsed first and never fade.
 - **Beyond the evidence**: `/explore` writes `origin: generated` episodes,
   never counted as evidence; `/decide` records what the owner expects, and a
@@ -64,29 +54,26 @@ engine/          the aibrain plugin
 
 ## Page contracts
 
-Every page starts from its template in `engine/templates/` and carries
-`title`, `type` (episode | concept | entity | insight | decision), `created`
-and `updated`; it may add `aliases` and at most three `tags`. Concepts add `status: emerging`
+Every page starts from its template in `engine/templates/` (`brain new`) and
+carries `title`, `summary` (one sentence, at most 200 characters, on what the
+page holds), `type` (episode | concept | entity | insight | decision),
+`created` and `updated`; it may add `aliases` and at most three `tags`. Concepts add `status: emerging`
 (one salient episode) or `established` (two or more distinct sources).
-Decisions add `status: open | decided | reviewed`, a `review:` date and a
-`revisit_if:` event once decided, and an `outcome:` once reviewed. File names are lowercase-hyphenated;
-capitals live in `title`. Every other field is in `engine/templates/README.md`.
+File names are lowercase-hyphenated; capitals live in `title`. Every other field is in `engine/templates/README.md`.
 The hooks reject a page that breaks this; `brain check` rechecks every page.
 
 An episode says what one source said (this source says X, not X is true). An
 entity says what it is and why it is here. A concept explains one idea for
 someone who never saw the episodes. An insight says what no single episode
-did. A decision's `## Expected` is frozen once it is decided, and a decided
-page is never reopened. Under its Options, Expected, Decision and Lessons each
-line says what it is: `- [observation]` (cites a page, or `(owner, DATE)`),
-`[interpretation]`, `[hypothesis]`, `[assumption]` or `[decision]`. A guess
-may carry the owner's probability, `- [hypothesis 70%] ...`; reviews score it.
+did. A decision's fields, its frozen `## Expected` and its line tags are in
+`.claude/rules/decisions.md`, which loads when a decision page is read.
 System types (`index`, `log`, `metrics`, `fingerprints`, `intentions`) belong
 to their one file in `hippocampus/`, never to a memory page.
 
 ## Rules
 
-- Never edit or delete anything in `senses/`; new files may land there.
+- Never edit or delete anything in `senses/`; new files may land there. Only
+  `/forget` removes an input, and only on the owner's yes.
 - Log before you delete or move a page.
 - Link the first mention of every page with `[[wikilinks]]`; a page that does
   not exist yet goes under Gaps in the index.
@@ -115,14 +102,14 @@ dates; never overwrite. Tag the page `disputed` until `/maintain settle`.
 One line per operation in `hippocampus/log.md`, newest last:
 `DATE <operation> <what> -> <result>`. Operations: `ingest`, `recall`,
 `sleep`, `explore`, `decide`, `review`, `write`, `focus`, `maintain`,
-`health`, `guard`, `rehearse`, `rollback`, `owner`, `engine`, `remind`. Every skill that
+`health`, `guard`, `rehearse`, `rollback`, `owner`, `engine`, `remind`, `forget`. Every skill that
 answers or writes from pages (ask, rehearse, explore, decide, write, focus)
 also writes a `recall` line naming them; a missed rehearsal is
 `DATE rehearse missed -> [[page]]`. The log is append-only. Keep `index.md`
-current in the same run.
+current in the same run. Example lines are in `engine/templates/README.md`.
 
-```
-2026-09-07 ingest senses/some-article.md -> 1 episode, 2 candidates, 4 links
-2026-09-08 recall what is an llm wiki -> [[llm-wiki]], [[karpathy]]
-2026-09-09 sleep 3 episodes -> 1 concept established, 2 updated, 1 insight
-```
+## Compact Instructions
+
+When this conversation is compacted, keep: the active project and its open
+plan item; files changed and not committed; the last failing command and its
+error; decisions the owner made this session; log lines not yet written.

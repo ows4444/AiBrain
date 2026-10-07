@@ -1,7 +1,7 @@
 ---
 name: guard
 description: >-
-  Protect what should not leave or should not be here: scan for credentials, other people's private information and confidential work, and check what is safe to publish. Use for /guard, "privacy", "secrets", "can I publish", before syncing or sharing, after importing chats or meeting notes. Report only; deletes nothing.
+  Scan for credentials, other people's private data and confidential work; check what is safe to publish. Use for /guard, "privacy", "secrets", "can I publish", before sharing. Report only.
 argument-hint: "[publish | export]"
 ---
 

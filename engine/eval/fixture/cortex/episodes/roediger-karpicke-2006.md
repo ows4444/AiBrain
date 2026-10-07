@@ -1,5 +1,6 @@
 ---
 title: Test-enhanced learning (2006)
+summary: "Experiment: students who took practice tests on a passage remembered more a week later than students who reread it."
 type: episode
 created: 2026-06-08
 updated: 2026-06-10

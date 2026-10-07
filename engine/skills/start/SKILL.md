@@ -8,7 +8,7 @@ Guide the owner through a first run, one step at a time, waiting for them
 between steps:
 
 1. Run the setup check from `health` and fix anything mechanical.
-2. If the Owner section of `CLAUDE.md` is empty, ask the owner to type
+2. If `OWNER.md` is not filled in, ask the owner to type
    `/owner` (it runs only when typed; you cannot start it) and continue once
    the interview is done.
 3. Ask for two or three related pieces of input (articles, notes, a video

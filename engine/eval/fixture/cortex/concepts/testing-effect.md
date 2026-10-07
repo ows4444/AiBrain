@@ -1,5 +1,6 @@
 ---
 title: Testing effect
+summary: Recalling an answer strengthens memory more than rereading it; practice tests look worse at first and win a week later.
 type: concept
 status: emerging
 created: 2026-06-10

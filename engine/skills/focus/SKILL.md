@@ -1,7 +1,7 @@
 ---
 name: focus
 description: >-
-  Working memory: create a project in prefrontal/ with one measurable goal, pull the relevant concept pages into it, or report where it stands. Use for /focus, "create a project", "set up X", "where does X stand". Do NOT use for one-off tasks or for wiki pages about a topic.
+  Create a project in prefrontal/ with one measurable goal, or report where one stands. Use for /focus, "create a project", "set up X", "where does X stand". Not for one-off tasks.
 argument-hint: "<project> [scope | status]"
 ---
 
@@ -25,8 +25,8 @@ agent's role and what it must not do. Copy `${CLAUDE_PLUGIN_ROOT}/templates/proj
 `prefrontal/<name>/` (lowercase-hyphenated, and not a name an existing page
 answers to: `brain check` fails on a clash, and links would reach the wrong page) and fill its `CLAUDE.md`,
 frontmatter included (`goal:`, `due:`, `status: active`). Link the concept
-pages it depends on as wikilinks: that keeps them from fading. Under Owner >
-Goals in the root `CLAUDE.md`, link it from the goal it serves
+pages it depends on as wikilinks: that keeps them from fading. Under Goals
+in `OWNER.md`, link it from the goal it serves
 (`- <goal> by <date> -> [[<name>]]`), adding the goal if it is new, and log
 `DATE focus <project> -> created prefrontal/<name>/`.
 

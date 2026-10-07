@@ -1,5 +1,6 @@
 ---
 title: Ebbinghaus, Memory (1885)
+summary: "Ebbinghaus's experiments on himself: how much of a list of nonsense syllables remained after delays from twenty minutes to a month."
 type: episode
 created: 2026-06-01
 updated: 2026-06-10

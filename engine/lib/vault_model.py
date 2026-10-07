@@ -6,8 +6,9 @@ CLAUDE.md and is_brain looks for two folders. vaultlib re-exports it all.
 import datetime
 import os
 import re
+import sys
 
-LINK = re.compile(r"\[\[([^\]|#]+)(?:#[^\]|]*)?(?:\|[^\]]*)?\]\]")
+LINK =re.compile(r"\[\[([^\]|#]+)(?:#[^\]|]*)?(?:\|[^\]]*)?\]\]")
 FRONTMATTER = re.compile(r"\A---\r?\n(.*?)\r?\n---\r?\n?", re.S)
 BLOCK_ITEM = re.compile(r"^[ \t]*-(?:[ \t]+(.*?))?[ \t]*$")
 # A memory page's file name; the capitals and spaces live in its title.
@@ -70,6 +71,12 @@ PROBABILITY_TAGS = ("hypothesis", "assumption")
 # Below this many scored guesses, a Brier score is shown with its count and no verdict.
 BRIER_MIN = 10
 MAX_TAGS = 3
+# `summary:` is one sentence a reader can decide on: open the page or not.
+# Recall and search print it, so an answer reads five summaries and then only
+# the pages it needs. A page whose sections are still empty (a scaffold from
+# `brain new`) may lack it; one with SUMMARY_BODY_WORDS of text may not.
+SUMMARY_MAX = 200
+SUMMARY_BODY_WORDS = 30
 LOG_PATH = os.path.join("hippocampus", "log.md")
 
 # Every frontmatter field the brain gives meaning to, in one place: the schema
@@ -85,6 +92,7 @@ FIELDS = {
     "type":          dict(required=True, values=PAGE_TYPES),
     "created":       dict(required=True, date=True),
     "updated":       dict(required=True, date=True),
+    "summary":       dict(),
     "aliases":       dict(),
     "tags":          dict(private=True),
     "status":        dict(on=("concept", "decision"), private=True),
@@ -118,7 +126,7 @@ PRIVATE_FIELDS = frozenset(k for k, f in FIELDS.items() if f.get("private"))
 # Operations a log line may record (CLAUDE.md > Log). `recall` lines are what
 # strengthen pages; `engine` records changes to the engine itself.
 OPS = ("ingest", "recall", "sleep", "explore", "decide", "review", "write", "focus",
-       "maintain", "health", "guard", "rehearse", "rollback", "owner", "engine", "remind")
+       "maintain", "health", "guard", "rehearse", "rollback", "owner", "engine", "remind", "forget")
 
 STALE_DAYS = 90
 STUB_WORDS = 40
@@ -129,7 +137,9 @@ DORMANT_DAYS = 180
 SALIENT = 4
 SALIENCE_STRETCH = 0.5
 # Owner goals: `- <goal> by YYYY-MM-DD -> [[page]], [[project]]` under
-# `### Goals` in the Owner section of CLAUDE.md; the date and links are optional.
+# `## Goals` in OWNER.md; the date and links are optional. A brain from before
+# OWNER.md keeps them under `### Goals` in the Owner section of CLAUDE.md.
+OWNER_FILE = "OWNER.md"
 GOAL_LINE = re.compile(r"^[-*]\s+(.+?)(?:\s+by\s+(\d{4}-\d{2}-\d{2}))?\s*(?:->\s*(.*))?$")
 # A goal ends when its line says `(done)` or `(dropped)`. One more than
 # GOAL_STALE_DAYS past its date stops protecting its pages until it is closed
@@ -174,6 +184,35 @@ MAIN_COMPONENT_MIN = 80                      # % of pages
 HEBBIAN_HALF_LIFE = 90       # days for a co-recall to lose half its weight
 SPREAD_HOPS, SPREAD_DECAY = 2, 0.5
 SEED_LIMIT = 5               # search hits that start the spread
+# `brain recall` stops where the match stops. Rows scoring under this share of
+# the best row are cut: on the eval's fixture no expected page in the top five
+# scores under 0.47 of the first. And when the best page holds under
+# MIN_COVERAGE of the question's words, weighted by how rare each is, nothing
+# is returned: the words reached a page, the question did not. This catches
+# only a gross mismatch (a retriever cannot know a question is uncovered).
+RECALL_FLOOR = 0.4
+MIN_COVERAGE = 0.15
+# Recall on every prompt (the prompt_recall hook, off unless BRAIN_PROMPT_RECALL=1)
+# adds text to a prompt that did not ask for it, so its bar is higher than
+# `brain recall`'s: the prompt reads as a question, holds PROMPT_MIN_WORDS or
+# more, and the best page holds PROMPT_COVERAGE of its words. At most
+# PROMPT_ROWS summaries, PROMPT_CHARS in all.
+PROMPT_COVERAGE = 0.5
+PROMPT_MIN_WORDS = 4
+PROMPT_ROWS = 4
+PROMPT_CHARS = 900
+QUESTION = re.compile(r"\?\s*$|^\s*(?:what|why|how|which|who|whom|whose|when|where|does|do|did|is|are|was|were|can|"
+                      r"could|should|would|will|has|have|explain|tell me|remind me)\b", re.I)
+# An idea held on an episode (a candidate with no page yet) is listed with a
+# recall when the question names it: half or more of the words of its name,
+# and at least this share of the question in its name and one-line note.
+HELD_COVERAGE = 0.5
+HELD_LIMIT = 3
+# Two held candidates, or a candidate and a page, are put to sleep as possibly
+# one idea when their names share half their words, or their names and notes
+# share this many words and half of the shorter one's.
+PAIR_OVERLAP = 0.5
+PAIR_MIN_WORDS = 3
 PROJECT_BOOST = 1.5          # --project: its pages' seeds count this much more
 NEAR_DUPLICATE = 0.6         # name or neighbour overlap that suggests a merge
 SCHEMA_MIN = 4               # concepts in a cluster before it wants a framework page
@@ -190,7 +229,9 @@ def thresholds():
             "main_component_min_pct": MAIN_COMPONENT_MIN, "hebbian_half_life": HEBBIAN_HALF_LIFE,
             "spread": [SPREAD_HOPS, SPREAD_DECAY], "near_duplicate": NEAR_DUPLICATE,
             "schema_min": SCHEMA_MIN, "brier_min": BRIER_MIN, "goal_slip_days": GOAL_SLIP_DAYS,
-            "checkpoint": [CHECKPOINT_INPUTS, CHECKPOINT_SLEEPS]}
+            "checkpoint": [CHECKPOINT_INPUTS, CHECKPOINT_SLEEPS],
+            "recall_floor": RECALL_FLOOR, "min_coverage": MIN_COVERAGE,
+            "prompt_recall": [PROMPT_COVERAGE, PROMPT_MIN_WORDS, PROMPT_ROWS, PROMPT_CHARS]}
 
 
 def verdicts(orphan_rate, avg_degree, main_share, pages):
@@ -212,6 +253,27 @@ def is_brain(root):
     return all(os.path.isdir(os.path.join(root, d)) for d in MEMORY_DIRS)
 
 
+def find_brain(start):
+    """The nearest folder at or above `start` that is a brain, else None.
+
+    A session opened in prefrontal/<name>/ is still inside its brain, so the
+    hooks look upward the way the `brain` command does.
+    """
+    here = os.path.realpath(start)
+    while True:
+        if is_brain(here):
+            return here
+        parent = os.path.dirname(here)
+        if parent == here:
+            return None
+        here = parent
+
+
+def fold_case(path):
+    """A path as the file system compares it: macOS and Windows take Cortex/ for cortex/."""
+    return path.lower() if sys.platform == "darwin" else os.path.normcase(path)
+
+
 def parse_frontmatter(text):
     """Return (fields, body). Handles `key: value`, inline `[a, b]` lists, and block
     lists (`key:` then one `  - item` per line), which Obsidian's Properties editor writes."""
@@ -224,8 +286,7 @@ def parse_frontmatter(text):
         if item and list_key:
             if not isinstance(fields[list_key], list):
                 fields[list_key] = []
-            if item.group(1):
-                fields[list_key].append(item.group(1).strip("\"'"))
+            fields[list_key] += [item.group(1).strip("\"'")] if item.group(1) else []  # a bare `-` holds nothing
             continue
         list_key = None
         if ":" not in line or line.startswith((" ", "\t", "-", "#")):
@@ -257,22 +318,28 @@ def links_in(body):
     return [t.strip() for t in LINK.findall(prose(body))]
 
 
-def candidates_in(body):
-    """Names listed under `## Candidates` on an episode: `- Name - note` or `- [[Name]]`."""
+def candidate_notes(body):
+    """(name, note) for each line under `## Candidates` on an episode: `- Name - note` or `- [[Name]]`."""
     m = CANDIDATES.search(body)
     if not m:
         return []
-    names = []
+    found = []
     for line in m.group(1).splitlines():
         line = line.strip()
         if not line.startswith(("-", "*")):
             continue
         item = line[1:].strip()
         link = LINK.match(item)
-        name = link.group(1) if link else re.split(r"\s+[-–—]\s+|:\s+", item, maxsplit=1)[0]
+        parts = re.split(r"\s+[-–—]\s+|:\s+", item[link.end():] if link else item, maxsplit=1)
+        name = link.group(1) if link else parts[0]
         if name.strip():
-            names.append(name.strip())
-    return names
+            found.append((name.strip(), parts[-1].strip() if len(parts) > 1 else ""))
+    return found
+
+
+def candidates_in(body):
+    """Names listed under `## Candidates` on an episode."""
+    return [name for name, _ in candidate_notes(body)]
 
 
 def check_fields(fields, specs):
@@ -340,6 +407,9 @@ def schema_problems(text, vocabulary=None, page_type=None, stem=None, rel=None):
         problems += decision_problems(fields)
         if fields.get("status") in ("decided", "reviewed"):  # an open one is still being framed
             problems += claim_problems(body)
+    summary = fields.get("summary")
+    if isinstance(summary, str) and len(summary) > SUMMARY_MAX:
+        problems.append(f"'summary' is {len(summary)} characters; one sentence, at most {SUMMARY_MAX}")
     tags = as_list(fields.get("tags"))
     if len(tags) > MAX_TAGS:
         problems.append(f"{len(tags)} tags; at most {MAX_TAGS}")
@@ -347,6 +417,23 @@ def schema_problems(text, vocabulary=None, page_type=None, stem=None, rel=None):
     if unknown:
         problems.append(f"tags {unknown} are not in the vocabulary; propose new tags in CLAUDE.md first")
     return problems
+
+
+def summary_problems(text):
+    """Whether a memory page with text in it lacks its `summary:`; [] for any other file.
+
+    Kept out of schema_problems: pages written before the field existed are
+    listed by `brain check`, not failed, and the page hook blocks only a write
+    that leaves a page in this state when it was not in it before.
+    """
+    fields, body = parse_frontmatter(text)
+    if not fields or fields.get("type") not in PAGE_TYPES or fields.get("summary"):
+        return []
+    words = sum(len(line.split()) for line in body.splitlines() if not line.startswith("#"))
+    if words < SUMMARY_BODY_WORDS:
+        return []
+    return [f"missing 'summary': one sentence, at most {SUMMARY_MAX} characters, saying what the page holds, "
+            "so a reader of `brain recall` can tell whether to open it"]
 
 
 def decision_problems(fields):
@@ -420,14 +507,27 @@ def parse_date(value):
         return None
 
 
-def owner_goals(root):
-    """[{text, due, links, ended}] from `### Goals` in the Owner section of the brain's CLAUDE.md."""
-    path = os.path.join(root, "CLAUDE.md")
+def owner_file(root):
+    """The file that holds the owner block: OWNER.md, or CLAUDE.md in a brain from before it."""
+    return OWNER_FILE if os.path.exists(os.path.join(root, OWNER_FILE)) else "CLAUDE.md"
+
+
+def owner_text(root):
+    """The owner block: all of OWNER.md, or the Owner section of an older brain's CLAUDE.md."""
+    path = os.path.join(root, owner_file(root))
     if not os.path.exists(path):
-        return []
+        return ""
     with open(path, encoding="utf-8") as fh:
-        owner = re.search(r"^## Owner\s*\n(.*?)(?=^## |\Z)", fh.read(), re.S | re.M)
-    section = owner and re.search(r"^### Goals\s*\n(.*?)(?=^##+ |\Z)", owner.group(1), re.S | re.M)
+        text = fh.read()
+    if owner_file(root) == OWNER_FILE:
+        return text
+    owner = re.search(r"^## Owner\s*\n(.*?)(?=^## |\Z)", text, re.S | re.M)
+    return owner.group(1) if owner else ""
+
+
+def owner_goals(root):
+    """[{text, due, links, ended}] from the Goals section of the owner block."""
+    section = re.search(r"^##+ Goals\s*\n(.*?)(?=^##+ |\Z)", owner_text(root), re.S | re.M)
     goals = []
     for line in (section.group(1).splitlines() if section else []):
         end = GOAL_END.search(line)
@@ -464,6 +564,11 @@ class Page:
         return self.type in SYSTEM_TYPES
 
     @property
+    def summary(self):
+        value = self.fields.get("summary")
+        return value if isinstance(value, str) else ""
+
+    @property
     def updated(self):
         return parse_date(self.fields.get("updated", ""))
 
@@ -493,6 +598,10 @@ class Page:
     @property
     def candidates(self):
         return candidates_in(self.body) if self.replayed_by_sleep else []
+
+    @property
+    def candidate_notes(self):
+        return candidate_notes(self.body) if self.replayed_by_sleep else []
 
     @property
     def claims(self):

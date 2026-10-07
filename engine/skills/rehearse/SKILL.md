@@ -1,7 +1,7 @@
 ---
 name: rehearse
 description: >-
-  Spaced retrieval practice from the owner's own concept and insight pages: pick what is due, ask, withhold answers, grade against the pages, and log the recall. Use for /rehearse, "quiz me", "test me", "explain it back", flashcards. Do NOT use for quizzing on topics the brain has no pages on.
+  Spaced retrieval practice from the owner's concept and insight pages: ask what is due, grade against the pages. Use for /rehearse, "quiz me", "test me", "explain it back", flashcards.
 argument-hint: "[topic]"
 ---
 

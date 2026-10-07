@@ -6,7 +6,7 @@ import subprocess
 import sys
 import unittest
 
-from support import BRAIN_CLAUDE, DECIDED, ENGINE, SCRIPTS, TempBrain, page, vaultlib
+from support import BRAIN_CLAUDE, DECIDED, ENGINE, HOOKS, SCRIPTS, TempBrain, page, vaultlib
 
 OBSIDIAN_NOTE = """---
 title: "LLM wiki: a pattern"
@@ -93,6 +93,35 @@ class ValidatePage(TempBrain):
         self.assertEqual(self.check("cortex/concepts/a.md", page("concept", status="established",
                                                                   tags="[unverified]", **common)).returncode, 0)
         self.assertEqual(self.check("cortex/episodes/a.md", page("episode", consolidated="", **common)).returncode, 0)
+
+    def test_summary_is_required_once_a_page_has_text_and_kept_short(self):
+        common = dict(title="A", created="2026-01-01", updated="2026-01-02", status="established")
+        text = "Spacing spreads study over sessions. " * 8
+        rel, path = "cortex/concepts/a.md", os.path.join(self.root, "cortex/concepts/a.md")
+
+        def pre(tool, **tool_input):
+            return subprocess.run([sys.executable, os.path.join(HOOKS, "validate_page.py"), "--pre"],
+                                  input=json.dumps({"tool_name": tool, "tool_input": dict(file_path=path, **tool_input)}),
+                                  capture_output=True, text=True, env=dict(os.environ, CLAUDE_PROJECT_DIR=self.root))
+
+        new = pre("Write", content=page("concept", text, **common))
+        self.assertEqual(new.returncode, 2)
+        self.assertIn("missing 'summary': one sentence, at most 200 characters", new.stderr)
+        self.assertEqual(pre("Write", content=page("concept", text, summary="What spacing is.", **common)).returncode, 0)
+        self.write(rel, page("concept", "\n# A\n\n## What it is\n\nBODY\n", **common))  # a scaffold: no text yet
+        self.assertEqual(pre("Edit", old_string="BODY", new_string=text).returncode, 2)
+        self.write(rel, page("concept", text, **common))  # written before the field existed
+        self.assertEqual(pre("Edit", old_string="Spacing", new_string="Spaced study").returncode, 0)
+        self.assertEqual(self.check(rel, page("concept", text, **common)).returncode, 0)  # the second pass lets it be
+        long = pre("Write", content=page("concept", text, summary="x" * 201, **common))
+        self.assertIn("'summary' is 201 characters; one sentence, at most 200", long.stderr)
+        self.write("cortex/concepts/b.md", page("concept", text, summary="Said in one line.", **dict(common, title="B")))
+        out = subprocess.run([sys.executable, os.path.join(SCRIPTS, "link_check.py"), self.root], capture_output=True, text=True)
+        self.assertIn("pages without a summary (recall cannot say what they hold): 1\n  cortex/concepts/a.md", out.stdout)
+        found = subprocess.run([sys.executable, os.path.join(SCRIPTS, "search.py"), "recall", "spacing", "--root", self.root],
+                               capture_output=True, text=True, env=dict(os.environ, BRAIN_CACHE="0")).stdout
+        self.assertIn("cortex/concepts/b.md\n           Said in one line.", found)
+        self.assertIn("cortex/concepts/a.md\n           (no summary: open the page to judge it)", found)
 
     def test_readme_is_not_a_page(self):
         self.assertEqual(self.check("cortex/README.md", "# What lives here\n").returncode, 0)

@@ -1,5 +1,6 @@
 ---
 title: Distributed practice in verbal recall tasks (2006)
+summary: "Meta-analysis of 317 experiments: spaced study beat massed study, and the best gap grows with how long the material must be kept."
 type: episode
 created: 2026-06-05
 updated: 2026-06-10

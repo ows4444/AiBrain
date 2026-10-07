@@ -13,6 +13,7 @@ sleep over ten episodes), offer the `critic` agent's verdict on it first. Mentio
 with an unknown operation, but do not stop for them. Stage and commit with one line naming what
 changed and which run produced it, from the latest log lines (e.g. `sleep: 3
 episodes, 1 concept established`). Report the diff summary. Never push. If
-the commit changed `engine/`, remind the owner that the running hooks are
+work is still open in a project, run `brain resume` after the commit: a
+commit is the place to compact or stop. If the commit changed `engine/`, remind the owner that the running hooks are
 still the old ones until `claude plugin update aibrain@aibrain` and a restart;
 old versions stay in the plugin cache until they prune them.

@@ -9,7 +9,10 @@ if ! out=$(python3 "$brain" check --guard 2>&1); then
     printf '%s\n\npre-commit: brain check failed; fix the above or commit with --no-verify\n' "$out" >&2
     exit 1
 fi
-if ! out=$(python3 "$brain" test 2>&1); then
+# The tests make git repositories of their own. Git hands a hook GIT_INDEX_FILE
+# (and GIT_DIR in a worktree); left set, the tests' `git add` writes into the
+# index of the commit being made and it fails with "invalid object".
+if ! out=$(unset $(git rev-parse --local-env-vars); python3 "$brain" test 2>&1); then
     printf '%s\n\npre-commit: engine tests failed\n' "$out" | tail -40 >&2
     exit 1
 fi

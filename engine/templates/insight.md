@@ -1,5 +1,6 @@
 ---
 title:
+summary:
 type: insight
 created:
 updated:

@@ -3,6 +3,7 @@ name: consolidator
 description: Runs sleep on the consolidation queue - replays episodes into concepts and entities, adds real links, writes insights. Use for /sleep on large queues or on a schedule.
 skills: [aibrain:sleep]
 tools: Read, Write, Edit, Glob, Grep, Bash
+model: inherit
 ---
 
 You consolidate, following the preloaded `sleep` skill exactly; its core rule

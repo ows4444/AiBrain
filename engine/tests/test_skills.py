@@ -49,6 +49,24 @@ class SkillWiring(unittest.TestCase):
             for tpl in re.findall(r"\$\{CLAUDE_PLUGIN_ROOT\}/templates/([\w./-]*)", text):
                 self.assertTrue(os.path.exists(os.path.join(ENGINE, "templates", tpl)), f"{name}: {tpl}")
 
+    def test_input_is_data_wherever_input_is_read(self):
+        for rel in (os.path.join("skills", "ingest", "SKILL.md"), os.path.join("agents", "encoder.md")):
+            with open(os.path.join(ENGINE, rel), encoding="utf-8") as fh:
+                text = " ".join(fh.read().split())
+            for fragment in ("Injected:", "ignore rules", "never"):
+                self.assertIn(fragment, text, rel)
+
+    def test_every_agent_names_its_model(self):
+        # Scanning and counting on the smallest, writing from one input on the middle one, judging and
+        # synthesis on the session's own. A cheaper model saves quota and time, not context.
+        expected = {"curator": "haiku", "graph-analyst": "haiku", "encoder": "sonnet", "reviewer": "sonnet",
+                    "consolidator": "inherit", "critic": "inherit", "researcher": "inherit"}
+        found = {}
+        for name in sorted(os.listdir(os.path.join(ENGINE, "agents"))):
+            with open(os.path.join(ENGINE, "agents", name), encoding="utf-8") as fh:
+                found[name[:-3]] = (re.search(r"^model: (\S+)$", fh.read().split("---")[1], re.M) or [None, None])[1]
+        self.assertEqual(found, expected)
+
     def test_agent_skills_exist(self):
         for name, text in self.everything().items():
             for skill in re.findall(r"^skills: \[(.*)\]", text, re.M):
@@ -59,7 +77,7 @@ class SkillWiring(unittest.TestCase):
         # every description loads on every turn
         for name in os.listdir(SKILLS):
             m = re.search(r"^description:\s*(?:>-\s*\n)?(.*?)\n(?=[a-z-]+:|---)", self.skill(name), re.S | re.M)
-            self.assertLessEqual(len(" ".join(m.group(1).split())), 380, name)
+            self.assertLessEqual(len(" ".join(m.group(1).split())), 201, name)
 
 
 if __name__ == "__main__":

@@ -31,6 +31,15 @@ class Search(TempBrain):
         self.assertEqual(v.search("the and of"), [])  # only stop words: nothing to find
         self.assertEqual(vaultlib.tokens("Forgetting forgets forget"), ["forget"] * 3)
 
+    def test_the_summary_is_searched_and_counts_for_less_than_the_body(self):
+        self.write("cortex/concepts/loci.md", concept("Items are placed along a route.", title="Method of loci",
+                                                      summary="A way to memorise an ordered list."))
+        self.write("cortex/concepts/lists.md", concept("How to memorise a list of words.", title="Word lists",
+                                                       summary="Notes on rote learning."))
+        v = self.brain()
+        self.assertEqual([p.stem for p, _ in v.search("memorise")], ["lists", "loci"])
+        self.assertEqual([p.stem for p, _ in v.search("ordered")], ["loci"])  # a word only the summary has
+
     def test_types_and_dormant(self):
         self.write("cortex/entities/anki.md", page("entity", "A flashcard app.", title="Anki"))
         self.write("cortex/concepts/cards.md", concept("Flashcard decks.", title="Cards"))
@@ -197,6 +206,115 @@ class AnswerTestSet(unittest.TestCase):
             self.assertGreaterEqual(now[mode]["mrr"], base[mode]["mrr"], mode)
         self.assertGreaterEqual(now["recall"]["hit_at_k"], now["search"]["hit_at_k"])  # association must help
 
+    def test_every_set_is_held_to_its_own_baseline_on_the_same_brain(self):
+        with open(os.path.join(ENGINE, "eval", "baseline.json"), encoding="utf-8") as fh:
+            base = json.load(fh)
+        now = self.run_eval()["retrieval"]
+        # numbers from a changed fixture are not comparable: rerun `brain eval --save-baseline` on purpose
+        self.assertEqual(now["brain"], base["brain"])
+        self.assertEqual(sorted(now["sets"]), ["first", "paraphrase", "standard"])
+        self.assertEqual(now["sets"]["standard"]["recall"], now["recall"])
+        for name, sets in now["sets"].items():
+            for measure in ("hit_at_1", "hit_at_k", "mrr"):
+                self.assertGreaterEqual(sets["recall"][measure], base["sets"][name]["recall"][measure], (name, measure))
+
+    def recall_cmd(self, *args):
+        r = subprocess.run([sys.executable, os.path.join(SCRIPTS, "search.py"), "recall", *args, "--root", FIXTURE],
+                           capture_output=True, text=True, env=dict(os.environ, BRAIN_CACHE="0"))
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return r.stdout
+
+    def test_recall_stops_where_the_match_stops(self):
+        vault = vaultlib.Vault(FIXTURE)
+        every = vault.recall("What is the ease factor?")
+        cut = vault.recall("What is the ease factor?", floor=vaultlib.RECALL_FLOOR, abstain=True)
+        self.assertEqual(([r["page"].stem for r in cut], len(every)), (["wozniak-sm2"], 10))
+        self.assertTrue(all(r["score"] < vaultlib.RECALL_FLOOR * every[0]["score"] for r in every[1:]))
+        out = self.recall_cmd("What is the ease factor?")
+        self.assertIn("wozniak-sm2.md", out)
+        self.assertNotIn("supermemo.md", out)
+        self.assertIn("weaker matches are cut (--all lists them)", out)
+        self.assertIn("supermemo.md", self.recall_cmd("What is the ease factor?", "--all"))
+
+    def test_recall_lists_nothing_when_the_best_page_holds_too_little_of_the_question(self):
+        vault, asked = vaultlib.Vault(FIXTURE), "What did the 2024 sleep and memory consolidation trials find?"
+        best = vault.search(asked)[0][0]
+        self.assertLess(vault.coverage(asked, best), vaultlib.MIN_COVERAGE)
+        self.assertEqual(vault.recall(asked, floor=vaultlib.RECALL_FLOOR, abstain=True), [])
+        out = self.recall_cmd(asked)
+        self.assertTrue(out.startswith("recall: no confident match for"), out)
+        self.assertIn(f"its words barely reach {best.rel}", out)
+        self.assertEqual(len(out.splitlines()), 1)  # one line, no summaries
+        self.assertIn(best.rel, json.loads(self.recall_cmd(asked, "--json"))["weak"])
+        self.assertIn("hit;", self.recall_cmd(asked, "--all"))
+        self.assertEqual(vault.coverage("What is the forgetting curve?", vault.resolve("forgetting-curve")), 1.0)
+        self.assertIn("nothing matches", self.recall_cmd("What is the capital of Australia?"))
+        now = self.run_eval()["retrieval"]
+        self.assertEqual([u["recall_results"] for u in now["uncovered"]], [0, 0, 0, 0, 4, 3])  # not every one is caught
+        self.assertLess(now["recall"]["rows"], 5 * now["recall"]["questions"])
+
+    def test_an_idea_held_on_an_episode_is_listed_when_the_question_names_it(self):
+        vault = vaultlib.Vault(FIXTURE)
+        held = vault.held_ideas("What is the illusion of fluency?")
+        self.assertEqual([(h["name"], h["sources"], len(h["episodes"])) for h in held], [("Illusion of fluency", 2, 2)])
+        self.assertEqual(held[0]["note"], "what feels easy while learning is taken for learning")
+        self.assertEqual([h["name"] for h in vault.held_ideas("person action object")], ["Person-action-object"])
+        # a common word of a name is not the name; an idea with a page is that page's business
+        self.assertEqual(vault.held_ideas("Does the method work for learning?"), [])
+        self.assertEqual(vault.held_ideas("What is the spacing effect?"), [])
+        out = self.recall_cmd("What is the ease factor?")
+        self.assertIn("held ideas (no page yet; cite the episode and say how many sources):", out)
+        self.assertIn("  Ease factor - a per-card multiplier for the next review interval  "
+                      "[cortex/episodes/wozniak-sm2.md; 1 source]", out)
+        self.assertNotIn("held ideas", self.recall_cmd("What is the forgetting curve?"))
+        self.assertEqual(json.loads(self.recall_cmd("ease factor", "--json"))["held"][0]["name"], "Ease factor")
+        now = self.run_eval()["retrieval"]["held"]
+        self.assertEqual((now["questions"], now["listed"]), (2, 2))
+        self.assertLess(now["row_bytes"] * 10, now["episode_bytes"])
+
+    def test_the_sets_are_what_they_say(self):
+        with open(os.path.join(ENGINE, "eval", "questions.json"), encoding="utf-8") as fh:
+            spec = json.load(fh)
+        vault = vaultlib.Vault(FIXTURE)
+        by_set = {}
+        for q in spec["questions"]:
+            by_set.setdefault(q.get("set", "standard"), []).append(q)
+        for q in by_set["paraphrase"]:  # no word of the page's names in the question
+            for stem in q["expect"]:
+                page = vault.resolve(stem)
+                names = set(vaultlib.tokens(page.title + " " + " ".join(page.aliases)))
+                self.assertEqual(names & set(vaultlib.tokens(q["question"])), set(), q["id"])
+        defined = {q["expect"][0] for q in by_set["first"] if vault.resolve(q["expect"][0]).type == "concept"}
+        self.assertEqual(len(defined), 3)
+        for stem in defined:  # a short page that defines the term, and longer ones that use it more
+            page = vault.resolve(stem)
+            uses = lambda p: p.body.lower().count(page.title.lower())  # noqa: E731
+            rivals = [p for p in vault.of_type("episode") if len(p.body) > len(page.body) and uses(p) > uses(page)]
+            self.assertGreaterEqual(len(rivals), 2, stem)
+        sources = [q for q in by_set["first"] if vault.resolve(q["expect"][0]).type == "episode"]
+        self.assertEqual(len(sources), 2)  # a question about one source wants that source first
+
+    def test_bytes_read_per_question_are_fixed_on_the_fixture(self):
+        with open(os.path.join(ENGINE, "eval", "baseline.json"), encoding="utf-8") as fh:
+            base = json.load(fh)
+        now = self.run_eval()["retrieval"]
+        rows = {r["id"]: r for r in now["per_question"]["recall"]}
+        sizes = {stem: os.path.getsize(os.path.join(FIXTURE, "cortex", kind, stem + ".md"))
+                 for kind in os.listdir(os.path.join(FIXTURE, "cortex"))
+                 for stem in (os.path.splitext(f)[0] for f in os.listdir(os.path.join(FIXTURE, "cortex", kind)))}
+        q02 = rows["q02"]
+        self.assertEqual(q02["bytes"], sum(sizes[stem] for stem in q02["top"]))
+        self.assertEqual(q02["needed"], sizes["hermann-ebbinghaus"])
+        for mode in ("search", "recall"):
+            self.assertEqual(now[mode]["bytes_read"],
+                             sum(r["bytes"] for r in now["per_question"][mode] if r["set"] == "standard"))
+            # a change here is a change in what an answer costs: rerun `brain eval --save-baseline` on purpose
+            self.assertEqual((now[mode]["bytes_read"], now[mode]["bytes_needed"], now[mode]["bytes_by_summary"]),
+                             (base[mode]["bytes_read"], base[mode]["bytes_needed"], base[mode]["bytes_by_summary"]), mode)
+            self.assertEqual(now[mode]["unsummarised"], 0, "every fixture page says what it holds")
+            self.assertLess(now[mode]["bytes_by_summary"], now[mode]["bytes_read"])  # or the summaries cost more than they save
+        self.assertGreaterEqual(now["recall"]["bytes_read"], now["recall"]["bytes_needed"] * now["recall"]["hit_at_k"])
+
     def test_answers_are_scored_for_citations_and_admitted_gaps(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = os.path.join(tmp, "answers.json")
@@ -239,6 +357,80 @@ class Synthetic(unittest.TestCase):
             import synth
             synth.build(os.path.join(tmp, "big"), pages=600, seed=1, days=300, today=TODAY)
             self.assertTrue(vaultlib.Vault(os.path.join(tmp, "big"), today=TODAY).betweenness_estimated())
+
+
+class PromptRecall(TempBrain):
+    def setUp(self):
+        super().setUp()
+        self.write("cortex/concepts/spacing.md", page("concept", "Study spread over days lasts longer.\n",
+                                                      title="Spacing effect", summary="Spread study lasts longer."))
+        self.write("cortex/concepts/testing.md", page("concept", "Recalling beats rereading.\n",
+                                                      title="Testing effect", summary="Recall beats rereading."))
+
+    def test_only_a_well_covered_question_gets_pages(self):
+        v = self.brain()
+        rows, why = v.prompt_recall("What is the spacing effect?")
+        self.assertEqual(([p.stem for p, _ in rows][0], why), ("spacing", "match (1.00)"))
+        self.assertEqual(rows[0][1], "cortex/concepts/spacing.md: Spread study lasts longer.")
+        for prompt, why in (("/ask what is the spacing effect?", "command"), ("spacing effect?", "short"),
+                            ("add the spacing effect to the plan", "not a question"),
+                            ("What is the capital of France?", "no word matches"),
+                            ("How does the spacing of kubernetes pods across nodes work?", "weak match")):
+            rows, got = v.prompt_recall(prompt)
+            self.assertEqual((rows, got.split(" (")[0]), ([], why), prompt)
+        self.assertLessEqual(sum(len(line) for _, line in v.prompt_recall("What is the spacing effect?")[0]),
+                             vaultlib.PROMPT_CHARS)
+
+    def test_the_hook_is_off_by_default_bounded_and_logs_each_decision(self):
+        asked = {"prompt": "What is the spacing effect?"}
+        self.assertEqual(self.run_hook("prompt_recall.py", asked, BRAIN_PROMPT_RECALL="0").stdout, "")
+        self.assertFalse(os.path.exists(os.path.join(self.root, ".cache", "prompt-recall.log")))
+        out = self.run_hook("prompt_recall.py", asked, BRAIN_PROMPT_RECALL="1")
+        self.assertEqual(out.returncode, 0)
+        self.assertIn("cortex/concepts/spacing.md: Spread study lasts longer.", out.stdout)
+        self.assertEqual(self.run_hook("prompt_recall.py", {"prompt": "continue next"}, BRAIN_PROMPT_RECALL="1").stdout, "")
+        broken = subprocess.run([sys.executable, os.path.join(ENGINE, "hooks", "prompt_recall.py")], input="not json",
+                                capture_output=True, text=True,
+                                env=dict(os.environ, CLAUDE_PROJECT_DIR=self.root, BRAIN_PROMPT_RECALL="1"))
+        self.assertEqual((broken.returncode, broken.stdout), (0, ""))  # never in the way of a prompt
+        with open(os.path.join(self.root, ".cache", "prompt-recall.log"), encoding="utf-8") as fh:
+            lines = fh.read().splitlines()
+        self.assertEqual(len(lines), 2)
+        self.assertTrue(lines[0].endswith("match (1.00) | What is the spacing effect?"), lines[0])
+        self.assertTrue(lines[1].endswith(" 0 short | continue next"), lines[1])
+
+
+class OwnQuestionSet(TempBrain):
+    def test_a_question_set_for_ones_own_brain_is_drafted_checked_and_keeps_its_own_baseline(self):
+        self.write("cortex/concepts/spacing.md", page("concept", "Study spread over days lasts longer.\n",
+                                                      title="Spacing effect", summary="Spread study lasts."))
+        self.write("cortex/concepts/testing.md", page("concept", "Recalling beats rereading.\n",
+                                                      title="Testing effect", summary="Recall beats rereading."))
+        self.write("cortex/episodes/e1.md", page("episode", "One study.\n", title="A study"))
+        questions = os.path.join(self.root, "motor", "eval-questions.json")
+        self.write("motor/eval-questions.json", json.dumps({"questions": [
+            {"id": "o01", "set": "paraphrase", "question": "Why does the spacing of study matter?",
+             "expect": ["spacing"]},
+            {"id": "o03", "set": "paraphrase", "question": "", "expect": ["gone"]}]}))
+
+        def run(*args):
+            return subprocess.run([sys.executable, os.path.join(SCRIPTS, "eval.py"), "--root", self.root,
+                                   "--questions", questions, *args], capture_output=True, text=True,
+                                  env=dict(os.environ, BRAIN_CACHE="0"))
+
+        drafted = json.loads(run("--draft", "5").stdout)["questions"]
+        # pages no question expects yet, concepts before episodes, ids that are free
+        self.assertEqual([(q["id"], q["expect"]) for q in drafted], [("o02", ["testing"]), ("o04", ["e1"])])
+        self.assertEqual((drafted[0]["set"], drafted[0]["question"], drafted[0]["summary"], drafted[0]["avoid"]),
+                         ("paraphrase", "", "Recall beats rereading.", ["effect", "testing"]))
+        report = run().stdout
+        self.assertIn("retrieval over 1 covered questions", report)  # the empty question is skipped
+        self.assertIn("question o01: not a paraphrase, it uses spacing from [[spacing]]", report)
+        self.assertNotIn("uncovered", report)
+        self.assertIn("baseline saved to " + os.path.join(self.root, "motor", "eval-questions-baseline.json"),
+                      run("--save-baseline").stdout)
+        with open(os.path.join(ENGINE, "eval", "baseline.json"), encoding="utf-8") as fh:
+            self.assertEqual(json.load(fh)["sets"]["standard"]["recall"]["questions"], 13)  # the engine's is untouched
 
 
 if __name__ == "__main__":

@@ -1,7 +1,7 @@
 ---
 name: ask
 description: >-
-  Answer from the brain's own pages, citing them, and log the recall. Covers plain questions, what connects two ideas, arguing against a position, how a view changed over time, what a claim rests on, and what is missing. Use for /ask or any question that should be answered from the owner's notes. Do NOT use for writing a long report (write) or general web questions.
+  Answer a question from the brain's pages, cited, and log the recall. Use for /ask or any question the owner's notes should answer. Not for long reports (write) or web questions.
 argument-hint: "<question>"
 ---
 
@@ -27,7 +27,13 @@ in one sentence and stop.
    the question is about a project in `prefrontal/`. It ranks pages by the
    question's words, then spreads along links (typed links and pages recalled
    together before count more), and shows for each how it was reached, its
-   confidence and its flags. Read pages top down; `hippocampus/index.md` is
+   summary, its confidence and its flags. It cuts weak rows, and prints one
+   line and no rows when the best page holds too little of the question;
+   `--all` lists everything. Under "held ideas" it lists ideas named by a
+   source that have no page yet: answer from that line when it is enough,
+   cite its episode, and say how many sources it rests on. Read the summaries first and open
+   only the pages that bear on the question, top down; a page with no
+   summary has to be opened to judge it. `hippocampus/index.md` is
    the map when the ranking misses something you expect. For a question
    spanning many pages, hand it to the `researcher` agent and log the recall
    line it returns.
@@ -48,8 +54,9 @@ in one sentence and stop.
    claim itself; recall never overwrites.
 6. **Name the gaps** and offer the next move: an input worth encoding, an
    insight worth writing.
-7. **Nothing answers:** `brain recall "<question>" --dormant` before saying
-   so. Cite a dormant page as dormant, and offer to restore it (move it back,
+7. **Nothing answers:** `brain recall "<question>" --all --dormant`, and once
+   more in other words for the same thing, before saying so; name the
+   queries tried under `Not covered:`. Cite a dormant page as dormant, and offer to restore it (move it back,
    re-index, log); a recalled page is worth keeping.
 
 ## Modes

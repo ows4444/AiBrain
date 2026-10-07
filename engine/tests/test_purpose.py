@@ -5,7 +5,7 @@ import subprocess
 import sys
 import unittest
 
-from support import DECIDED, ENGINE, SCRIPTS, TempBrain, VALID, ago, page, project
+from support import DECIDED, ENGINE, SCRIPTS, TempBrain, VALID, ago, page, project, vaultlib
 
 
 class Purpose(TempBrain):
@@ -19,6 +19,23 @@ class Purpose(TempBrain):
         r = subprocess.run([sys.executable, os.path.join(SCRIPTS, "link_check.py"), self.root, "--json"],
                            capture_output=True, text=True)
         return r.returncode, json.loads(r.stdout)
+
+    def test_owner_file_holds_the_goals_and_opens_the_briefing(self):
+        self.write("CLAUDE.md", "# Brain\n\n## Owner\n\n### Goals\n\n- The old place -> [[gone]]\n\n## Tags\n\n`disputed`\n")
+        self.write("OWNER.md", "# Owner\n\nA note on how this file is used,\nover two lines.\n\n- A writer.\n"
+                               "- Talk to them plainly.\n\n## Goals\n\n- Ship the book by 2030-01-01 -> [[missing-page]]\n")
+        self.assertEqual([g["text"] for g in vaultlib.owner_goals(self.root)], ["Ship the book"])
+        self.assertEqual(vaultlib.owner_file(self.root), "OWNER.md")
+        out = self.run_hook("wake_up.py", {}).stdout
+        self.assertTrue(out.startswith("Owner (OWNER.md):\n  - A writer.\n  - Talk to them plainly.\nGoals:\n"
+                                       "  - Ship the book by 2030-01-01 -> [[missing-page]]\nToday: "), out)
+        check = subprocess.run([sys.executable, os.path.join(SCRIPTS, "link_check.py"), self.root, "--json"],
+                               capture_output=True, text=True)
+        self.assertIn({"page": "OWNER.md > Goals > Ship the book", "target": "missing-page"},
+                      json.loads(check.stdout)["broken"])
+        os.remove(os.path.join(self.root, "OWNER.md"))  # a brain from before the file: the root file's section
+        self.assertEqual([g["text"] for g in vaultlib.owner_goals(self.root)], ["The old place"])
+        self.assertNotIn("Owner (", self.run_hook("wake_up.py", {}).stdout)
 
     def test_project_is_a_page_named_after_its_folder(self):
         self.write("prefrontal/launch/CLAUDE.md", project("Depends on [[pricing]] and [[nowhere]]."))

@@ -12,6 +12,13 @@ type: log
 2026-06-10 sleep 4 episodes -> 3 concepts, 3 entities
 2026-06-12 recall what is the forgetting curve -> [[forgetting-curve]], [[ebbinghaus-1885]]
 2026-07-01 recall how should I schedule study -> [[spacing-effect]], [[supermemo]], [[testing-effect]]
+2026-07-15 ingest senses/rohrer-taylor-2007.md -> 1 episode, 1 candidate, 2 links
+2026-07-15 ingest senses/kornell-bjork-2008.md -> 1 episode, 1 candidate, 2 links
+2026-07-16 ingest senses/blog-shuffled-drills.md -> 1 episode, 1 candidate, 1 link
+2026-07-17 ingest senses/maguire-2003.md -> 1 episode, 1 candidate, 1 link
+2026-07-17 ingest senses/dresler-2017.md -> 1 episode, 1 candidate, 1 link
+2026-07-18 ingest senses/blog-card-decks.md -> 1 episode, 1 candidate, 1 link
+2026-07-20 sleep 6 episodes -> 3 concepts, 0 entities
 2026-08-15 recall which app to use -> [[anki]], [[supermemo]]
 2026-09-01 recall rehearse -> [[forgetting-curve]]
 2026-09-20 recall spaced retrieval -> [[retrieval-and-spacing-combine]], [[testing-effect]], [[spacing-effect]]

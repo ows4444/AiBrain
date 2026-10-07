@@ -1,5 +1,6 @@
 ---
 title:
+summary:
 type: entity
 kind: person | org | product | tool
 created:

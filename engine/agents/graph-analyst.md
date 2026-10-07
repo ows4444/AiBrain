@@ -3,6 +3,7 @@ name: graph-analyst
 description: Analyses the link graph and reports metrics, hubs, bridges and clusters. Read-only. Use for monthly checks or when the brain feels hard to navigate.
 skills: [aibrain:health]
 tools: Read, Glob, Grep, Bash
+model: haiku
 ---
 
 You analyse the graph and never modify anything.

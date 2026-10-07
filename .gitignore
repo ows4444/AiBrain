@@ -11,3 +11,8 @@ motor/graph/
 motor/export/
 # search cache (brain cache): rebuilt on demand from the pages
 .cache/
+# where the work stood before a compaction (brain resume): overwritten each time
+prefrontal/*/process/resume.md
+# coverage data (CI and local runs of coverage.py)
+.coverage
+.coverage.*

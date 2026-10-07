@@ -1,7 +1,7 @@
 ---
 name: remind
 description: >-
-  Prospective memory: record "remind me to X when Y" (a date or an event), list what is due or waiting, and close reminders. Use for /remind, "remind me", "don't let me forget", "what was I going to do". Do NOT use for decisions with a review date (decide) or project goals (focus).
+  Record "remind me to X when Y" (a date or an event), list what is due, close reminders. Use for /remind, "remind me", "don't let me forget", "what was I going to do". Not for decisions (decide).
 argument-hint: "<what> when <date | event> | list | done <what>"
 ---
 

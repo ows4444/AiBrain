@@ -6,7 +6,7 @@ Usage:
 
 Links resolve by file name, then title, then alias, the way Obsidian does.
 Links to pages listed under the index's `## Gaps` are reported as gaps, not
-broken, and so are links to pages that faded to dormant/. Links in the Owner section's Goals are checked too, and so are
+broken, and so are links to pages that faded to dormant/. Links in the owner's Goals (OWNER.md) are checked too, and so are
 project pages in prefrontal/. A file name two pages share fails, and so does a
 title or alias two pages share once a link uses it: that link reaches whichever
 loads first. A shared title no link uses is listed, not failed. Typed links must use
@@ -18,12 +18,15 @@ in the log, the metrics or the fingerprints: all are append-only, and the
 hooks cannot see a shell edit. So is a frozen `## Expected` on a decided or
 reviewed decision rewritten since the last commit, or such a page reopened.
 Without git, every input fingerprinted by `brain fingerprint` is compared
-with its hash, so an edited input fails either way.
+with its hash, so an edited input fails either way. An input the owner had
+removed with `brain forget` is marked in the fingerprints and does not fail.
 Exits 1 on a broken link, a schema problem, an ambiguous name, an unknown
 relation, such an observation or such a change, so it can gate a commit;
 this also catches pages written by shell commands, which skip the hook.
-Unknown log operations, open decisions with untagged lines and possible
-near-duplicate pages are reported but do not fail.
+Unknown log operations, open decisions with untagged lines, possible
+near-duplicate pages and undated facts (a count or a status in the present
+tense, on a concept, entity or insight, with no date and no pointer) are
+reported but do not fail.
 --guard also scans every file for credentials (fails) and personal data
 (listed), naming the file, kind and line, never the value.
 Reads only; never modifies anything.
@@ -36,9 +39,9 @@ import subprocess
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from fingerprint import fingerprint_problems  # noqa: E402
+from fingerprint import fingerprint_problems, forgotten  # noqa: E402
 from secret_scan import scan_tree  # noqa: E402
-from vaultlib import STUB_WORDS, Vault, parse_frontmatter  # noqa: E402
+from vaultlib import STUB_WORDS, Vault, owner_file, parse_frontmatter, summary_problems  # noqa: E402
 
 LIMIT = 40
 APPEND_ONLY = ("hippocampus/log.md", "hippocampus/metrics.md", "hippocampus/fingerprints.md")
@@ -73,8 +76,11 @@ def history_problems(root):
     if not git("rev-parse", "--verify", "HEAD"):
         return []
     problems = []
+    gone = forgotten(root)
     for line in git("status", "--porcelain", "--", "senses"):
         state, path = line[:2], line[3:].strip('"')
+        if "D" in state and path in gone:
+            continue  # the owner had it removed (brain forget); the fingerprints say so
         if set(state) & set("MDR") and not path.endswith("senses/README.md"):
             problems.append(f"{path}: input {'removed' if 'D' in state else 'changed'} since the last commit")
     for line in git("diff", "HEAD", "--numstat", "--", *APPEND_ONLY):
@@ -123,7 +129,7 @@ def main():
         "links": len(edges),
         "avg_degree": round(2 * len(edges) / len(pages), 2) if pages else 0,
         "broken": [{"page": p.rel, "target": t} for p, t in vault.broken]
-                  + [{"page": f"CLAUDE.md > Goals > {g}", "target": t} for g, t in vault.goal_link_problems()],
+                  + [{"page": f"{owner_file(args.root)} > Goals > {g}", "target": t} for g, t in vault.goal_link_problems()],
         "ambiguous": [{"name": n, "pages": [p.rel for p in ps]} for n, ps in clashes.items()],
         "shared_names": [{"name": n, "pages": [p.rel for p in ps]} for n, ps in unused.items()],
         "schema": [{"page": p.rel, "problems": probs} for p, probs in vault.schema_problems()],
@@ -135,6 +141,7 @@ def main():
         "untagged": [p.rel for p in vault.untagged_open()],
         "near_duplicates": [{"pages": [a.rel, b.rel], "score": s, "why": why}
                             for a, b, s, why in vault.near_duplicates()],
+        "undated": [{"page": p.rel, "line": line} for p, line in vault.undated_facts()],
         "log": vault.log_problems(),
         # One entry per gap, spelled as the index's Gaps section lists it.
         "gaps": sorted({t.lower(): t for p, t in sorted(vault.gaps, key=lambda g: g[0].type == "index")}.values(),
@@ -143,6 +150,7 @@ def main():
         "not_in_index": [p.rel for p in vault.missing_from_index()],
         "orphans": sorted(p.rel for p in vault.orphans()),
         "stubs": sorted(p.rel for p in vault.stubs()),
+        "no_summary": sorted(p.rel for p in vault.knowledge if summary_problems(p.text)),
     }
 
     if args.json:
@@ -164,12 +172,15 @@ def main():
             ("untagged", "open decisions with untagged lines (tag them before deciding)", str),
             ("near_duplicates", "possible near-duplicates (/maintain merge, if they are one idea)",
              lambda x: f"{' ~ '.join(x['pages'])}  ({x['why']})"),
+            ("undated", "facts that go out of date, with no date or pointer (/maintain: restamp, point or move)",
+             lambda x: f"{x['page']}: {x['line'] if len(x['line']) <= 120 else x['line'][:117] + '...'}"),
             ("log", "log lines with an unknown operation", str),
             ("gaps", "known gaps (listed in the index)", lambda g: f"[[{g}]]"),
             ("to_dormant", "links to pages that faded to dormant/", str),
             ("not_in_index", "pages missing from the index", str),
             ("orphans", "orphans", str),
             ("stubs", f"stubs (<{STUB_WORDS} words, no links)", str),
+            ("no_summary", "pages without a summary (recall cannot say what they hold)", str),
         ):
             if key in ("secrets", "personal") and not args.guard:
                 continue

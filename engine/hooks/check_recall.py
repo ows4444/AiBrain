@@ -20,7 +20,23 @@ import os
 import re
 import sys
 
-ROOT = os.environ.get("CLAUDE_PROJECT_DIR", os.getcwd())
+START = os.path.realpath(os.environ.get("CLAUDE_PROJECT_DIR", os.getcwd()))
+
+
+def brain_root(start):
+    """The nearest folder at or above `start` holding cortex/ and hippocampus/, else `start`."""
+    here = start
+    while True:
+        if all(os.path.isdir(os.path.join(here, d)) for d in ("cortex", "hippocampus")):
+            return here
+        parent = os.path.dirname(here)
+        if parent == here:
+            return start
+        here = parent
+
+
+# The brain may be above the folder the session started in (prefrontal/<name>/).
+ROOT = brain_root(START)
 # Skills that read pages to produce something; matched with or without the plugin prefix (aibrain:ask).
 RECALL_SKILLS = {"ask", "rehearse", "explore", "decide", "write", "focus"}
 RECALL_COMMAND = re.compile(r"<command-name>/(?:[\w-]+:)?(?:%s)</command-name>" % "|".join(sorted(RECALL_SKILLS)))

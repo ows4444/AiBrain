@@ -7,6 +7,13 @@
         ]
       }
     ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}\"/hooks/prompt_recall.py" }
+        ]
+      }
+    ],
     "PreToolUse": [
       {
         "matcher": "Write|Edit|MultiEdit|NotebookEdit|Bash",
@@ -28,6 +35,13 @@
         "hooks": [
           { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}\"/hooks/validate_page.py" },
           { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}\"/hooks/scan_secrets.py" }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [
+          { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}\"/hooks/save_resume.py" }
         ]
       }
     ],

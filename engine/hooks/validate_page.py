@@ -11,15 +11,24 @@ Checks the contract in CLAUDE.md > Page contracts (vaultlib.schema_problems).
     PostToolUse         the file as written: catches anything the first
                         pass could not see (an Edit whose old text was not found).
 
+A page with text and no `summary:` is blocked on the first pass only, and
+only when the write is what leaves it so: a new page, or a scaffold whose
+sections are being filled. Pages from before the field existed stay editable;
+`brain check` lists them.
+
 Pages written another way are caught by `brain check`, which /commit runs.
 """
 import json
 import os
 import sys
 
-ROOT = os.environ.get("CLAUDE_PROJECT_DIR", os.getcwd())
+START = os.environ.get("CLAUDE_PROJECT_DIR", os.getcwd())
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
-from vaultlib import MEMORY_DIRS, PROJECTS_DIR, is_brain, schema_problems, tag_vocabulary  # noqa: E402
+from vaultlib import (MEMORY_DIRS, PROJECTS_DIR, find_brain, fold_case, is_brain, schema_problems,  # noqa: E402
+                      summary_problems, tag_vocabulary)
+
+# The brain may be above the folder the session started in (prefrontal/<name>/).
+ROOT = find_brain(START) or START
 
 
 def text_after(tool, args, before):
@@ -36,11 +45,13 @@ def text_after(tool, args, before):
 
 def target(path):
     """(full path, rel, project?) when the path is a page this hook checks, else None."""
-    full = os.path.realpath(path if os.path.isabs(path) else os.path.join(ROOT, path))
-    rel = os.path.relpath(full, os.path.realpath(ROOT))
-    parts = rel.split(os.sep)
+    full = os.path.realpath(path if os.path.isabs(path) else os.path.join(START, path))
+    parts = os.path.relpath(full, os.path.realpath(ROOT)).split(os.sep)
+    # Cortex/ is cortex/ where the file system ignores case; the page is checked either way.
+    parts[0] = fold_case(parts[0])
+    rel = os.sep.join(parts)
     # A folder's README is documentation, not a page: Vault skips it too.
-    in_memory = parts[0] in MEMORY_DIRS and rel.endswith(".md") and parts[-1] != "README.md"
+    in_memory = parts[0] in MEMORY_DIRS and fold_case(rel).endswith(".md") and parts[-1] != "README.md"
     is_project = len(parts) == 3 and parts[0] == PROJECTS_DIR and parts[2] == "CLAUDE.md"
     return (full, rel, is_project) if in_memory or is_project else None
 
@@ -73,7 +84,10 @@ def main():
             with open(full, encoding="utf-8", errors="replace") as fh:
                 before = fh.read()
         was = set(problems_in(before, rel, is_project)) if before else set()
-        problems = [p for p in problems_in(text_after(tool, args, before), rel, is_project) if p not in was]
+        after = text_after(tool, args, before)
+        problems = [p for p in problems_in(after, rel, is_project) if p not in was]
+        if not is_project and not (before and summary_problems(before)):
+            problems += summary_problems(after)
     else:
         if not os.path.exists(full):
             sys.exit(0)

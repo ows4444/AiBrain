@@ -1,7 +1,7 @@
 ---
 name: explore
 description: >-
-  Push a concept past what the brain holds: question its assumptions, carry it into other fields, propose what to test. Use for /explore, "what am I missing about X", "where else does X apply". Do NOT use for answering from pages or arguing from evidence (ask).
+  Push a concept past what the brain holds: question assumptions, carry it to other fields, propose tests. Use for /explore, "what am I missing about X", "where else does X apply".
 argument-hint: "[concept] [field]"
 ---
 

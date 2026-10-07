@@ -2,17 +2,32 @@
 
 Mixed into vaultlib.Vault; relies on its pages, edges and resolve().
 """
+import os
 import re
 from collections import Counter
 
 from vault_events import is_rehearsal_pass, is_rehearsal_miss
 from vault_model import (BRIER_MIN, CHECKPOINT_INPUTS, CHECKPOINT_SLEEPS, CLAIM_RESULTS, CLAIM_SECTIONS, CLAIM_TAGS,
-                         DORMANT_DAYS, FADE_IGNORES_LINKS_FROM, LINK, OPS, OUTCOMES, PROBABILITY_TAGS, RELATIONS,
+                         DORMANT_DAYS, FADE_IGNORES_LINKS_FROM, LINK, OPS, OUTCOMES, PAIR_MIN_WORDS, PAIR_OVERLAP,
+                         PROBABILITY_TAGS, RELATIONS,
                          REHEARSAL_DAYS, REHEARSED_TYPES, SALIENCE_STRETCH, SALIENT, STALE_DAYS, STUB_TYPES,
-                         STUB_WORDS, as_list, claim_problems, parse_date, tag_vocabulary, thresholds)
+                         STUB_WORDS, FENCE, as_list, claim_problems, parse_date, tag_vocabulary, thresholds,
+                         tokens)
 
 # Query parameters that say how a reader arrived, not which page it is.
 TRACKING = re.compile(r"^(utm_\w+|fbclid|gclid|igshid|mc_[ce]id|ref|ref_src)$")
+
+# A fact that goes out of date: a count of things, or a word that means "at the moment".
+COUNT = re.compile(r"[$€£]\d|(?<![\w.-])\d[\d,]*(?:\.\d+)?%?\s+(?!(?:or|and|to|of|in|at|by|per)\b)[a-z][a-z-]+",
+                   re.I)
+NOW_WORD = re.compile(r"\b(?:currently|at present|at the moment|right now|now|today|so far|latest|newest|"
+                      r"most recent|still|not yet|no longer)\b", re.I)
+PRESENT = re.compile(r"\b(?:is|are|has|have|holds|contains|remains|supports|runs|ships)\b", re.I)
+# What makes such a fact safe: a date on it, or a pointer to where the truth lives.
+DATED = re.compile(r"\b(?:1[5-9]|20)\d\d\b|\bas of\b", re.I)
+POINTER = re.compile(r"\bsee\b|https?://", re.I)
+SENTENCE = re.compile(r"(?<=[.!?])\s+(?=[A-Z\[(])")
+BLOCK = re.compile(r"\n\s*\n|\n(?=\s*(?:[-*+]|\d+\.)\s)")
 
 
 class MemoryMixin:
@@ -102,8 +117,57 @@ class MemoryMixin:
         stale = [p for p in concepts if p.updated and (self.today - p.updated).days > days]
         return concepts, sorted(stale, key=lambda p: p.updated)
 
+    def undated_facts(self):
+        """(page, sentence) for present-tense counts and statuses that carry no date and no pointer.
+
+        Every stored fact should be timeless, dated, or a pointer to where the
+        truth lives. Episodes and decisions are dated pages, so only concepts,
+        entities and insights are read. A sentence is listed when it states a
+        count or uses a word meaning "at the moment", in the present tense, and
+        its paragraph or list item holds no year, no "as of", no address and no
+        link to an episode or decision. A heuristic: it reads words, not
+        meaning, so it lists some timeless sentences; report only.
+        """
+        dated_types = ("episode", "decision")
+        out = []
+        for page in sorted(self.knowledge, key=lambda p: p.rel):
+            if page.type not in STUB_TYPES:
+                continue
+            for block in BLOCK.split(FENCE.sub("", page.body)):
+                text = " ".join(block.split())
+                if not text or text.startswith(("#", "|")) or DATED.search(text) or POINTER.search(text):
+                    continue
+                linked = (self.resolve(t.strip()) for t in LINK.findall(text))
+                if any(p is not None and p.type in dated_types for p in linked):
+                    continue
+                for sentence in SENTENCE.split(text):
+                    bare = LINK.sub("", sentence)
+                    if PRESENT.search(bare) and (COUNT.search(bare) or NOW_WORD.search(bare)):
+                        out.append((page, sentence.lstrip("-*+ ").strip()))
+        return out
+
     def stubs(self):
         return [p for p in self.knowledge if p.type in STUB_TYPES and p.words < STUB_WORDS and not p.targets]
+
+    def unencoded(self):
+        """Files in senses/ no episode has encoded yet, as paths from the brain's root.
+
+        A file counts as encoded when an episode names it in its `input:` field
+        (or, for older pages, mentions its root-relative path).
+        """
+        episodes = self.of_type("episode")
+        claimed = {p.removeprefix("./") for ep in episodes for p in as_list(ep.fields.get("input"))}
+        blob = "\n".join(ep.body for ep in episodes)
+        pending = []
+        for dirpath, dirnames, files in os.walk(os.path.join(self.root, "senses")):
+            dirnames[:] = sorted(d for d in dirnames if d != "assets" and not d.startswith("."))
+            for f in sorted(files):
+                if f.startswith(".") or f == "README.md":
+                    continue
+                rel = os.path.relpath(os.path.join(dirpath, f), self.root)
+                if rel not in claimed and rel not in blob:
+                    pending.append(rel)
+        return pending
 
     def unconsolidated(self):
         """Episodes and reviewed decisions not yet replayed into the cortex, oldest first.
@@ -156,6 +220,46 @@ class MemoryMixin:
             row["salient"] = any(p.salience >= SALIENT for p in row["episodes"])
         return sorted(tally.values(), key=lambda r: (-r["sources"], -len(r["episodes"]), -len(r["generated"]),
                                                      r["name"].lower()))
+
+    def candidate_pairs(self):
+        """Held candidates that may be one idea under two names, or part of a page: [{a, b, why}].
+
+        The tally counts sources by exact name, so one idea named differently
+        by two episodes is two candidates with one source each, and neither is
+        ever promoted. This lists the likely pairs for sleep to read; nothing
+        merges by itself. `b` is another candidate's name or a page.
+        """
+        held = []
+        for row in self.candidate_tally():
+            if row["page"] or not row["episodes"]:
+                continue
+            notes = [note for src in row["episodes"] for name, note in src.candidate_notes
+                     if name.lower() == row["name"].lower()]
+            held.append((row["name"], set(tokens(row["name"])), set(tokens(" ".join([row["name"], *notes]))),
+                         {self.source_of(p) for p in row["episodes"]}))
+
+        def shared(words, other):
+            common = words & other
+            return common if len(common) >= PAIR_MIN_WORDS and len(common) >= PAIR_OVERLAP * min(len(words), len(other)) \
+                else set()
+
+        pairs = []
+        for i, (name, named, words, sources) in enumerate(held):
+            for other, other_named, other_words, other_sources in held[i + 1:]:
+                if sources == other_sources:
+                    continue  # one source listing two ideas means two ideas
+                same_name = named and other_named and 2 * len(named & other_named) >= len(named | other_named)
+                common = named & other_named if same_name else shared(words, other_words)
+                if common:
+                    pairs.append({"a": name, "b": other, "page": None, "why": "names" if same_name else "notes",
+                                  "words": sorted(common)})
+            for p in self.knowledge:
+                if p.type in ("episode", "project"):
+                    continue
+                common = shared(words, set(tokens(" ".join([p.title, *p.aliases, p.summary or ""]))))
+                if common:
+                    pairs.append({"a": name, "b": p.title, "page": p, "why": "page", "words": sorted(common)})
+        return pairs
 
     def decisions_due(self):
         """Decided pages whose review date has come, most overdue first."""

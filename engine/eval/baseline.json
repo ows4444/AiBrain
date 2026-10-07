@@ -1,15 +1,122 @@
 {
   "k": 5,
+  "brain": "079715488af6a445",
   "search": {
     "questions": 13,
-    "hit_at_k": 0.885,
-    "all_at_k": 11,
-    "mrr": 0.776
+    "hit_at_1": 0.769,
+    "hit_at_k": 0.808,
+    "all_at_k": 10,
+    "mrr": 0.795,
+    "rows": 56,
+    "bytes_read": 50032,
+    "bytes_needed": 18162,
+    "bytes_listing": 9075,
+    "bytes_by_summary": 27237,
+    "unsummarised": 0
   },
   "recall": {
     "questions": 13,
-    "hit_at_k": 0.962,
+    "hit_at_1": 0.846,
+    "hit_at_k": 0.923,
     "all_at_k": 12,
-    "mrr": 0.891
+    "mrr": 0.872,
+    "rows": 47,
+    "bytes_read": 40018,
+    "bytes_needed": 18162,
+    "bytes_listing": 7599,
+    "bytes_by_summary": 25761,
+    "unsummarised": 0
+  },
+  "sets": {
+    "standard": {
+      "search": {
+        "questions": 13,
+        "hit_at_1": 0.769,
+        "hit_at_k": 0.808,
+        "all_at_k": 10,
+        "mrr": 0.795,
+        "rows": 56,
+        "bytes_read": 50032,
+        "bytes_needed": 18162,
+        "bytes_listing": 9075,
+        "bytes_by_summary": 27237,
+        "unsummarised": 0
+      },
+      "recall": {
+        "questions": 13,
+        "hit_at_1": 0.846,
+        "hit_at_k": 0.923,
+        "all_at_k": 12,
+        "mrr": 0.872,
+        "rows": 47,
+        "bytes_read": 40018,
+        "bytes_needed": 18162,
+        "bytes_listing": 7599,
+        "bytes_by_summary": 25761,
+        "unsummarised": 0
+      }
+    },
+    "first": {
+      "search": {
+        "questions": 8,
+        "hit_at_1": 0.625,
+        "hit_at_k": 1.0,
+        "all_at_k": 8,
+        "mrr": 0.792,
+        "rows": 38,
+        "bytes_read": 42117,
+        "bytes_needed": 6934,
+        "bytes_listing": 7111,
+        "bytes_by_summary": 14045,
+        "unsummarised": 0
+      },
+      "recall": {
+        "questions": 8,
+        "hit_at_1": 0.75,
+        "hit_at_k": 1.0,
+        "all_at_k": 8,
+        "mrr": 0.854,
+        "rows": 35,
+        "bytes_read": 38184,
+        "bytes_needed": 6934,
+        "bytes_listing": 6550,
+        "bytes_by_summary": 13484,
+        "unsummarised": 0
+      }
+    },
+    "paraphrase": {
+      "search": {
+        "questions": 8,
+        "hit_at_1": 0.625,
+        "hit_at_k": 0.812,
+        "all_at_k": 6,
+        "mrr": 0.719,
+        "rows": 37,
+        "bytes_read": 37621,
+        "bytes_needed": 6800,
+        "bytes_listing": 6418,
+        "bytes_by_summary": 13218,
+        "unsummarised": 0
+      },
+      "recall": {
+        "questions": 8,
+        "hit_at_1": 0.75,
+        "hit_at_k": 0.938,
+        "all_at_k": 7,
+        "mrr": 0.854,
+        "rows": 32,
+        "bytes_read": 30685,
+        "bytes_needed": 6800,
+        "bytes_listing": 5474,
+        "bytes_by_summary": 12274,
+        "unsummarised": 0
+      }
+    }
+  },
+  "held": {
+    "questions": 2,
+    "listed": 2,
+    "row_bytes": 144,
+    "episode_bytes": 3621
   }
 }

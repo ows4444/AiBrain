@@ -1,7 +1,7 @@
 ---
 name: sleep
 description: >-
-  Consolidate: replay unconsolidated episodes into concept and entity pages, write insights across episodes, propose fading unused pages, and record metrics. Use for /sleep, "consolidate", "link things up", or a scheduled maintenance run. Do NOT use for encoding new input (ingest) or structural repair of broken pages (maintain).
+  Consolidate: replay new episodes into concept and entity pages, write insights, propose fading. Use for /sleep, "consolidate", "link things up". Not for encoding input (ingest) or repairs (maintain).
 argument-hint: "[episodes]"
 ---
 
@@ -85,4 +85,7 @@ proposals can come from the `curator` agent.
 
 A sleep that creates a concept for every candidate has skipped the
 two-source bar; a sleep that creates none after twenty episodes is probably
-missing that candidates share an idea under different names, so check aliases.
+missing that candidates share an idea under different names: the queue lists
+likely pairs under "possibly one idea twice". Read both; if they are one idea,
+count both sources under one name, and if a candidate is part of a page, add
+it to that page.

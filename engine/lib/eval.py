@@ -3,7 +3,7 @@
 
 Usage:
     brain eval [--root DIR] [--questions FILE] [--answers FILE] [--k N] [--json]
-               [--save-baseline] [--baseline FILE]
+               [--save-baseline] [--baseline FILE] [--draft N]
 
 Runs on the fixture brain in engine/eval/fixture/ with engine/eval/questions.json
 unless --root and --questions point elsewhere (an owner can keep a question
@@ -12,11 +12,37 @@ set for their own brain, e.g. in motor/).
 Retrieval (default). Each covered question goes through `search` (words only)
 and `recall` (words, then association; with the question's `project` if it
 names one), and each is scored:
+    hit@1   questions whose first page is an expected one
     hit@k   expected pages in the top k, as a share of the pages expected
     all@k   questions with every expected page in the top k
     mrr     1 / rank of the first expected page, averaged (0 if none in the top k)
-Uncovered questions are listed with how many pages search returned: a
-retriever cannot know a question is uncovered; the answer has to say so.
+    bytes   size of the top k pages, which is what an answer reads when it
+            opens every page returned; the size of the expected pages alone
+            (the least it could read); and, since recall prints each page's
+            `summary:`, the size of that listing plus the expected pages:
+            what an answer reads when the summaries lead it to the right
+            pages and no others. That last number is a floor, not a
+            measurement of what a reader does
+Questions are scored in sets, each reported apart, because they fail for
+different reasons and one number hides a change that helps one set and hurts
+another: the standard set (questions with no `set`), `paraphrase` (no word
+shared with the title or aliases of the expected pages) and `first` (the term
+is named; which page comes first). The numbers at the top of the report and of
+the JSON are the standard set's. A "buried" question is one whose first
+expected page is below rank 3 or absent; it is listed with the page that
+came first instead.
+
+Recall is scored as `brain recall` runs it: rows under RECALL_FLOOR of the
+best are cut and a gross mismatch returns nothing, so `rows` and `bytes` are
+what the command would hand an answer.
+
+A question with `held` names an idea that has no page yet (a candidate on an
+episode). It is scored on whether `held_ideas` lists that idea, and reports
+the bytes of its one line against the episodes an answer would otherwise open.
+
+Uncovered questions are listed with how many pages search returned and how
+many recall lists: a retriever cannot know a question is uncovered, only that
+its words barely reach any page; the answer has to say so.
 
 Answers (--answers FILE, JSON {"q01": "text citing [[page]]", ...}), for
 example from running /ask on each question in a copy of the fixture. A
@@ -24,23 +50,41 @@ covered answer scores citation recall (expected pages cited) and precision
 (cited pages that are expected or acceptable); an uncovered one passes when
 it says it is not covered and cites nothing.
 
---save-baseline writes the retrieval numbers to engine/eval/baseline.json (or
---baseline FILE, which the text report also compares against); the tests fail
-when `recall` falls below the saved one. Reads only, apart from that.
+--save-baseline writes the retrieval numbers of every set to
+engine/eval/baseline.json (or --baseline FILE, which the text report also
+compares against), with a hash of the brain's pages: numbers from a changed
+brain are not comparable, and the report says when the hash differs. The
+tests fail when `recall` falls below the saved one on any set. Reads only, apart from that.
+
+A question set for a brain other than the fixture keeps its baseline beside
+it (`motor/eval-questions.json` -> `motor/eval-questions-baseline.json`), so
+it never overwrites the engine's. `--draft N` prints, as JSON, N questions to
+write for that brain: one page each that no question expects yet, concepts,
+insights and entities before episodes, with the page's `summary` and the
+words to `avoid` (its title and aliases), and an empty `question`. Whoever
+fills them in asks what the page answers without those words; the set is
+`paraphrase`. A question left empty is skipped. The report lists questions
+that break their own set: an expected page that does not exist, or a
+paraphrase that uses a word of the page's names.
 """
 import argparse
+import hashlib
 import json
 import os
 import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from vaultlib import LINK, Vault, parse_date  # noqa: E402
+from vaultlib import LINK, RECALL_FLOOR, Vault, parse_date, tokens  # noqa: E402
 
 EVAL = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "eval")
 FIXTURE = os.path.join(EVAL, "fixture")
 QUESTIONS = os.path.join(EVAL, "questions.json")
 BASELINE = os.path.join(EVAL, "baseline.json")
+STANDARD = "standard"   # the set of a question that names none
+BURIED_BELOW = 3        # a first expected page under this rank is buried
+PARAPHRASE = "paraphrase"
+DRAFT_TYPES = ("concept", "insight", "entity", "episode")  # the order pages are drafted in
 NOT_COVERED = re.compile(r"not covered|no page|nothing (?:in|here|on|about)|does(?:n't| not) (?:answer|cover)"
                          r"|no (?:pages?|notes?|episodes?) (?:here )?(?:on|about|cover)", re.I)
 
@@ -50,37 +94,131 @@ def load(path):
         return json.load(fh)
 
 
-def rank_scores(ranked, expect, k):
-    top = ranked[:k]
+def size(page):
+    return len(page.text.encode("utf-8"))
+
+
+def brain_hash(root):
+    """A hash of every page under cortex/ and prefrontal/: the brain the numbers were measured on."""
+    digest = hashlib.sha1()
+    for folder in ("cortex", "prefrontal"):
+        for base, dirs, files in os.walk(os.path.join(root, folder)):
+            dirs.sort()
+            for name in sorted(f for f in files if f.endswith(".md")):
+                path = os.path.join(base, name)
+                digest.update(os.path.relpath(path, root).replace(os.sep, "/").encode("utf-8"))
+                with open(path, "rb") as fh:
+                    digest.update(fh.read())
+    return digest.hexdigest()[:16]
+
+
+def names_of(page):
+    return set(tokens(" ".join([page.title, *page.aliases])))
+
+
+def question_problems(vault, questions):
+    """Questions that break their own set: a page that is not there, a paraphrase that names its page."""
+    problems = []
+    for q in questions:
+        for stem in q.get("expect", []):
+            page = vault.resolve(stem)
+            if page is None:
+                problems.append(f"{q['id']}: expects [[{stem}]], which is not a page")
+            elif q.get("set") == PARAPHRASE:
+                names = names_of(page)  # stems; the report shows the question's own words
+                shared = sorted({w for w in re.findall(r"[^\W_]+", q["question"].lower()) if names & set(tokens(w))})
+                if shared:
+                    problems.append(f"{q['id']}: not a paraphrase, it uses {', '.join(shared)} from [[{stem}]]")
+    return problems
+
+
+def draft(vault, questions, n):
+    """N questions to write: a page no question expects yet, its summary, and the words to avoid."""
+    taken = {vault.resolve(stem) for q in questions for stem in q.get("expect", [])}
+    ids = {q["id"] for q in questions}
+    pages = sorted((p for p in vault.knowledge if p.type in DRAFT_TYPES and p not in taken and not p.generated),
+                   key=lambda p: (DRAFT_TYPES.index(p.type), p.rel))
+    out, number = [], 0
+    for page in pages[:max(n, 0)]:
+        number += 1
+        while f"o{number:02d}" in ids:
+            number += 1
+        out.append({"id": f"o{number:02d}", "set": PARAPHRASE, "question": "", "expect": [page.stem],
+                    "summary": page.summary,
+                    "avoid": sorted(set(re.findall(r"[^\W_]+", " ".join([page.title, *page.aliases]).lower())))})
+    return out
+
+
+def rank_scores(pages, expect, k):
+    top = [p.stem for p in pages[:k]]
     found = [e for e in expect if e in top]
     first = next((i for i, stem in enumerate(top, 1) if stem in expect), None)
     return {"hit": len(found) / len(expect), "all": len(found) == len(expect), "rr": 1 / first if first else 0.0,
-            "missed": [e for e in expect if e not in top], "top": top}
+            "rank": first,
+            "missed": [e for e in expect if e not in top], "top": top, "bytes": sum(size(p) for p in pages[:k]),
+            "rows": len(pages[:k]),
+            "listing": sum(len(f"{p.rel}\n{p.summary}\n".encode("utf-8")) for p in pages[:k]),
+            "unsummarised": sum(not p.summary for p in pages[:k])}
 
 
 def summary(rows):
     n = len(rows)
-    return {"questions": n, "hit_at_k": round(sum(r["hit"] for r in rows) / n, 3) if n else 0.0,
-            "all_at_k": sum(r["all"] for r in rows), "mrr": round(sum(r["rr"] for r in rows) / n, 3) if n else 0.0}
+    return {"questions": n, "hit_at_1": round(sum(r["rank"] == 1 for r in rows) / n, 3) if n else 0.0,
+            "hit_at_k": round(sum(r["hit"] for r in rows) / n, 3) if n else 0.0,
+            "all_at_k": sum(r["all"] for r in rows), "mrr": round(sum(r["rr"] for r in rows) / n, 3) if n else 0.0,
+            "rows": sum(r["rows"] for r in rows), "bytes_read": sum(r["bytes"] for r in rows), "bytes_needed": sum(r["needed"] for r in rows),
+            "bytes_listing": sum(r["listing"] for r in rows),
+            "bytes_by_summary": sum(r["listing"] + r["needed"] for r in rows),
+            "unsummarised": sum(r["unsummarised"] for r in rows)}
 
 
 def retrieval(vault, questions, k):
-    out = {"search": [], "recall": [], "uncovered": []}
+    out = {"search": [], "recall": [], "uncovered": [], "held": []}
+
+    def recalled(q):  # as `brain recall` does it: weak rows cut, nothing on a gross mismatch
+        return [r["page"] for r in vault.recall(q["question"], project=q.get("project"), limit=k,
+                                                floor=RECALL_FLOOR, abstain=True)]
+
     for q in questions:
-        if q.get("covered", True) is False:
-            out["uncovered"].append({"id": q["id"], "search_results": len(vault.search(q["question"], limit=k))})
+        if "held" in q:  # the question names an idea still held on its episode
+            listed = vault.held_ideas(q["question"])
+            names = [h["name"].lower() for h in listed]
+            row = next((h for h in listed if h["name"].lower() == q["held"].lower()), None)
+            out["held"].append({"id": q["id"], "rank": names.index(q["held"].lower()) + 1 if row else None,
+                                "row": len(f"{row['name']} - {row['note']}".encode("utf-8")) if row else 0,
+                                "episodes": sum(size(p) for p in row["episodes"]) if row else 0})
             continue
-        searched = [p.stem for p, _ in vault.search(q["question"], limit=k)]
-        recalled = [r["page"].stem for r in vault.recall(q["question"], project=q.get("project"), limit=k)]
-        out["search"].append(dict(rank_scores(searched, q["expect"], k), id=q["id"]))
-        out["recall"].append(dict(rank_scores(recalled, q["expect"], k), id=q["id"]))
-    return {"k": k, "search": summary(out["search"]), "recall": summary(out["recall"]),
-            "per_question": {"search": out["search"], "recall": out["recall"]}, "uncovered": out["uncovered"]}
+        if q.get("covered", True) is False:
+            out["uncovered"].append({"id": q["id"], "search_results": len(vault.search(q["question"], limit=k)),
+                                     "recall_results": len(recalled(q))})
+            continue
+        searched = [p for p, _ in vault.search(q["question"], limit=k)]
+        needed = sum(size(p) for p in map(vault.resolve, q["expect"]) if p)
+        name = q.get("set", STANDARD)
+        out["search"].append(dict(rank_scores(searched, q["expect"], k), id=q["id"], set=name, needed=needed))
+        out["recall"].append(dict(rank_scores(recalled(q), q["expect"], k), id=q["id"], set=name, needed=needed))
+    names = sorted({r["set"] for r in out["recall"]}, key=lambda s: (s != STANDARD, s))
+    sets = {name: {mode: summary([r for r in out[mode] if r["set"] == name]) for mode in ("search", "recall")}
+            for name in names}
+    standard = sets.get(STANDARD) or {mode: summary([]) for mode in ("search", "recall")}
+    return {"k": k, "search": standard["search"], "recall": standard["recall"], "sets": sets,
+            "per_question": {"search": out["search"], "recall": out["recall"]}, "uncovered": out["uncovered"],
+            "held": {"questions": len(out["held"]), "listed": sum(1 for h in out["held"] if h["rank"]),
+                     "row_bytes": sum(h["row"] for h in out["held"]),
+                     "episode_bytes": sum(h["episodes"] for h in out["held"]), "per_question": out["held"]}}
+
+
+def buried(rows):
+    """Questions whose first expected page is below BURIED_BELOW or absent, with the page that came first."""
+    return [(r["id"], r["rank"], r["top"][0] if r["top"] else None) for r in rows
+            if r["rank"] is None or r["rank"] > BURIED_BELOW]
 
 
 def answers(vault, questions, given):
     rows = []
     for q in questions:
+        if "held" in q:
+            continue
         text = given.get(q["id"])
         if text is None:
             rows.append({"id": q["id"], "answered": False})
@@ -113,36 +251,83 @@ def main():
     ap.add_argument("--k", type=int, default=5)
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--save-baseline", action="store_true")
-    ap.add_argument("--baseline", default=BASELINE)
+    ap.add_argument("--baseline")
+    ap.add_argument("--draft", type=int, metavar="N")
     args = ap.parse_args()
-    spec = load(args.questions)
+    spec = load(args.questions) if os.path.exists(args.questions) or not args.draft else {"questions": []}
+    if not args.baseline:  # the engine's set keeps the engine's baseline; any other keeps its own beside it
+        own = os.path.realpath(args.questions) != os.path.realpath(QUESTIONS)
+        args.baseline = os.path.splitext(args.questions)[0] + "-baseline.json" if own else BASELINE
     if os.path.realpath(args.root) == os.path.realpath(FIXTURE):
         os.environ["BRAIN_CACHE"] = "0"  # the engine never writes into its own folder
     vault = Vault(args.root, today=parse_date(spec.get("today", "")) or None)
-    result = {"retrieval": retrieval(vault, spec["questions"], args.k)}
+    if args.draft is not None:
+        print(json.dumps({"questions": draft(vault, spec["questions"], args.draft)}, indent=2))
+        return
+    asked = [q for q in spec["questions"] if q.get("question", "").strip()]
+    result = {"retrieval": dict(retrieval(vault, asked, args.k), brain=brain_hash(args.root)),
+              "problems": question_problems(vault, asked)}
     if args.answers:
-        result["answers"] = answers(vault, spec["questions"], load(args.answers))
+        result["answers"] = answers(vault, asked, load(args.answers))
     if args.save_baseline:
         r = result["retrieval"]
         with open(args.baseline, "w", encoding="utf-8") as fh:
-            json.dump({"k": r["k"], "search": r["search"], "recall": r["recall"]}, fh, indent=2)
+            json.dump({"k": r["k"], "brain": r["brain"], "search": r["search"], "recall": r["recall"],
+                       "sets": r["sets"], "held": {k: v for k, v in r["held"].items() if k != "per_question"}},
+                      fh, indent=2)
             fh.write("\n")
     if args.json:
         print(json.dumps(result, indent=2))
         return
     r = result["retrieval"]
     base = load(args.baseline) if os.path.exists(args.baseline) else None
-    print(f"retrieval over {r['recall']['questions']} covered questions, top {r['k']}")
-    for mode in ("search", "recall"):
-        s = r[mode]
-        was = f"   (baseline hit {base[mode]['hit_at_k']}, mrr {base[mode]['mrr']})" if base and mode in base else ""
-        print(f"  {mode:<7} hit@{r['k']} {s['hit_at_k']:.3f}   all {s['all_at_k']}/{s['questions']}   "
-              f"mrr {s['mrr']:.3f}{was}")
+    covered = r['recall']['questions'] or sum(sets['recall']['questions'] for sets in r['sets'].values())
+    print(f"retrieval over {covered} covered questions, top {r['k']}")
+    if base and base.get("brain") not in (None, r["brain"]):
+        print(f"  the brain's pages changed since the baseline was saved ({base['brain']} then, {r['brain']} now): "
+              "its numbers are not comparable")
+
+    def lines(sets, was_sets, indent):
+        for mode in ("search", "recall"):
+            s, b = sets[mode], (was_sets or {}).get(mode)
+            was = f"   (baseline hit {b['hit_at_k']}, mrr {b['mrr']})" if b else ""
+            print(f"{indent}{mode:<7} hit@1 {s['hit_at_1']:.3f}   hit@{r['k']} {s['hit_at_k']:.3f}   "
+                  f"all {s['all_at_k']}/{s['questions']}   mrr {s['mrr']:.3f}{was}")
+
+    for problem in result["problems"]:
+        print(f"  question {problem}")
+    if r["recall"]["questions"]:  # the standard set; a set kept for one's own brain may hold none
+        lines(r, base, "  ")
+        s, n = r["recall"], r["recall"]["questions"] or 1
+        was = f"   (baseline {base['recall']['bytes_read']})" if base and "bytes_read" in base.get("recall", {}) else ""
+        print(f"  recall  rows returned {s['rows']}, {s['rows'] / n:.1f} a question")
+        print(f"  recall  bytes read {s['bytes_read']}, {s['bytes_read'] // n} a question; "
+              f"the expected pages alone {s['bytes_needed']}{was}")
+        print("    " + ", ".join(f"{row['id']} {row['bytes']}" for row in r["per_question"]["recall"]
+                              if row["set"] == STANDARD))
+        print(f"  recall  by summary: {s['bytes_by_summary']} ({s['bytes_listing']} of listing, then the expected pages), "
+              f"{s['bytes_by_summary'] // n} a question, if every summary leads to the right page"
+              + (f"; {s['unsummarised']} returned pages had no summary" if s["unsummarised"] else ""))
+    for name, sets in r["sets"].items():
+        if name != STANDARD:
+            print(f"set {name}: {sets['recall']['questions']} questions")
+            lines(sets, (base or {}).get("sets", {}).get(name), "  ")
     for row in r["per_question"]["recall"]:
         if row["missed"]:
             print(f"  recall missed {row['id']}: {', '.join(row['missed'])}")
-    print("  uncovered: " + ", ".join(f"{u['id']} ({u['search_results']} pages matched words)"
-                                      for u in r["uncovered"]))
+    for mode in ("search", "recall"):
+        for qid, rank, first in buried(r["per_question"][mode]):
+            where = f"at rank {rank}" if rank else f"not in the top {r['k']}"
+            print(f"  {mode} buried {qid}: the first expected page is {where}; {first or 'nothing'} came first")
+    if r["uncovered"]:
+        print("  uncovered: " + ", ".join(f"{u['id']} ({u['search_results']} pages matched words, recall lists "
+                                          f"{u['recall_results']})" for u in r["uncovered"]))
+        listed = sum(1 for u in r["uncovered"] if u["recall_results"])
+        print(f"  uncovered questions recall still lists pages for: {listed} of {len(r['uncovered'])}")
+    h = r["held"]
+    if h["questions"]:
+        print(f"  held ideas: {h['listed']} of {h['questions']} questions list the idea they name; "
+              f"its line is {h['row_bytes']} bytes, the episodes holding it {h['episode_bytes']}")
     if args.answers:
         a = result["answers"]
         print(f"answers: {a['answered']}/{a['of']} given; citation recall {a['citation_recall']}, "

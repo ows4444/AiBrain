@@ -11,6 +11,7 @@ but it is not a memory page, so the field table below does not apply to it.
 ```yaml
 ---
 title: Canonical name
+summary: One sentence on what the page holds, at most 200 characters
 type: episode | concept | entity | insight | decision
 created: YYYY-MM-DD
 updated: YYYY-MM-DD
@@ -29,6 +30,7 @@ table in step with that registry. Lists may be inline, `[a, b]`, or one
 | Field | On | Values | Exported | Meaning |
 |---|---|---|---|---|
 | `title` | all, required | text | yes | Canonical name; capitals live here, not in the file name |
+| `summary` | all, required once the page has text | one sentence, at most 200 characters | yes | What the page holds, so a reader of `brain recall` or `brain search` can tell whether to open it. Written by whoever wrote the page, from what it says; never derived from headings |
 | `type` | all, required | episode, concept, entity, insight, decision | yes | Page type |
 | `created`, `updated` | all, required | YYYY-MM-DD | yes | Dates |
 | `aliases` | all | list | yes | Other names the page resolves by |
@@ -80,3 +82,14 @@ score once ten are scored, and how often each level held.
 At review, each assumption and hypothesis is repeated under `## Outcome` with
 how it turned out: `- [assumption] My calendar stays free. -> failed` (`held`,
 `failed` or `unknown`). `brain introspect --decisions` adds these up.
+
+## Log lines
+
+One line per operation in `hippocampus/log.md`, newest last; the format and
+the operations are in the brain's `CLAUDE.md` > Log.
+
+```
+2026-09-07 ingest senses/some-article.md -> 1 episode, 2 candidates, 4 links
+2026-09-08 recall what is an llm wiki -> [[llm-wiki]], [[karpathy]]
+2026-09-09 sleep 3 episodes -> 1 concept established, 2 updated, 1 insight
+```

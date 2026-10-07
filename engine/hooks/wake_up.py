@@ -1,15 +1,19 @@
 #!/usr/bin/env python3
 """SessionStart: orient the brain on waking. What the senses hold, what awaits
 sleep, what is due for rehearsal or an outcome review, what happened last.
+With an OWNER.md, the briefing opens with it: who the owner is, how to talk to
+them and their goals reach every session this way, so the root CLAUDE.md does
+not change when a goal does.
 Four lines, every session, and more only when something needs the owner: notes
 waiting in inbox/; new input contradicting a page; a reminder whose date has
 come; a goal past its date, gone stale, with no pages behind it or slipping;
 the pages the last questions and live projects point to; the calibration
-checkpoint reached; or, in a brain that hosts its own engine, hooks running
+checkpoint reached; a note left before a compaction (save_resume.py) that is
+newer than the log; or, in a brain that hosts its own engine, hooks running
 from a plugin version older than engine/, or from another folder's engine.
 
-A file in senses/ counts as encoded when an episode names it in its `input:`
-frontmatter field (or, for older pages, mentions its root-relative path).
+The four counts are also what `brain statusline` shows all session, outside
+the context; they stay here because the model reads this and not that.
 """
 import datetime
 import os
@@ -19,26 +23,12 @@ import sys
 
 ROOT = os.environ.get("CLAUDE_PROJECT_DIR", os.getcwd())
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
-from vaultlib import LOG_LINE, LOG_PATH, Vault, as_list, is_brain  # noqa: E402
+from vaultlib import LOG_LINE, LOG_PATH, OWNER_FILE, Vault, find_brain, is_brain  # noqa: E402
 
-SENSES = os.path.join(ROOT, "senses")
+# The brain may be above the folder the session started in (prefrontal/<name>/).
+ROOT = find_brain(ROOT) or ROOT
+
 SHOW = 5
-
-
-def unencoded(vault):
-    episodes = vault.of_type("episode")
-    claimed = {p.removeprefix("./") for ep in episodes for p in as_list(ep.fields.get("input"))}
-    blob = "\n".join(ep.body for ep in episodes)
-    pending = []
-    for dirpath, dirnames, files in os.walk(SENSES):
-        dirnames[:] = sorted(d for d in dirnames if d != "assets" and not d.startswith("."))
-        for f in sorted(files):
-            if f.startswith(".") or f == "README.md":
-                continue
-            rel = os.path.relpath(os.path.join(dirpath, f), ROOT)
-            if rel not in claimed and rel not in blob:
-                pending.append(rel)
-    return pending
 
 
 def recent_log():
@@ -96,6 +86,33 @@ def checkpoint_line(vault):
             "(brain introspect --usage and the metrics; log `health calibration -> ...` when done)")
 
 
+def owner_lines():
+    """OWNER.md without its heading and its note on how the file is used, or nothing."""
+    path = os.path.join(ROOT, OWNER_FILE)
+    if not os.path.exists(path):
+        return []
+    with open(path, encoding="utf-8") as fh:
+        text = fh.read()
+    body = re.sub(r"\A# .*?\n(?:(?!^[-#_]).*\n)*", "", text, flags=re.M)  # the title and the prose under it
+    lines = [("Goals:" if re.match(r"##+ Goals", line) else "  " + line) for line in body.splitlines() if line.strip()]
+    return [f"Owner ({OWNER_FILE}):"] + lines if lines else []
+
+
+def resume_line():
+    """Points at the note save_resume.py left, while nothing has been logged since it was written."""
+    log = os.path.join(ROOT, LOG_PATH)
+    logged = os.path.getmtime(log) if os.path.exists(log) else 0
+    notes = [os.path.join(ROOT, ".cache", "resume.md")]
+    prefrontal = os.path.join(ROOT, "prefrontal")
+    if os.path.isdir(prefrontal):
+        notes += [os.path.join(prefrontal, d, "process", "resume.md") for d in sorted(os.listdir(prefrontal))]
+    fresh = [n for n in notes if os.path.exists(n) and os.path.getmtime(n) > logged]
+    if not fresh:
+        return ""
+    newest = max(fresh, key=os.path.getmtime)
+    return f"Resume: read {os.path.relpath(newest, ROOT)} first; it says where the work stood before the compaction"
+
+
 def engine_line():
     """One line when the running hooks are not the engine/ in this brain, or nothing.
 
@@ -137,14 +154,18 @@ def main():
     if not is_brain(ROOT):
         return
     vault = Vault(ROOT)
-    pending, recent = unencoded(vault), recent_log()
+    pending, recent = vault.unencoded(), recent_log()
     more = "…" if len(pending) > SHOW else ""
+    for line in owner_lines():
+        print(line)
     print(f"Today: {datetime.date.today().isoformat()}")
     print(f"Unencoded in senses/: {len(pending)}" + (f" ({', '.join(pending[:SHOW])}{more})" if pending else ""))
     queue = vault.unconsolidated()
     decisions = sum(p.type == "decision" for p in queue)
     waiting = f"{len(queue) - decisions} episodes" + (f", {decisions} decisions" if decisions else "")
     status = f"Awaiting /sleep: {waiting} | due to /rehearse: {len(vault.due_for_rehearsal())}"
+    if pending or queue:
+        status += " | /tend encodes and consolidates in one go"
     due = vault.decisions_due()
     if due:
         status += f" | decisions to review: {len(due)} ({', '.join(p.stem for p in due[:SHOW])})"
@@ -153,7 +174,8 @@ def main():
         names = ", ".join(os.path.splitext(os.path.basename(p))[0] for p in triggered[:SHOW])
         status += f" | decisions to revisit: {len(triggered)} ({names})"
     print(status)
-    for line in (inbox_line(), *attention_lines(vault), purpose_line(vault), checkpoint_line(vault), engine_line()):
+    for line in (resume_line(), inbox_line(), *attention_lines(vault), purpose_line(vault), checkpoint_line(vault),
+                 engine_line()):
         if line:
             print(line)
     print("Last activity:" + ("\n  " + "\n  ".join(recent[-SHOW:]) if recent else " none yet"))

@@ -3,6 +3,7 @@ name: reviewer
 description: Produces the periodic review of what the brain learned. Use weekly or when asked what changed.
 skills: [aibrain:reflect]
 tools: Read, Glob, Grep
+model: sonnet
 ---
 
 You are read-only. You never modify anything.

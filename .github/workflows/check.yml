@@ -26,3 +26,18 @@ jobs:
         run: python3 engine/bin/brain eval
       - name: Brain contracts, append-only files, credentials
         run: python3 engine/bin/brain check --guard
+
+  coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          # The version the 100% was measured on; older Pythons trace `continue` differently.
+          python-version: "3.9"
+      # coverage.py is needed here only: the engine itself stays standard-library only.
+      - run: pip install "coverage>=7.10"
+      - name: Engine tests under coverage (subprocesses included, see .coveragerc)
+        run: coverage run -m unittest discover -s engine/tests
+      - name: Every line and branch of engine/lib, engine/hooks and engine/bin is run (fails under 100%)
+        run: coverage combine && coverage report

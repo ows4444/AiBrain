@@ -1,7 +1,7 @@
 ---
 name: decide
 description: >-
-  Frame a choice from the brain's pages, record what the owner expects, and later review the outcome against it. Use for /decide, "help me decide", "I decided X", "how did X turn out". Do NOT use for questions with no choice (ask) or project planning (focus).
+  Frame a choice from the pages, record what the owner expects, later review the outcome. Use for /decide, "help me decide", "I decided X", "how did X turn out". Not for plain questions (ask).
 argument-hint: "<question> | made <decision> | review [decision]"
 ---
 
@@ -35,7 +35,7 @@ guesses never look alike (tags and what each must carry:
    page records, `[interpretation]` for a reading of it. Anything not on a
    page is `[assumption]` and labelled outside knowledge.
 3. Under `## Context`, link the project it belongs to (`[[<name>]]`, the
-   folder name in `prefrontal/`) and name the Owner goal it serves, if any.
+   folder name in `prefrontal/`) and name the goal in `OWNER.md` it serves, if any.
 4. Ask the owner what they expect from each option and how sure they are.
    Before they put a number on it, show the reference class: `brain
    introspect --decisions` lists, for each tag, how reviewed decisions with

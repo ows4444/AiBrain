@@ -1,5 +1,6 @@
 ---
 title: SuperMemo
+summary: Flashcard software by Piotr Wozniak, the first to schedule reviews by the SM-2 rule.
 type: entity
 kind: product
 created: 2026-06-10

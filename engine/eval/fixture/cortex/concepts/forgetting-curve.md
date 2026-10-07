@@ -1,5 +1,6 @@
 ---
 title: Forgetting curve
+summary: Memory for new material drops fast at first, then slowly; each review flattens the curve.
 type: concept
 status: established
 created: 2026-06-10

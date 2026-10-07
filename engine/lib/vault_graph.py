@@ -126,10 +126,9 @@ class GraphMixin:
                         low[parent] = min(low[parent], low[v])
                         if parent is not root and low[v] >= order[parent]:
                             cuts.add(parent)
-                    continue
-                if w is parent:
-                    continue
-                if w in order:
+                elif w is parent:
+                    pass
+                elif w in order:
                     low[v] = min(low[v], order[w])
                 else:
                     order[w] = low[w] = counter[0]

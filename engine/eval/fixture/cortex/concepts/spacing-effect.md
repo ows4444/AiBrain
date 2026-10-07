@@ -1,5 +1,6 @@
 ---
 title: Spacing effect
+summary: Study spread over several sessions is remembered longer than the same study massed into one; the best gap depends on how long it must last.
 type: concept
 status: established
 created: 2026-06-10

@@ -1,5 +1,6 @@
 ---
 title: A student blog on cramming
+summary: A student's blog post claiming cramming the night before every exam worked for them; one person, self-reported.
 type: episode
 created: 2026-09-25
 updated: 2026-09-25

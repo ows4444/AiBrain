@@ -1,5 +1,6 @@
 ---
 title:
+summary:
 type: decision
 status: open
 created:

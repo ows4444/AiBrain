@@ -1,5 +1,6 @@
 ---
 title: Hermann Ebbinghaus
+summary: German psychologist (1850-1909) who measured his own forgetting with nonsense syllables; the source of the forgetting curve.
 type: entity
 kind: person
 created: 2026-06-10

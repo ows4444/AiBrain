@@ -22,8 +22,9 @@ from vault_events import Event, is_rehearsal_miss, is_rehearsal_pass, read_event
 from vault_graph import GraphMixin  # noqa: E402
 from vault_memory import MemoryMixin  # noqa: E402
 from vault_model import *  # noqa: E402,F401,F403
-from vault_model import (DORMANT_DIR, MEMORY_DIRS, PROJECTS_DIR, Page, as_list, owner_goals,  # noqa: E402
-                         parse_frontmatter, schema_problems, tag_vocabulary)
+from vault_model import (DORMANT_DIR, MEMORY_DIRS, PROJECTS_DIR, Page, as_list, owner_file,  # noqa: E402
+                         owner_goals, owner_text,
+                         parse_frontmatter, schema_problems, summary_problems, tag_vocabulary)
 from vault_purpose import PurposeMixin  # noqa: E402
 from vault_retrieval import RetrievalMixin  # noqa: E402
 

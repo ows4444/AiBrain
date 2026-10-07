@@ -63,6 +63,7 @@ Then, inside Claude Code:
 | `/start`     | Set up and take the first tour                                   |
 | `/owner`     | Fill in or update who you are, your goals and projects           |
 | `/ingest`    | Encode new input (files, URLs, PDFs, transcripts, chat exports)  |
+| `/tend`      | Clear the queues in one go: encode, consolidate, check, report   |
 | `/sleep`     | Consolidate episodes into concepts, entities and insights        |
 | `/ask`       | Answer from your pages, with citations                           |
 | `/rehearse`  | Quiz yourself on what is due                                     |
@@ -75,6 +76,7 @@ Then, inside Claude Code:
 | `/health`    | Health metrics and trends                                        |
 | `/maintain`  | Fix links, orphans, duplicates; rename, merge, split             |
 | `/guard`     | Scan for secrets and private data; check what is safe to publish |
+| `/forget`    | Remove one source: its input, its episodes and every citation    |
 | `/commit`    | Check, then commit                                               |
 | `/rollback`  | Show and undo what the last run changed                          |
 

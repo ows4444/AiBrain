@@ -2,7 +2,19 @@
   "permissions": {
     "allow": [
       "Read(./**)",
-      "Bash(brain *)",
+      "Bash(brain check*)",
+      "Bash(brain introspect*)",
+      "Bash(brain search *)",
+      "Bash(brain recall *)",
+      "Bash(brain since *)",
+      "Bash(brain statusline*)",
+      "Bash(brain session*)",
+      "Bash(brain eval*)",
+      "Bash(brain test*)",
+      "Bash(brain fingerprint*)",
+      "Bash(brain new *)",
+      "Bash(brain resume*)",
+      "Bash(brain help*)",
       "Bash(python3 -m unittest*)",
       "Bash(git status*)",
       "Bash(git diff*)",
@@ -22,5 +34,9 @@
   },
   "enabledPlugins": {
     "aibrain@aibrain": true
+  },
+  "statusLine": {
+    "type": "command",
+    "command": "brain statusline --bar"
   }
 }

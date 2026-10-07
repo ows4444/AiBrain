@@ -84,6 +84,36 @@ class TextReports(TempBrain):
         later = script("introspect.py", self.root, "--snapshot").stdout
         self.assertIn("snapshot recorded; since 2026-01-02: pages +", later)  # the damaged line is skipped
 
+    def test_context_budget_is_measured_and_growth_is_flagged(self):
+        sys.path.insert(0, SCRIPTS)
+        import introspect
+        self.assertEqual(introspect.tokens_estimate("x" * 2700), 1000)  # bytes over 2.7, as /context showed
+        fields, body = introspect.definition(os.path.join(ENGINE, "skills", "ask", "SKILL.md"))
+        self.assertTrue(fields["description"].startswith("Answer a question from the brain's pages"))
+        self.assertNotIn("description:", body)
+        root_file = "# Brain\n" + "A line of the root file.\n" * 200
+        self.write("CLAUDE.md", root_file)
+        data = json.loads(script("introspect.py", self.root, "--context", "--json").stdout)
+        c = data["context"]
+        first = c["every_session"][0]
+        self.assertEqual((first["what"], first["bytes"], first["lines"]), ("CLAUDE.md", len(root_file), 201))
+        self.assertEqual(c["session_bytes"], sum(x["bytes"] for x in c["every_session"]))
+        self.assertEqual(c["warnings"], ["CLAUDE.md is 201 lines, past 200: move detail to where it is used"])
+        self.assertIn("commit", c["hidden_skills"])  # hidden from the model, so its description is not counted
+        self.assertFalse(any("commit" in line for line in c["every_session"][1]["what"].split()))
+        self.assertIn("skill ingest", [x["what"] for x in c["on_use"]])
+        self.assertIsNone(c["since"])
+        with open(os.path.join(self.root, "hippocampus", "metrics.md"), "w", encoding="utf-8") as fh:
+            fh.write("2026-01-02 " + json.dumps({"pages": 1, "session_bytes": c["session_bytes"] - 10}) + "\n")
+        out = script("introspect.py", self.root, "--context").stdout
+        for fragment in ("loads every session", "loads on use", "since the snapshot of 2026-01-02: every-session "
+                         "bytes +10  GROWN", "WARNING: CLAUDE.md is 201 lines", "not counted: what the harness loads"):
+            self.assertIn(fragment, out)
+        snap = script("introspect.py", self.root, "--snapshot").stdout
+        self.assertIn("session_bytes +10", snap)
+        with open(os.path.join(self.root, "hippocampus", "metrics.md"), encoding="utf-8") as fh:
+            self.assertIn(f'"session_bytes": {c["session_bytes"]}', fh.read().splitlines()[-1])
+
     def test_brier_line_once_there_are_enough(self):
         sys.path.insert(0, SCRIPTS)
         import introspect
@@ -145,8 +175,10 @@ class EvalReport(unittest.TestCase):
             with open(base, encoding="utf-8") as fh:
                 self.assertEqual(json.load(fh)["k"], 5)
             out = script("eval.py", "--baseline", base, "--answers", answers).stdout
-        for fragment in ("retrieval over 13 covered questions, top 5", "(baseline hit", "recall missed q13",
-                         "uncovered: u01 (0 pages matched words)", "answers: 2/16 given",
+        for fragment in ("retrieval over 13 covered questions, top 5", "(baseline hit", "recall missed q10",
+                         "uncovered: u01 (0 pages matched words, recall lists 0)", "answers: 2/35 given",
+                         "uncovered questions recall still lists pages for: 2 of 6", "recall  rows returned", "held ideas: 2 of 2 questions list the idea they name;", "set paraphrase: 8 questions", "set first: 8 questions",
+                         "hit@1", "recall buried q10: the first expected page is not in the top 5;",
                          "q09: missing [], extra ['anki']", "u01: missing [], extra [], did not say it was not covered"):
             self.assertIn(fragment, out)
 
@@ -428,7 +460,8 @@ class Branches(TempBrain):
         self.assertIn("hypothesis lines in reviewed decisions: held 1", decisions)
         self.assertNotIn("assumption lines", decisions)  # nothing to say about a tag with no results
         found = script("search.py", "search", "spacing", "--root", self.root).stdout
-        self.assertRegex(found, r'^search: "spacing"\n +\d+\.\d{3}  cortex/concepts/spacing\.md\n$')  # no recall detail
+        self.assertRegex(found, r'^search: "spacing"\n +\d+\.\d{3}  cortex/concepts/spacing\.md\n'
+                                r' +\(no summary: open the page to judge it\)\n$')  # no recall detail
         self.assertNotIn("answers:", script("eval.py").stdout)
 
     def test_on_a_case_sensitive_system_senses_is_spelled_exactly(self):
@@ -460,8 +493,8 @@ class BrainCommandPaths(TempBrain):
         self.assertEqual(json.loads(r.stdout)["pages"], 0)  # BRAIN_ROOT wins over the working folder
         self.assertIn("usage:", self.run_brain("chats").stderr)  # needs no brain, passes its arguments through
 
-    def test_test_passes_its_arguments_to_unittest(self):
-        r = self.run_brain("test", "-p", "no_such_test_file_*.py")
+    def test_test_passes_a_name_filter_to_unittest(self):
+        r = self.run_brain("test", "-k", "no_such_test_anywhere")
         self.assertIn("Ran 0 tests", r.stderr)
 
 

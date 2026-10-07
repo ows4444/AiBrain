@@ -1,5 +1,6 @@
 ---
 title: The SM-2 algorithm
+summary: "Wozniak's description of SM-2: each card's interval grows after a successful review by its ease factor, and resets on a miss."
 type: episode
 created: 2026-06-09
 updated: 2026-06-10

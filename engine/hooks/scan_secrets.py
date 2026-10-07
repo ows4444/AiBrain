@@ -12,10 +12,13 @@ import json
 import os
 import sys
 
-ROOT = os.environ.get("CLAUDE_PROJECT_DIR", os.getcwd())
+START = os.environ.get("CLAUDE_PROJECT_DIR", os.getcwd())
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
 from secret_scan import scan_file  # noqa: E402
-from vaultlib import is_brain  # noqa: E402
+from vaultlib import find_brain, fold_case, is_brain  # noqa: E402
+
+# The brain may be above the folder the session started in (prefrontal/<name>/).
+ROOT = find_brain(START) or START
 
 WATCHED = ("senses", "inbox", "cortex", "prefrontal", "hippocampus")
 
@@ -28,9 +31,9 @@ def main():
     except ValueError:
         sys.exit(0)
     path = (data.get("tool_input", {}) or {}).get("file_path", "")
-    full = os.path.realpath(path if os.path.isabs(path) else os.path.join(ROOT, path))
+    full = os.path.realpath(path if os.path.isabs(path) else os.path.join(START, path))
     rel = os.path.relpath(full, os.path.realpath(ROOT))
-    if rel.split(os.sep)[0] not in WATCHED or not os.path.isfile(full):
+    if fold_case(rel.split(os.sep)[0]) not in WATCHED or not os.path.isfile(full):
         sys.exit(0)
     found = scan_file(full, personal=False)
     if found:

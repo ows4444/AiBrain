@@ -3,7 +3,8 @@
 Mixed into vaultlib.Vault; relies on its pages, events, edges, resolve(),
 typed_edges(), strength(), confidence() and links_from().
 
-    search    BM25 over title (x3), aliases (x2) and body; dormant/ on request
+    search    BM25 over title (x3), aliases (x2), body and summary (x0.5);
+              dormant/ on request
     recall    search hits seed an activation that spreads along links, so a
               page the question never names, one or two links from what it
               does name, can still come back (associative recall)
@@ -22,10 +23,14 @@ from collections import Counter
 
 from vault_cache import TermCache
 from vault_events import is_rehearsal_pass
-from vault_model import (DORMANT_DIR, HEBBIAN_HALF_LIFE, PROJECT_BOOST, SEED_LIMIT, SPREAD_DECAY, SPREAD_HOPS,
-                         STALE_DAYS, Page, as_list, prose, tokens)
+from vault_model import (DORMANT_DIR, HEBBIAN_HALF_LIFE, HELD_COVERAGE, HELD_LIMIT, MIN_COVERAGE, PROJECT_BOOST,
+                         PROMPT_CHARS, PROMPT_COVERAGE, PROMPT_MIN_WORDS, PROMPT_ROWS, QUESTION, RECALL_FLOOR,
+                         SEED_LIMIT, SPREAD_DECAY, SPREAD_HOPS, STALE_DAYS, Page, as_list, prose, tokens)
 
-FIELD_WEIGHTS = (("title", 3.0), ("aliases", 2.0), ("body", 1.0))
+# The summary says what the page holds in other words than its title, so a
+# question in a person's words can reach it. It restates the body, so it counts
+# for half: at 1.0 and above the eval's `first` and standard sets fall.
+FIELD_WEIGHTS = (("title", 3.0), ("aliases", 2.0), ("body", 1.0), ("summary", 0.5))
 BM25_K1, BM25_B = 1.2, 0.75
 # How much a typed link carries activation, against 1.0 for a plain link. A
 # contradiction is followed like a plain link (the other side must be seen),
@@ -44,6 +49,8 @@ def field_text(page, field):
         return page.title
     if field == "aliases":
         return " ".join(page.aliases)
+    if field == "summary":
+        return page.summary or ""
     return prose(page.body)
 
 
@@ -87,21 +94,40 @@ class RetrievalMixin:
 
     # -- keyword search -----------------------------------------------------
 
-    def search(self, query, types=None, dormant=False, limit=10):
-        """[(page, score)] by BM25 over title, aliases and body, best first; [] when no word matches.
-
-        `types` limits the page types; `dormant` adds the pages in dormant/.
-        System pages (index, log, ...) and projects are never results.
-        """
+    def _searchable(self, types=None, dormant=False):
+        """{page: tf} for the pages a search may return."""
         pool = [p for p in self.knowledge if p.type != "project"]
         if dormant:
             pool += self.dormant_pages
         if types:
             pool = [p for p in pool if p.type in types]
+        return self._term_frequencies_many(pool) if pool else {}
+
+    def coverage(self, query, page, dormant=False):
+        """How much of the question `page` holds: the share of its words found there, each weighted by its rarity.
+
+        A word no page has weighs most, so a question mostly about something
+        the brain never mentions scores low however well one common word matches.
+        """
         terms = set(tokens(query))
-        if not terms or not pool:
+        docs = self._searchable(dormant=dormant)
+        if not terms or page not in docs:
+            return 0.0
+        n = len(docs)
+        df = Counter(t for tf in docs.values() for t in terms if t in tf)
+        idf = {t: math.log(1 + (n - df[t] + 0.5) / (df[t] + 0.5)) for t in terms}
+        return sum(w for t, w in idf.items() if t in docs[page]) / sum(idf.values())
+
+    def search(self, query, types=None, dormant=False, limit=10):
+        """[(page, score)] by BM25 over title, aliases, body and summary, best first; [] when no word matches.
+
+        `types` limits the page types; `dormant` adds the pages in dormant/.
+        System pages (index, log, ...) and projects are never results.
+        """
+        terms = set(tokens(query))
+        docs = self._searchable(types, dormant) if terms else {}
+        if not docs:
             return []
-        docs = self._term_frequencies_many(pool)
         lengths = {p: sum(tf.values()) for p, tf in docs.items()}
         average = sum(lengths.values()) / len(docs) or 1.0
         df = Counter(t for tf in docs.values() for t in terms if t in tf)
@@ -195,8 +221,12 @@ class RetrievalMixin:
             frontier = spread
         return activation, via
 
-    def recall(self, query, project=None, limit=10, hops=SPREAD_HOPS, dormant=False):
+    def recall(self, query, project=None, limit=10, hops=SPREAD_HOPS, dormant=False, floor=0.0, abstain=False):
         """Ranked pages for a question: [{page, score, seed, hop, from, confidence, flags}].
+
+        `floor` cuts rows scoring under that share of the best row; `abstain`
+        returns nothing when the best search hit holds under MIN_COVERAGE of
+        the question. `brain recall` uses both (RECALL_FLOOR) unless given --all.
 
         Search hits seed the spread (scaled so the best is 1.0). With `project`
         (a prefrontal/ folder name), its pages count PROJECT_BOOST times more
@@ -206,6 +236,8 @@ class RetrievalMixin:
         STALE_DAYS: ask whether it still holds), generated (/explore), dormant.
         """
         hits = self.search(query, limit=SEED_LIMIT, dormant=dormant)
+        if abstain and hits and self.coverage(query, hits[0][0], dormant=dormant) < MIN_COVERAGE:
+            return []
         seeds = {}
         if hits:
             top = hits[0][1]
@@ -237,10 +269,74 @@ class RetrievalMixin:
             rows.append({"page": p, "score": round(score, 4), "seed": hop == 0, "hop": hop,
                          "from": seed, "flags": flags})
         rows.sort(key=lambda r: (-r["score"], r["page"].rel))
-        rows = rows[:limit]
+        rows = [r for r in rows if r["score"] >= floor * rows[0]["score"]][:limit]
         for r in rows:
             r["confidence"] = None if "dormant" in r["flags"] else self.confidence(r["page"])
         return rows
+
+    def prompt_recall(self, prompt):
+        """(rows, why) for a prompt nobody asked to recall on: [(page, summary)] or [] and the reason.
+
+        Stricter than `recall`: a command, a short prompt, a prompt that is not
+        a question, or one whose best page holds under PROMPT_COVERAGE of its
+        words gets nothing. Rows are cut to PROMPT_ROWS and PROMPT_CHARS.
+        """
+        text = prompt.strip()
+        if text.startswith(("/", "<")):
+            return [], "command"
+        if len(text.split()) < PROMPT_MIN_WORDS:
+            return [], "short"
+        if not QUESTION.search(text):
+            return [], "not a question"
+        hits = self.search(text, limit=1)
+        if not hits:
+            return [], "no word matches"
+        covered = self.coverage(text, hits[0][0])
+        if covered < PROMPT_COVERAGE:
+            return [], f"weak match ({covered:.2f})"
+        rows, used = [], 0
+        for r in self.recall(text, limit=PROMPT_ROWS, floor=RECALL_FLOOR, abstain=True):
+            page = r["page"]
+            line = f"{page.rel}: {page.summary or page.title}"
+            if rows and used + len(line) > PROMPT_CHARS:
+                break
+            rows.append((page, line[:PROMPT_CHARS]))
+            used += len(line)
+        return rows, f"match ({covered:.2f})"
+
+    # -- ideas held on episodes ---------------------------------------------
+
+    def held_ideas(self, query, limit=HELD_LIMIT):
+        """Candidates with no page yet that the question names: [{name, note, episodes, sources}], best first.
+
+        An idea waits on its episode until a second source names it. Until
+        then it is one line, and an answer about it can use that line, cite
+        the episode and say it rests on one source, without opening the
+        episode. Ideas raised only by /explore are not listed: they are not
+        evidence. Nothing here makes a page or lowers the bar for one.
+        """
+        terms = set(tokens(query))
+        docs = self._searchable()
+        if not terms:
+            return []
+        n = len(docs)
+        df = Counter(t for tf in docs.values() for t in terms if t in tf)
+        idf = {t: math.log(1 + (n - df[t] + 0.5) / (df[t] + 0.5)) for t in terms}
+        rows = []
+        for row in self.candidate_tally():
+            if row["page"] or not row["episodes"]:
+                continue
+            notes = [note for src in row["episodes"] for name, note in src.candidate_notes
+                     if name.lower() == row["name"].lower() and note]
+            named, noted = set(tokens(row["name"])), set(tokens(" ".join(notes)))
+            if 2 * len(terms & named) < len(named):  # the question has to name it: half the name's words or more
+                continue
+            if sum(w for t, w in idf.items() if t in named | noted) < HELD_COVERAGE * sum(idf.values()):
+                continue
+            score = sum(w * (3.0 if t in named else 1.0) for t, w in idf.items() if t in named | noted)
+            rows.append({"name": row["name"], "note": notes[0] if notes else "", "episodes": row["episodes"],
+                         "sources": row["sources"], "score": round(score, 3)})
+        return sorted(rows, key=lambda r: (-r["score"], r["name"].lower()))[:limit]
 
     # -- next links ---------------------------------------------------------
 

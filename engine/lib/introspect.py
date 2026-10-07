@@ -5,6 +5,7 @@ Usage:
     brain introspect [--json] [--queue] [--due] [--decisions] [--open] [--goals] [--projects]
                                   [--dormant] [--stale] [--snapshot] [--remind] [--links]
                                   [--hubs] [--bridges] [--clusters] [--tags] [--graph] [--usage]
+                                  [--context]
 
 Default output is the four health metrics (orphan rate, average degree,
 components, stale-concept rate) with a verdict on each, plus counts and the
@@ -24,7 +25,7 @@ most recalled pages.
              decision resting mostly on guesses is marked), and across reviews
              how many assumptions and hypotheses held; the Brier score of the
              owner's stated probabilities, and the reference class by tag
-  --goals    the owner's goals (CLAUDE.md > Owner > Goals): state (open,
+  --goals    the owner's goals (OWNER.md > Goals): state (open,
              past-due, stale, done, dropped), days left, the pages behind
              each, goals with nothing behind them, and goals at risk (due
              within 30 days with nothing edited or recalled in 28)
@@ -55,11 +56,23 @@ most recalled pages.
              progress to the calibration checkpoint (20 inputs, 4 sleeps):
              the evidence for deciding which features stay; and every
              tunable threshold, for that review
+  --context  the context budget: the size of what loads every session (the
+             root CLAUDE.md, the description of each skill and agent the
+             model can see, the wake-up briefing) and of what loads on use
+             (each skill and agent body), in bytes, lines and estimated
+             tokens (bytes over 2.7, the ratio Claude Code's `/context`
+             showed for this kind of text on 2026-10-07: an estimate, not
+             a measurement); growth since the last snapshot; a
+             warning when CLAUDE.md passes 200 lines. What the harness loads
+             before the brain (other plugins, connectors) is not visible
+             here: `/context` in Claude Code shows it
 """
 import argparse
+import glob
 import json
 import os
 import re
+import subprocess
 import sys
 from collections import Counter
 
@@ -70,7 +83,14 @@ TOP = 10
 METRICS = os.path.join("hippocampus", "metrics.md")
 SNAPSHOT_LINE = re.compile(r"^(\d{4}-\d{2}-\d{2}) (\{.*\})$")
 SNAPSHOT_KEYS = ("pages", "links", "avg_degree", "orphan_rate", "components", "main_component_share",
-                 "stale_concept_rate", "awaiting_consolidation", "due_for_rehearsal", "decisions_due")
+                 "stale_concept_rate", "awaiting_consolidation", "due_for_rehearsal", "decisions_due",
+                 "session_bytes")
+ENGINE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ROOT_FILE_LINES = 200  # past this the root CLAUDE.md is followed less well (Anthropic's guidance, as the source cites it)
+# What `/context` reported on 2026-10-07 against the bytes on disk: the root file 6,854 bytes as 2,600
+# tokens, the skill listing 4,189 as about 1,440, the agent listing 1,167 as 465. Markdown with paths and
+# backticks runs denser than plain prose (about 4). Recheck against `/context` when the model changes.
+BYTES_PER_TOKEN = 2.7
 
 
 def snapshots(root):
@@ -91,7 +111,7 @@ def snapshots(root):
 def snapshot(root, r, today):
     """Append today's metrics (once a day) and return (previous, current, changes)."""
     history = snapshots(root)
-    current = {k: r[k] for k in SNAPSHOT_KEYS}
+    current = {k: r[k] for k in SNAPSHOT_KEYS if k in r}
     previous = history[-1] if history else None
     if not (previous and previous[0] == today):
         path = os.path.join(root, METRICS)
@@ -103,9 +123,86 @@ def snapshot(root, r, today):
             fh.write(f"{lead}{today} {json.dumps(current, sort_keys=True)}\n")
     else:
         previous = history[-2] if len(history) > 1 else None
-    changes = {k: round(current[k] - previous[1][k], 2) for k in SNAPSHOT_KEYS
+    changes = {k: round(current[k] - previous[1][k], 2) for k in current
                if previous and k in previous[1] and current[k] != previous[1][k]}
     return previous, current, changes
+
+
+def tokens_estimate(text):
+    """Estimated tokens: the text's bytes over BYTES_PER_TOKEN."""
+    return round(len(text.encode("utf-8")) / BYTES_PER_TOKEN)
+
+
+def measure(what, text):
+    return {"what": what, "bytes": len(text.encode("utf-8")), "lines": len(text.splitlines()),
+            "tokens_est": tokens_estimate(text)}
+
+
+def definition(path):
+    """(fields, body) of a skill or agent file; a folded `description: >-` is read as one line."""
+    with open(path, encoding="utf-8") as fh:
+        text = fh.read()
+    head, _, body = text[4:].partition("\n---\n") if text.startswith("---\n") else ("", "", text)
+    fields, key = {}, None
+    for line in head.splitlines():
+        m = re.match(r"([\w-]+):\s*(.*)$", line)
+        if m:
+            key, value = m.group(1), m.group(2).strip()
+            fields[key] = "" if value in (">", ">-", "|", "|-") else value
+        elif key and line.startswith(" "):
+            fields[key] = (fields[key] + " " + line.strip()).strip()
+    return fields, body
+
+
+def wake_up_output(root):
+    """What the SessionStart hook prints for this brain today; it only reads."""
+    try:
+        r = subprocess.run([sys.executable, os.path.join(ENGINE, "hooks", "wake_up.py")], capture_output=True,
+                           text=True, timeout=30, cwd=root, env=dict(os.environ, CLAUDE_PROJECT_DIR=root))
+        return r.stdout
+    except (OSError, subprocess.SubprocessError):
+        return ""
+
+
+def context_budget(root):
+    """What the brain puts in the context: every session, and when a skill or agent is used."""
+    path = os.path.join(root, "CLAUDE.md")
+    root_file = ""
+    if os.path.exists(path):
+        with open(path, encoding="utf-8") as fh:
+            root_file = fh.read()
+    listed, on_use, hidden = {"skill": [], "agent": []}, [], []
+    for kind, pattern in (("skill", os.path.join("skills", "*", "SKILL.md")), ("agent", os.path.join("agents", "*.md"))):
+        for path in sorted(glob.glob(os.path.join(ENGINE, pattern))):
+            fields, body = definition(path)
+            fallback = os.path.dirname(path) if kind == "skill" else os.path.splitext(path)[0]
+            label = fields.get("name") or os.path.basename(fallback)
+            on_use.append(measure(f"{kind} {label}", body))
+            if fields.get("disable-model-invocation") == "true":
+                hidden.append(label)
+            else:
+                listed[kind].append(f"{label}: {fields.get('description', '')}")
+    every = [measure("CLAUDE.md", root_file),
+             measure(f"skill descriptions ({len(listed['skill'])} listed, {len(hidden)} hidden)",
+                     "\n".join(listed["skill"])),
+             measure(f"agent descriptions ({len(listed['agent'])})", "\n".join(listed["agent"])),
+             measure("wake-up briefing", wake_up_output(root))]
+    warnings = []
+    if every[0]["lines"] > ROOT_FILE_LINES:
+        warnings.append(f"CLAUDE.md is {every[0]['lines']} lines, past {ROOT_FILE_LINES}: move detail to where it is used")
+    return {"every_session": every, "session_bytes": sum(x["bytes"] for x in every),
+            "session_tokens_est": sum(x["tokens_est"] for x in every),
+            "on_use": sorted(on_use, key=lambda x: (-x["bytes"], x["what"])), "hidden_skills": hidden,
+            "warnings": warnings}
+
+
+def context_since(root, budget, today):
+    """Growth against the last snapshot that recorded session_bytes, not counting today's."""
+    for date, metrics in reversed(snapshots(root)):
+        if date != today and "session_bytes" in metrics:
+            return {"date": date, "session_bytes": metrics["session_bytes"],
+                    "change": budget["session_bytes"] - metrics["session_bytes"]}
+    return None
 
 
 def pct(part, whole):
@@ -161,6 +258,8 @@ def report(vault, graph=False, links=False):
         "candidates": [{"name": r["name"], "episodes": len(r["episodes"]), "sources": r["sources"],
                         "generated": len(r["generated"]), "salient": r["salient"],
                         "page": r["page"].rel if r["page"] else None} for r in vault.candidate_tally()],
+        "candidate_pairs": [{"a": x["a"], "b": x["b"], "page": x["page"].rel if x["page"] else None,
+                             "why": x["why"], "words": x["words"]} for x in vault.candidate_pairs()],
         "contradictions": [{"episode": a.rel, "page": b.rel, "status": b.fields.get("status")}
                            for a, b in vault.contradiction_queue()],
         "due": [p.rel for p in vault.due_for_rehearsal()],
@@ -218,7 +317,7 @@ def main():
     ap.add_argument("root", nargs="?", default=".")
     ap.add_argument("--json", action="store_true")
     for flag in ("stale", "queue", "due", "decisions", "open", "goals", "projects", "dormant", "snapshot",
-                 "hubs", "bridges", "clusters", "tags", "graph", "usage", "remind", "links"):
+                 "hubs", "bridges", "clusters", "tags", "graph", "usage", "remind", "links", "context"):
         ap.add_argument(f"--{flag}", action="store_true")
     args = ap.parse_args()
     if args.graph:
@@ -228,6 +327,12 @@ def main():
         sys.exit(f"not a directory: {args.root}")
     vault = Vault(args.root)
     r = report(vault, graph=args.hubs or args.bridges or args.clusters or args.tags, links=args.links)
+    if args.context or args.snapshot:
+        budget = context_budget(args.root)
+        budget["since"] = context_since(args.root, budget, vault.today.isoformat())
+        r["session_bytes"] = budget["session_bytes"]
+        if args.context:
+            r["context"] = budget
     if args.snapshot:
         previous, current, changes = snapshot(args.root, r, vault.today.isoformat())
         r["snapshot"] = {"since": previous[0] if previous else None, "changes": changes}
@@ -256,6 +361,8 @@ def main():
                     + ("  salient" if c["salient"] else "")
                     + (f"  +{c['generated']} generated" if c["generated"] else "")
                     + (f"  -> {c['page']}" if c["page"] else "") for c in r["candidates"]])
+        print_list("possibly one idea twice (read both; a candidate that is the same idea counts as one, with both sources)",
+                   [f"{x['a']} ~ {x['page'] or x['b']}  (shared: {', '.join(x['words'])})" for x in r["candidate_pairs"]])
         print_list("prediction errors (new episodes contradicting a page; sleep records both sides)",
                    [f"{x['episode']} contradicts {x['page']}" + (f" ({x['status']})" if x["status"] else "")
                     for x in r["contradictions"]])
@@ -332,6 +439,28 @@ def main():
               f"{c['sleeps']}/{c['sleeps_needed']} sleeps: {state}")
         print_list("thresholds (vault_model.py; tune at the checkpoint against brain eval)",
                    [f"{k} = {v}" for k, v in u["thresholds"].items()])
+    if args.context:
+        c = r["context"]
+        row = lambda x: f"{x['bytes']:>7} {x['lines']:>6} {x['tokens_est']:>7}  {x['what']}"  # noqa: E731
+        print(f"\ncontext budget (tokens are an estimate, bytes over {BYTES_PER_TOKEN}, not a measurement)"
+              f"\n  {'bytes':>7} {'lines':>6} {'~tokens':>7}  loads every session")
+        for x in c["every_session"]:
+            print("  " + row(x))
+        print(f"  {c['session_bytes']:>7} {'':>6} {c['session_tokens_est']:>7}  total")
+        print(f"  {'bytes':>7} {'lines':>6} {'~tokens':>7}  loads on use")
+        for x in c["on_use"]:
+            print("  " + row(x))
+        since = c["since"]
+        if since:
+            print(f"  since the snapshot of {since['date']}: every-session bytes "
+                  f"{'+' if since['change'] > 0 else ''}{since['change']}"
+                  + ("  GROWN: say what was added and whether it has to load every session"
+                     if since["change"] > 0 else ""))
+        else:
+            print("  no earlier snapshot holds this number; `brain introspect --snapshot` records it")
+        for w in c["warnings"]:
+            print(f"  WARNING: {w}")
+        print("  not counted: what the harness loads before the brain; `/context` in Claude Code shows it")
     if args.snapshot:
         snap = r["snapshot"]
         if not snap["since"]:

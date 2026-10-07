@@ -15,7 +15,26 @@ import os
 import re
 import sys
 
-ROOT = os.path.realpath(os.environ.get("CLAUDE_PROJECT_DIR", os.getcwd()))
+START = os.path.realpath(os.environ.get("CLAUDE_PROJECT_DIR", os.getcwd()))
+
+
+def brain_root(start):
+    """The nearest folder at or above `start` holding cortex/ and hippocampus/, else `start`.
+
+    A session opened in prefrontal/<name>/ is still inside its brain (vaultlib.find_brain, kept import-free here).
+    """
+    here = start
+    while True:
+        if all(os.path.isdir(os.path.join(here, d)) for d in ("cortex", "hippocampus")):
+            return here
+        parent = os.path.dirname(here)
+        if parent == here:
+            return start
+        here = parent
+
+
+ROOT = brain_root(START)
+DECISIONS = os.path.join("cortex", "decisions", "")
 FRONTMATTER = re.compile(r"\A---\r?\n(.*?)\r?\n---", re.S)
 # Quotes are legal YAML and the schema check strips them, so the wall must too.
 STATUS = re.compile(r"^status:\s*[\"']?(\w+)", re.M)
@@ -55,9 +74,11 @@ def main():
         sys.exit(0)
     tool, args = data.get("tool_name", ""), data.get("tool_input", {}) or {}
     path = args.get("file_path", "")
-    full = os.path.realpath(path if os.path.isabs(path) else os.path.join(ROOT, path))
+    full = os.path.realpath(path if os.path.isabs(path) else os.path.join(START, path))
     rel = os.path.relpath(full, ROOT)
-    if tool not in ("Write", "Edit", "MultiEdit") or not rel.startswith(os.path.join("cortex", "decisions", "")):
+    # macOS and Windows file systems are case-insensitive: Cortex/Decisions/ is cortex/decisions/.
+    where = rel.lower() if sys.platform == "darwin" else os.path.normcase(rel)
+    if tool not in ("Write", "Edit", "MultiEdit") or not where.startswith(DECISIONS):
         sys.exit(0)
     if not os.path.isfile(full):
         sys.exit(0)

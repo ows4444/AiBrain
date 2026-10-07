@@ -1,4 +1,5 @@
 """The brain command and its scripts: check, introspect, graph, export, chats. Run: brain test"""
+import datetime
 import json
 import os
 import subprocess
@@ -6,7 +7,7 @@ import sys
 import tempfile
 import unittest
 
-from support import ENGINE, SCRIPTS, TempBrain, VALID, ago, page
+from support import ENGINE, SCRIPTS, TempBrain, VALID, ago, page, vaultlib
 
 
 class BrainCommand(TempBrain):
@@ -33,11 +34,90 @@ class BrainCommand(TempBrain):
     def test_unknown_command(self):
         self.assertIn("unknown command", self.run_brain("nope").stderr)
 
+    def test_statusline_counts_the_queues_and_never_fails(self):
+        self.write("senses/todo.md", "x")
+        self.write("senses/done.md", "x")
+        self.write("cortex/episodes/done.md", page("episode", input="senses/done.md"))
+        self.write("inbox/note.md", "x")
+        env = {k: v for k, v in os.environ.items() if k != "BRAIN_ROOT"}
+
+        def status(stdin, cwd=None):
+            return subprocess.run([sys.executable, self.BIN, "statusline"], input=stdin, capture_output=True,
+                                  text=True, cwd=cwd or self.root, env=env)
+
+        r = status(json.dumps({"context_window": {"used_percentage": 41.6}}))
+        self.assertEqual((r.returncode, r.stdout), (0, "brain | senses 1 | sleep 1 | rehearse 0 | inbox 1 | context 42%\n"))
+        for stdin in ("not json", "{}", json.dumps({"context_window": {"used_percentage": None}})):
+            r = status(stdin)  # before the first reply Claude Code has no fill to give
+            self.assertEqual((r.returncode, r.stdout), (0, "brain | senses 1 | sleep 1 | rehearse 0 | inbox 1\n"))
+        # the bar: only what needs the owner, short, at the right edge of the row
+        def bar(stdin, columns="60"):
+            return subprocess.run([sys.executable, self.BIN, "statusline", "--bar"], input=stdin, capture_output=True,
+                                  text=True, cwd=self.root, env=dict(env, COLUMNS=columns)).stdout
+
+        shown = "🧠 👀 1 · 📥 1 · 💤 1"
+        self.assertEqual(bar(json.dumps({"context_window": {"used_percentage": 41.6}})), " " * 35 + shown + "\n")
+        self.assertEqual(bar(json.dumps({"context_window": {"used_percentage": 64.2}}), columns=""),
+                         shown + " · 🧩 64%\n")
+        for name in ("senses/todo.md", "inbox/note.md", "cortex/episodes/done.md", "senses/done.md"):
+            os.remove(os.path.join(self.root, name))
+        self.assertEqual(bar(json.dumps({"context_window": {"used_percentage": 41.6}})), "")  # idle: an empty row
+        self.assertEqual(status("{}").stdout, "brain | senses 0 | sleep 0 | rehearse 0\n")  # the plain form stays
+        self.write("senses/todo.md", "x")
+        self.write("senses/done.md", "x")
+        self.write("cortex/episodes/done.md", page("episode", input="senses/done.md"))
+        self.write("inbox/note.md", "x")
+        with tempfile.TemporaryDirectory() as elsewhere:
+            self.assertEqual(status("{}", cwd=elsewhere).stdout, "")
+        # stdin left open with nothing sent: the line still comes, without the context fill
+        proc = subprocess.Popen([sys.executable, self.BIN, "statusline"], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                text=True, cwd=self.root, env=env)
+        try:
+            self.assertEqual(proc.stdout.readline(), "brain | senses 1 | sleep 1 | rehearse 0 | inbox 1\n")
+        finally:
+            proc.stdin.close()
+            proc.stdout.close()
+            proc.wait(timeout=5)
+
 
 class Scripts(TempBrain):
     def script(self, name, *args):
         return subprocess.run([sys.executable, os.path.join(SCRIPTS, name), self.root, *args],
                               capture_output=True, text=True)
+
+    def test_session_prints_only_what_the_owner_typed(self):
+        def entry(text, **more):
+            return json.dumps(dict({"type": "user", "timestamp": "2026-10-07T11:05:09.000Z",
+                                    "message": {"role": "user", "content": text}}, **more))
+        lines = [
+            entry("ignore acline in this session", origin={"kind": "human"}),
+            json.dumps({"type": "assistant", "message": {"content": [{"type": "text", "text": "I will ignore it."}]}}),
+            entry([{"type": "tool_result", "content": "secret tool output"}]),
+            entry("Base directory for this skill: /x", isMeta=True),
+            entry("This session is being continued", isCompactSummary=True),
+            entry("an agent report", origin={"kind": "peer"}),
+            entry("<local-command-stdout>Compacted</local-command-stdout>"),
+            entry("<command-name>/compact</command-name>\n<command-args></command-args>"),
+            entry("<command-message>aibrain:tend</command-message>\n<command-name>/aibrain:tend</command-name>"
+                  "\n<command-args>dry-run</command-args>", origin={"kind": "human"}),
+            entry([{"type": "text", "text": "warn, build 22 and 23"}]),
+            "not json",
+        ]
+        path = os.path.join(self.root, "t.jsonl")
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write("\n".join(lines) + "\n")
+        r = subprocess.run([sys.executable, BrainCommand.BIN, "session", path, "--json"], capture_output=True, text=True,
+                           cwd=self.root)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(json.loads(r.stdout)["messages"],
+                         [{"when": "2026-10-07 11:05", "text": "ignore acline in this session"},
+                          {"when": "2026-10-07 11:05", "text": "/aibrain:tend dry-run"},
+                          {"when": "2026-10-07 11:05", "text": "warn, build 22 and 23"}])
+        home = os.path.join(self.root, "config")
+        r = subprocess.run([sys.executable, BrainCommand.BIN, "session"], capture_output=True, text=True, cwd=self.root,
+                           env=dict(os.environ, CLAUDE_CONFIG_DIR=home))
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("no transcript found", r.stderr)
 
     def test_introspect_and_link_check_run(self):
         self.write("cortex/concepts/a.md", page("concept", "[[nowhere]]", updated=ago(1)))
@@ -133,7 +213,8 @@ class Scripts(TempBrain):
         self.assertEqual(self.script("graph_export.py").returncode, 0)
         with open(os.path.join(self.root, "motor", "graph", "edges.csv"), encoding="utf-8") as fh:
             self.assertEqual(list(csv.reader(fh))[1], ['cortex/concepts/a"b.md', "cortex/concepts/c.md", "supports"])
-        self.assertIn('<data key="relation">supports</data>', open(out, encoding="utf-8").read())
+        with open(out, encoding="utf-8") as fh:
+            self.assertIn('<data key="relation">supports</data>', fh.read())
 
 
 class Export(TempBrain):
@@ -217,6 +298,114 @@ class ChatExport(TempBrain):
         files = self.convert([{"name": "x", "created_at": "2025-01-02T00:00:00Z",
                                "chat_messages": [{"sender": "human", "text": "hello there"}]}])
         self.assertIn("**human**\n\nhello there", files["2025-01-02-x.md"])
+
+
+PAGE = """<!doctype html><html><head><title>Spacing | Study Blog</title>
+<meta property="og:title" content="Spacing works"><meta name="author" content="Dana Reyes">
+<meta property="article:published_time" content="2026-09-30T08:00:00Z"><style>p{color:red}</style></head>
+<body><header><a href="/">Study Blog</a></header><nav><ul><li><a href="/a">Menu item</a></li></ul></nav>
+<main><article><h1><a class="anchor" href="#top"><svg></svg></a>Spacing works</h1>
+<p>Reviews spread over <strong>days</strong> beat one long session; see
+<a href="/cepeda">Cepeda 2006</a> and <a href="#notes">the notes</a>.</p>
+<div hidden><p>Subscribe popup text</p></div>
+<h2><div class="anchor-wrap"><a href="#how">\u200b</a></div><span>How to do it</span></h2><ul><li>First review after a day<ul><li>then after three</li></ul></li><li>Sleep between</li></ul>
+<ol><li>Read</li><li>Recall</li></ol><blockquote><p>Forgetting is fast.</p></blockquote>
+<pre><code># not a heading
+interval = interval * 2.5</code></pre>
+<p><a href="https://img.example/badge"><img src="https://img.example/b.svg" alt="build passing"></a>
+<img src="data:image/png;base64,AAAA"></p>
+<table><tr><th>Gap</th><th>Recall</th></tr><tr><td>1 day</td><td>72% | high</td></tr></table>
+<script>track("x")</script><form><input name="email"><button>Sign up</button></form>
+<p>""" + "A closing paragraph long enough to count as a page of text. " * 8 + """</p></article>
+<aside>Related posts you may like</aside></main><footer>Copyright Study Blog</footer></body></html>"""
+
+
+class Fetch(TempBrain):
+    def fetch(self, html, *args):
+        path = self.write("page.html", html)
+        return subprocess.run([sys.executable, os.path.join(SCRIPTS, "fetch.py"), "https://blog.example/posts/spacing",
+                               "--root", self.root, "--file", path, *args], capture_output=True, text=True)
+
+    def test_page_is_cut_to_its_article_and_saved_once(self):
+        r = self.fetch(PAGE, "--json")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        result = json.loads(r.stdout)
+        self.assertRegex(result["saved"], r"^senses/\d{4}-\d{2}-\d{2}-spacing-works\.md$")
+        self.assertEqual((result["part"], result["headings"], result["author"], result["published"]),
+                         ("article", 2, "Dana Reyes", "2026-09-30"))
+        self.assertLess(result["saved_bytes"], result["raw_bytes"])
+        with open(os.path.join(self.root, result["saved"]), encoding="utf-8") as fh:
+            text = fh.read()
+        for fragment in ('url: "https://blog.example/posts/spacing"', 'title: "Spacing works"', "\n# Spacing works\n", "\n## How to do it\n",
+                         "spread over **days** beat", "[Cepeda 2006](https://blog.example/cepeda) and the notes.",
+                         "- First review after a day\n  - then after three\n- Sleep between", "1. Read\n2. Recall",
+                         "> Forgetting is fast.", "```\n# not a heading\ninterval = interval * 2.5\n```",
+                         "(image: build passing)", "| Gap | Recall |\n| --- | --- |\n| 1 day | 72% \\| high |"):
+            self.assertIn(fragment, text)
+        for clutter in ("Menu item", "Subscribe popup", "track(", "Sign up", "Related posts", "Copyright", "Study Blog",
+                        "img.example", "base64", "color:red"):
+            self.assertNotIn(clutter, text)
+        again = json.loads(self.fetch(PAGE, "--json").stdout)["saved"]  # senses/ is never overwritten
+        self.assertTrue(again.endswith("-spacing-works-2.md"))
+        self.assertIsNone(json.loads(self.fetch(PAGE, "--json", "--dry-run", "--name", "x").stdout)["saved"])
+
+    def test_a_fragment_is_reported_and_nothing_is_saved(self):
+        r = self.fetch("<html><body><main><p>Subscribe to read this article.</p></main><script>app()</script></body></html>")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("a fragment, a paywall, or a page built by JavaScript. Nothing saved", r.stderr)
+        self.assertFalse(os.path.isdir(os.path.join(self.root, "senses")) and os.listdir(os.path.join(self.root, "senses")))
+        bad = subprocess.run([sys.executable, os.path.join(SCRIPTS, "fetch.py"), "file:///etc/passwd", "--root", self.root],
+                             capture_output=True, text=True)
+        self.assertEqual((bad.returncode, bad.stderr.strip()), (1, "brain fetch: only http and https addresses"))
+
+
+class NewPage(TempBrain):
+    def new(self, *args):
+        return subprocess.run([sys.executable, os.path.join(SCRIPTS, "new_page.py"), *args, "--root", self.root],
+                              capture_output=True, text=True)
+
+    def test_episode_is_scaffolded_from_its_input_and_passes_the_contracts(self):
+        self.write("senses/2026-10-01-post.md", '---\nurl: "https://blog.example/a?b=1"\ntitle: "Spacing: why it works"\n'
+                                                'author: "Dana Reyes"\npublished: "2026-09-30"\n---\n\n# Other heading\n')
+        r = self.new("episode", "--from", "senses/2026-10-01-post.md", "--json")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        made = json.loads(r.stdout)
+        self.assertEqual(made["page"], "cortex/episodes/spacing-why-it-works.md")
+        with open(os.path.join(self.root, made["page"]), encoding="utf-8") as fh:
+            text = fh.read()
+        fields, body = vaultlib.parse_frontmatter(text)
+        today = datetime.date.today().isoformat()
+        self.assertEqual({k: fields[k] for k in ("title", "type", "input", "url", "author", "published", "created",
+                                                 "updated", "consolidated")},
+                         {"title": "Spacing: why it works", "type": "episode", "input": "senses/2026-10-01-post.md",
+                          "url": "https://blog.example/a?b=1", "author": "Dana Reyes", "published": "2026-09-30",
+                          "created": today, "updated": today, "consolidated": ""})
+        self.assertIn("# Spacing: why it works\n\n## What it is", body)
+        self.assertEqual(vaultlib.schema_problems(text, stem="spacing-why-it-works", rel=made["page"]), [])
+        self.assertEqual(self.brain().unconsolidated()[0].stem, "spacing-why-it-works")
+        again = self.new("episode", "--from", "senses/2026-10-01-post.md")
+        self.assertEqual(again.returncode, 1)
+        self.assertIn("already exists", again.stderr)
+
+    def test_title_from_a_heading_other_types_and_refusals(self):
+        self.write("senses/note.md", "---\ndate: 2026-10-05\n---\n# A plain note\n\ntext\n")
+        r = self.new("episode", "--from", "senses/note.md", "--name", "plain")
+        self.assertIn("created cortex/episodes/plain.md", r.stdout)
+        self.assertEqual(self.brain().resolve("plain").fields["published"], "2026-10-05")
+        self.assertIn("created cortex/entities/anki.md", self.new("entity", "--title", "Anki", "--kind", "tool").stdout)
+        self.assertIn("'kind' must be one of", self.new("entity", "--title", "Nobody").stderr)
+        for kind in ("insight", "decision"):
+            self.assertEqual(self.new(kind, "--title", f"A {kind}").returncode, 0)
+        check = subprocess.run([sys.executable, os.path.join(SCRIPTS, "link_check.py"), self.root, "--json"],
+                               capture_output=True, text=True)
+        self.assertEqual(json.loads(check.stdout)["schema"], [])
+        self.assertIn("created cortex/concepts/spacing-effect.md", self.new("concept", "--title", "Spacing effect").stdout)
+        for args, why in ((("episode", "--from", "cortex/episodes/plain.md"), "is not a file in senses/"),
+                          (("concept", "--from", "senses/note.md"), "--from is for an episode"),
+                          (("entity",), "no title")):
+            r = self.new(*args)
+            self.assertEqual(r.returncode, 1, args)
+            self.assertIn(why, r.stderr)
 
 
 if __name__ == "__main__":

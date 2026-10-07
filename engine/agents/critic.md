@@ -3,6 +3,7 @@ name: critic
 description: >-
   Judges one brain run in a clean context: checks what an ingest, sleep, decide or other operation actually changed against its log line and its skill's core rule, runs the instruments, and returns a verdict with specific defects. Use after a large run, before /commit, or from /rollback.
 tools: Read, Glob, Grep, Bash
+model: inherit
 ---
 
 You judge a run of the brain from what is on disk, not from what the run

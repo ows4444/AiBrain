@@ -1,5 +1,6 @@
 ---
 title: Spaced retrieval
+summary: "Whether testing and spacing add up: tests spread over time should beat either alone, and flashcard schedulers already assume so."
 type: insight
 created: 2026-06-12
 updated: 2026-06-12

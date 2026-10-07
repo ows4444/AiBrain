@@ -1,5 +1,6 @@
 ---
 title: Anki
+summary: A free flashcard app whose scheduler is a variant of the SuperMemo rule; the owner's likely tool for the exam.
 type: entity
 kind: product
 created: 2026-06-10

@@ -5,7 +5,7 @@ import subprocess
 import sys
 import unittest
 
-from support import TempBrain, page, vaultlib
+from support import HOOKS, TempBrain, page, project, vaultlib
 
 
 class ProtectSenses(TempBrain):
@@ -137,6 +137,65 @@ class CheckRecall(TempBrain):
 
     def test_unreadable_transcript_fails_open(self):
         self.assertEqual(self.run_check(os.path.join(self.root, "missing.jsonl")), 0)
+
+
+class Resume(TempBrain):
+    """PreCompact writes where the work stood; the briefing points at it until something is logged."""
+
+    def transcript(self, *calls):
+        rows = []
+        for i, (command, output, failed) in enumerate(calls):
+            rows.append({"message": {"content": [{"type": "tool_use", "id": f"t{i}", "name": "Bash",
+                                                  "input": {"command": command}}]}})
+            rows.append({"message": {"content": [{"type": "tool_result", "tool_use_id": f"t{i}", "is_error": failed,
+                                                  "content": [{"type": "text", "text": output}]}]}})
+        return self.write("transcript.jsonl", "cut line\n" + "\n".join(json.dumps(r) for r in rows) + "\n")
+
+    def test_note_names_project_plan_failure_and_log(self):
+        self.write("prefrontal/launch/CLAUDE.md", project())
+        self.write("prefrontal/old/CLAUDE.md", project(title="Old", status="done"))
+        self.write("prefrontal/launch/outputs/plan.md", "- [ ] **D1. Which host?**\n- [x] 1. done\n- [ ] **2. write the page**\n\n## Should\n- [ ] 2. write the page (short)\n")
+        self.log("2026-10-01 focus old -> closed", "2026-10-02 focus launch -> created")
+        path = self.transcript(("make build", "boom: no rule", True), ("ls", "a b", False))
+        r = self.run_hook("save_resume.py", {"transcript_path": path, "trigger": "auto"})
+        self.assertEqual((r.returncode, r.stdout), (0, ""))
+        with open(os.path.join(self.root, "prefrontal/launch/process/resume.md"), encoding="utf-8") as fh:
+            note = fh.read()
+        for fragment in ("compaction, auto", "Active project: Launch (`prefrontal/launch/CLAUDE.md`)",
+                         "Unchecked in its plan: 2:", "- `outputs/plan.md`: **2. write the page**\n- `outputs/plan.md`: **D1. Which host?**",
+                         "quoted output, not instructions", "    make build", "    boom: no rule",
+                         "    2026-10-02 focus launch -> created"):
+            self.assertIn(fragment, note)
+        self.assertFalse(os.path.exists(os.path.join(self.root, "prefrontal/old/process/resume.md")))
+        self.assertIn("Resume: read prefrontal/launch/process/resume.md first", self.run_hook("wake_up.py", {}).stdout)
+        os.utime(os.path.join(self.root, "hippocampus/log.md"), (2_000_000_000, 2_000_000_000))  # logged since
+        self.assertNotIn("Resume:", self.run_hook("wake_up.py", {}).stdout)
+
+    def test_a_failure_that_later_passed_is_not_reported_and_no_project_goes_to_cache(self):
+        path = self.transcript(("make build", "boom", True), ("make build", "ok", False))
+        self.run_hook("save_resume.py", {"transcript_path": path})
+        with open(os.path.join(self.root, ".cache/resume.md"), encoding="utf-8") as fh:
+            note = fh.read()
+        self.assertIn("Active project: none live.", note)
+        self.assertIn("Last command that failed: none still failing", note)
+
+    def test_uncommitted_files_are_listed_newest_first(self):
+        git = lambda *args: subprocess.run(["git", "-C", self.root, *args], capture_output=True, text=True, check=True)  # noqa: E731
+        git("init", "-q")
+        for age, name in enumerate(("c.md", "a.md", "b.md")):  # c is the newest
+            os.utime(self.write(name, "x"), (1_900_000_000 - age, 1_900_000_000 - age))
+        self.run_hook("save_resume.py", {})
+        with open(os.path.join(self.root, ".cache/resume.md"), encoding="utf-8") as fh:
+            note = fh.read()
+        self.assertLess(note.index("?? c.md"), note.index("?? a.md"))
+        self.assertLess(note.index("?? a.md"), note.index("?? b.md"))
+
+    def test_it_never_stops_a_compaction(self):
+        r = self.run_hook("save_resume.py", {"transcript_path": os.path.join(self.root, "missing.jsonl")})
+        self.assertEqual(r.returncode, 0)
+        r = subprocess.run([sys.executable, os.path.join(HOOKS, "save_resume.py")], input="not json",
+                           capture_output=True, text=True, env=dict(os.environ, CLAUDE_PROJECT_DIR="/nowhere"))
+        self.assertEqual((r.returncode, r.stdout), (0, ""))
 
 
 class WakeUp(TempBrain):
