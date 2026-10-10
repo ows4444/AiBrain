@@ -382,11 +382,13 @@ Each item keeps the rules: the line in `hippocampus/intentions.md` and the log a
   - [ ] `when` takes a repeat (`every day`, `every monday`, `every month`). A repeat is not closed by `(done)`: each time it is done the `remind` log line says so, and it is due again at the next one after that line. `(dropped)` ends it
   - [ ] Every reader takes both: the briefing, `brain introspect --remind`, `brain tend --check`, the status line; the `/remind` skill and the template of `intentions.md` say how to write them
   - [ ] Done when: a timed reminder is not due a minute before its time, a weekly one is due again a week after it was done, and the lines written before read as they did
-- [ ] **58. `brain fit` names the reminders and decisions an input bears on** (ROADMAP F15, score 7, S to M)
-  - [ ] With the pages and held ideas it lists now: each open reminder that waits on an event, and each open decision's `revisit if`, whose event the input's words reach. How much of the event the input must hold is a threshold like the others
-  - [ ] `/ingest` reads that list in place of comparing each input with `brain introspect --remind` by eye; `Triggers:` in its report starts from it, and the model still says what the input reports
-  - [ ] Its limit, said in its own text: an event is prose, so the list is what to check, never a verdict
-  - [ ] Done when: of two inputs, one reporting a reminder's event and one not, only the first lists it
+- [x] **58. `brain fit` names the reminders and decisions an input bears on** (ROADMAP F15, score 7, S to M)
+  - [x] After the pages and held ideas it lists now: every event the brain waits on, a reminder written `when <event>` and the `revisit_if` of each decision in force. One the input holds `trigger_coverage` (0.6) of the words of is marked `*` and comes first, with the words it holds; each word is weighed by its rarity, as search weighs it, so `a rival cuts prices` is not marked for an input that only names prices (`lib/fit.py`: `reached`, `waiting`; `triggers` in the JSON)
+  - [x] Changed from the plan: it lists all of them, not only the marked ones. An input can report an event in other words, which no count of words sees; had the list held the marked ones alone, `/ingest` would have stopped reading the others and missed those. The unmarked ones are cut at `--limit`, the marked never
+  - [x] Left out: a reminder on a date (the briefing has it), a closed one, a decision tagged `to-revisit` (its event has come), one not decided yet, and one with no `revisit_if`
+  - [x] `/ingest` reads that list in place of running `brain introspect --decisions` and `--remind` and comparing by eye; `Triggers:` in its report starts from it, and the model still says what the input reports. `/remind` says to write an event in the words a source would use
+  - [x] Its limit, said in its own text: the mark is where to look, never the verdict
+  - [x] Done when: of two inputs, one reporting a reminder's event and one not, only the first lists it. Both list it, by the change above; only the first marks it (`tests/test_scripts.py`, `Fit`: of three reminders and a decision, the two whose words the input holds are marked, one that holds half is not until `trigger_coverage` is 0.5)
 - [ ] **59. A reminder closes with its date and what happened** (ROADMAP F16, score 5, S)
   - [ ] `(done 2026-10-12: the setup was confirmed)` and `(dropped 2026-10-12: no longer needed)`; a bare `(done)` still closes a line
   - [ ] `brain introspect --remind` says, of the reminders closed: how many were done and how many dropped, and how many days after their date (the middle one and the latest)

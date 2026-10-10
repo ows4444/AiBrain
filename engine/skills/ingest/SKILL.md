@@ -57,10 +57,12 @@ from the owner, in the conversation.
    `(contradicts:: [[page]])` on the episode and report it under
    `Contradictions:`; the briefing and `brain introspect --queue` list it until
    sleep records both positions. Do not touch the concept page.
-   **Triggers:** read the `revisit if` lines in `brain introspect --decisions`
-   and the reminders in `brain introspect --remind`: if this input reports the
-   event a decision or a reminder names, say so under `Triggers:` in the
-   output. Do not touch the decision page; sleep tags it.
+   **Triggers:** `brain fit` ends with every event the brain waits on: the
+   reminders written `when <event>` and each decision's `revisit if`. One
+   marked `*` has its words in this input; an input can report an event in
+   other words, so read the unmarked ones too. If the input reports one, say
+   so under `Triggers:` in the output. The mark is where to look, never the
+   verdict. Do not touch the decision page; sleep tags it.
 4. **Write the episode.** `brain new episode --from senses/<file>` (with
    `--name <short-slug>` when the title is long) creates it in
    `cortex/episodes/` with `title`, `input`, `url`, `author`, `published` and

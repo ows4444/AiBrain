@@ -67,7 +67,7 @@ KEYS = {
     "fetch": ("fetch", ["https://blog.example/spacing", "--file", "{tmp}/page.html"], [
         "author", "headings", "part", "path", "published", "raw_bytes", "saved", "saved_bytes", "title", "url",
         "words"]),
-    "fit": ("fit", ["senses/cepeda.md"], ["held", "input", "pages", "words"]),
+    "fit": ("fit", ["senses/cepeda.md"], ["held", "input", "pages", "triggers", "words"]),
     "inbox": ("inbox", [], ["notes", "ready"]),
     "import --dry-run": ("import", ["obsidian", "{tmp}/vault", "--dry-run"], [
         "already", "attachments", "changed", "duplicates", "empty", "forgotten", "from", "imported", "into",

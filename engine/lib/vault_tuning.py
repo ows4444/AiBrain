@@ -146,6 +146,11 @@ THRESHOLDS = {name: Threshold(*spec) for name, spec in {
     # Of the input's words that some page also holds, the ones that mark it most (often in
     # it, rare in the brain) are searched as one question.
     "fit_words": (12, 1, 100, "words of an input, the ones that mark it most, searched for the pages it bears on"),
+    # A reminder or a decision waits on an event written in a few words. `brain fit` marks it
+    # for an input that holds this share of those words, each weighed by its rarity as search
+    # weighs it. The mark shows where to look: whether the input reports the event is read.
+    "trigger_coverage": (0.6, 0.0, 1.0, "share of an event's words an input must hold for `brain fit` to mark the "
+                                         "reminder or decision that waits on it"),
     # -- what was asked and not answered (`brain introspect --gaps`) ---------------------
     # Questions no page answered are one gap when they share a rare word; a question with
     # no rare word is known by all of its words.

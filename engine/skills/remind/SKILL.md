@@ -24,7 +24,8 @@ ending its line with `(done)` or `(dropped)`, never by deleting it.
 **Add.** Turn the owner's words into one line. The `when` part is a date
 (`2026-11-01`; "next Friday" becomes the date, read back for a yes) or an
 event something could be seen to report ("a rival cuts prices", "the paper
-is published"). "Later" or "sometime" gets a follow-up question. Log
+is published"), in the words a source would use: `brain fit` marks it for
+an input that holds them. "Later" or "sometime" gets a follow-up question. Log
 `brain log remind "<what>" --result hippocampus/intentions.md`.
 
 **List.** `brain introspect --remind`: what is due (date passed) and what is

@@ -471,6 +471,62 @@ class Fit(TempBrain):
         r = run_brain(self.root, "fit", "senses/none.md")
         self.assertEqual((r.returncode, r.stderr), (1, "brain fit: no such file: senses/none.md\n"))
 
+    def waits(self):
+        """Three reminders on an event, one on a date and one closed; decisions in force, tagged, open and unfinished."""
+        self.write("hippocampus/intentions.md", page("intentions", "\n# Intentions\n\n## Open\n\n"
+                                                     "- call the supplier when a rival cuts prices\n"
+                                                     "- write it up when the sessions are spaced a week apart\n"
+                                                     "- look again when zebras and quartz\n"
+                                                     "- renew the domain when 2026-11-01\n"
+                                                     "- thank them when the fluency illusion is named (done)\n"))
+        dates = dict(created="2026-01-01", updated="2026-01-01", decided="2026-01-01", review="2027-01-01")
+        for name, fields in (("habits", dict(status="decided", revisit_if="the fluency illusion")),
+                             ("tagged", dict(status="reviewed", revisit_if="the fluency illusion", tags="[to-revisit]")),
+                             ("undecided", dict(status="open", revisit_if="the fluency illusion")),
+                             ("unfinished", dict(status="decided"))):
+            self.write(f"cortex/decisions/{name}.md", page("decision", "Which habit to keep.\n", title=name.title(),
+                                                           **dict(dates, **fields)))
+
+    def test_it_lists_every_event_the_brain_waits_on_and_marks_the_ones_the_input_holds(self):
+        self.waits()
+        found = self.fit("senses/new.md")["triggers"]
+        self.assertEqual([(t["kind"], t["what"], t["reached"], t["holds"], t["share"]) for t in found], [
+            ("reminder", "write it up", True, ["sessions", "spaced", "week", "apart"], 1.0),
+            ("decision", "cortex/decisions/habits.md", True, ["fluency", "illusion"], 1.0),
+            # One of its two words, and no page holds either: half, under the 0.6 that marks it.
+            ("reminder", "look again", False, ["zebras"], 0.5),
+            ("reminder", "call the supplier", False, [], 0.0)])
+        self.assertEqual(found[0]["event"], "the sessions are spaced a week apart")
+        # A date is the briefing's, a closed reminder is over; a decision tagged to-revisit has been triggered,
+        # an open one is not in force yet, and one with no `revisit_if` waits on nothing.
+        looser = fit.fit(vaultlib.Vault(self.root, tuning={"trigger_coverage": 0.5}), "senses/new.md")["triggers"]
+        self.assertEqual([t["what"] for t in looser if t["reached"]], ["write it up", "cortex/decisions/habits.md",
+                                                                       "look again"])
+        self.assertEqual(fit.reached(vaultlib.Vault(self.root), "it is the", {"it"}), (0.0, []))  # stop words alone
+
+    def test_what_waits_is_said_after_the_pages_and_cut_at_the_limit(self):
+        self.waits()
+        out = run_brain(self.root, "fit", "senses/new.md").stdout.splitlines()
+        self.assertEqual(out[-5:], [
+            "  waiting on an event (* this input holds its words: read it for whether it reports the event, and say "
+            "so under Triggers:):",
+            "    * reminder  write it up when the sessions are spaced a week apart  [holds: sessions, spaced, week, apart]",
+            "    * decision  cortex/decisions/habits.md  revisit if: the fluency illusion  [holds: fluency, illusion]",
+            "      reminder  look again when zebras and quartz",
+            "      reminder  call the supplier when a rival cuts prices"])
+        cut = run_brain(self.root, "fit", "senses/new.md", "--limit", "1").stdout.splitlines()
+        self.assertEqual(cut[-2:], ["      reminder  look again when zebras and quartz",
+                                    "      and 1 more whose words it does not hold (`brain introspect --remind`, "
+                                    "`--decisions`)"])
+        self.assertIn("    * decision  cortex/decisions/habits.md", "\n".join(cut))  # the marked ones are never cut
+        self.write("senses/odd.md", "Zebra quartz violin.\n")  # new to every page, and an event still waits on it
+        self.assertEqual(run_brain(self.root, "fit", "senses/odd.md").stdout.splitlines()[:4], [
+            "fit: senses/odd.md",
+            "  it shares no word with any page, and names no held idea: all of it is new here",
+            "  waiting on an event (* this input holds its words: read it for whether it reports the event, and say "
+            "so under Triggers:):",
+            "    * reminder  look again when zebras and quartz  [holds: zebras, quartz]"])
+
     def test_an_input_already_encoded_is_no_source_of_its_own_ideas_and_a_file_elsewhere_keeps_its_path(self):
         self.write("senses/old.md", "An older note on the illusion of fluency and study habits.\n")
         own = self.fit("senses/old.md")
