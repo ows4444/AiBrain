@@ -44,7 +44,7 @@ scans live in code and run as hooks or `brain` commands.
 | `cortex/decisions/` | choices: options, frozen `## Expected`, outcome | `/decide` | `## Expected` never rewritten once decided |
 | `hippocampus/` | `index.md`, `log.md`, `metrics.md`, `fingerprints.md`, `intentions.md`, `tuning.md` | skills (the log only through `brain log`, the index's listing through `brain index`) and `brain fingerprint` | the log is append-only; the index's listing is rewritten every run, its Gaps kept by hand; `tuning.md` holds the thresholds this brain keeps at its own value |
 | `prefrontal/<name>/` | projects, one goal each (`CLAUDE.md` is page `[[name]]`) | `/focus` | pages linked from live goals and active projects never fade |
-| `dormant/` | faded pages: out of index and graph, still searchable | `/maintain` | moved only on approval; nothing moves them back yet |
+| `dormant/` | faded pages: out of index and graph, still searchable | `/maintain` | moved only on approval; `/restore` moves one back |
 | `motor/` | reports, drafts, exports for use outside | `/write`, `brain export` | `publish: true` is opt-in |
 | `OWNER.md` | who the owner is and their goals | `/owner` | one goal per line: `- goal by DATE -> [[page]]` |
 
@@ -98,10 +98,10 @@ the dict with `--json`, which every command takes. Another program makes the sam
 |-------|----------|
 | Find | `search` (BM25), `recall` (words, then links), `since` (period view) |
 | Check | `check` (links, schema, index drift, edited inputs), `introspect` (18 views; `--gaps` is what was asked and not answered), `eval` (a question set, or with `--from-log` the log's own questions, each replayed as the brain was that day; `--set` tries a threshold at another value and writes nothing), `ground` (a drafted answer or piece held to the pages it cites: the sensor for the core rule of `/ask` and `/write`) |
-| Input | `fetch`, `chats`, `session`, `fingerprint`, `fit` (the pages an input's own words reach, the held ideas it names), `new` |
+| Input | `capture` (a note in `inbox/`), `fetch`, `chats`, `session`, `fingerprint`, `fit` (the pages an input's own words reach, the held ideas it names), `new` |
 | Record | `log` (the one writer of log lines: it checks the operation and every page name), `index` (rewrites the index's listing from the pages) |
-| Output | `export`, `graph` |
-| Remove and continue | `forget` (remove an input), `resume` (write where the work stands) |
+| Output | `export` (clean copies of chosen pages; it stops on a credential), `graph` |
+| Remove and continue | `forget` (remove an input), `restore` (a faded page back from `dormant/`), `resume` (write where the work stands) |
 | Operate | `statusline`, `tend --check` (everything that needs the owner, read-only: what a scheduled run sends), `mcp` (the read-only server for other hosts), `cache`, `errors`, `synth`, `bench`, `test` |
 
 ### 4.3 The hooks: `engine/hooks/` (six events, one command each)
@@ -136,17 +136,17 @@ swallowed crash is not invisible.
 
 ## 5. The procedure layer
 
-### 5.1 Skills (19), grouped by the stage they serve
+### 5.1 Skills (22), grouped by the stage they serve
 
 | Stage | Skills |
 |-------|--------|
 | Set up | `/start`, `/owner` |
-| Encode | `/ingest` |
+| Encode | `/capture` (one line into `inbox/`), `/ingest` |
 | Consolidate | `/sleep`, `/tend` (encode + consolidate + check + report) |
 | Recall | `/ask`, `/rehearse`, `/explore` (generated, never evidence), `/decide` |
 | Purpose | `/focus`, `/remind` |
 | Output | `/write` |
-| Review and repair | `/reflect`, `/health`, `/maintain`, `/guard` |
+| Review and repair | `/reflect`, `/health`, `/maintain`, `/restore` (back from `dormant/`), `/guard`, `/export` |
 | Control | `/forget`, `/rollback`, `/commit` |
 
 `/commit`, `/forget`, `/rollback`, `/start`, `/owner` and `/tend` are manual-only
@@ -239,7 +239,7 @@ The brain also works as plain Markdown in Obsidian (the folder is its own vault)
 
 | Where | Holds | Time resolution |
 |-------|-------|-----------------|
-| `hippocampus/log.md` | every operation and recall | date |
+| `hippocampus/log.md` | every operation and recall | date and time of day (date only on lines from before 2026-10-10) |
 | `hippocampus/metrics.md` | health snapshots | date |
 | `hippocampus/fingerprints.md` | hash of each input | date |
 | `.cache/errors.log` | swallowed crashes and refusals (`brain errors`) | date and time, local |
@@ -254,7 +254,8 @@ The brain also works as plain Markdown in Obsidian (the folder is its own vault)
 - Nothing writes unless a session is open. `brain tend --check` can run on a schedule (cron, or the watcher
   agent) and say what is waiting; encoding, sleep and rehearsal still wait for the owner.
 - The model does the extraction from PDFs, images and transcripts; the engine has no extractor.
-- One owner; memory dates carry no time of day, so order within a day is log position.
+- One owner; a page's dates carry no time of day. Log lines do, so the events of one day are read in the
+  order they happened, also in a log merged from two copies of the brain.
 - Enforcement needs Claude Code hooks; no other host runs them, which is why `brain mcp` only reads.
 
 The ideas for lifting these are in `engine/ROADMAP.md`; the order of work is in `engine/REFACTOR.md`, and its

@@ -10,7 +10,7 @@ Usage:
     brain log ingest senses/2026-10-09-note.md --result "1 episode, 2 candidates, 4 links"
     brain log decide "weekly review" --pages weekly-review --result "review 2027-01-09"
 
-Appends `DATE <operation> <what> -> <result>` to hippocampus/log.md. The
+Appends `DATE HH:MM <operation> <what> -> <result>` to hippocampus/log.md. The
 result is the pages as [[links]], then --result; `none` when there is neither.
 WHAT comes before --pages. Nothing is written unless all of this holds:
     the operation is one of CLAUDE.md > Log
@@ -20,12 +20,15 @@ WHAT comes before --pages. Nothing is written unless all of this holds:
         would say so until much later
     a rehearsal line (`recall rehearse`, `rehearse missed`) names a page
     the line holds no credential
-The date is today's, set here. WHAT is put on one line; for `recall` it is the
+The date and the time of day are now's, set here: two lines of one day are
+then in order whatever order they reach the file in (a log merged from two
+copies). WHAT is put on one line; for `recall` it is the
 question as it was asked, cut at 120 characters. A page is written by its file
 name, whatever name it was given by. Log before a page is removed, renamed or
 moved, while its name still resolves. --dry-run prints the line and writes
 nothing.
 """
+import datetime
 import difflib
 import os
 import sys
@@ -57,8 +60,11 @@ def page_name(vault, name):
     raise Refused(f"no page named '{name}'" + (f" (closest: {vault.names[close[0]].stem})" if close else ""))
 
 
-def compose(vault, op, what="", pages=(), result=""):
-    """(the line, the pages it names after the arrow), or Refused: the line breaks a rule of the log."""
+def compose(vault, op, what="", pages=(), result="", clock=""):
+    """(the line, the pages it names after the arrow), or Refused: the line breaks a rule of the log.
+
+    `clock` is the time of day the line carries after its date, `HH:MM`; none when empty.
+    """
     if op not in OPS:
         raise Refused(f"'{op}' is not an operation of the log; one of: {', '.join(OPS)}")
     # An arrow in the question would be read as the start of the result.
@@ -73,11 +79,11 @@ def compose(vault, op, what="", pages=(), result=""):
     result = one_line(result)
     for typed in LINK.findall(what + " " + result):
         page_name(vault, typed)
-    as_read = Event("", None, op, "", what, [], True)  # the engine decides what a rehearsal line is
+    as_read = Event("", None, "", op, "", what, [], True)  # the engine decides what a rehearsal line is
     if (is_rehearsal_pass(as_read) or is_rehearsal_miss(as_read)) and not names:
         raise Refused("a rehearsal line names the pages rehearsed: give --pages")
     after = ", ".join([f"[[{n}]]" for n in names] + ([result] if result else [])) or "none"
-    line = " ".join(part for part in (vault.today.isoformat(), op, what, "->", after) if part)
+    line = " ".join(part for part in (vault.today.isoformat(), clock, op, what, "->", after) if part)
     found = scan_text(line, personal=False)
     if found:
         raise Refused(f"the line holds a possible credential ({found[0][0]}), which is not repeated here")
@@ -105,9 +111,15 @@ def append(root, line):
         fh.write((HEADER if blank else lead(existing)) + line + "\n")
 
 
-def write(root, op, what="", pages=(), result="", dry_run=False, today=None):
-    """Check the line and write it; {line, pages, written}. Raises Refused, having written nothing."""
-    line, names = compose(Vault(root, today=today), op, what, pages, result)
+def write(root, op, what="", pages=(), result="", dry_run=False, today=None, clock=None):
+    """Check the line and write it; {line, pages, written}. Raises Refused, having written nothing.
+
+    The line carries the time it is written at. A line dated from outside (`today`) is of
+    another day than the clock's, so it carries a time only when `clock` gives one.
+    """
+    if clock is None:
+        clock = "" if today else datetime.datetime.now().strftime("%H:%M")
+    line, names = compose(Vault(root, today=today), op, what, pages, result, clock)
     if not dry_run:
         append(root, line)
     return {"line": line, "pages": names, "written": not dry_run}

@@ -38,7 +38,7 @@ def recent_log():
     with open(path, encoding="utf-8") as fh:
         # Recall lines are frequent and carry no news, so the briefing skips them.
         matches = (LOG_LINE.match(line) for line in fh.read().splitlines())
-        return [m.group(0) for m in matches if m and m.group(2) != "recall"]
+        return [m.group(0) for m in matches if m and m.group(3) != "recall"]
 
 
 def purpose_line(vault):

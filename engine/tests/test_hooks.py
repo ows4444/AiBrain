@@ -147,6 +147,12 @@ class CheckRecall(TempBrain):
         self.assertEqual(self.run_check(path), 2)  # the command names no date and the log holds no line
         self.log(f"{today} recall q -> [[a]]")
         self.assertEqual(self.run_check(path), 0)  # the log is read instead of the command
+        self.log(f"{today} 09:41 recall q -> [[a]]")
+        self.assertEqual(self.run_check(path), 0)  # with its time of day, as `brain log` writes it
+        self.log(f"{today} 09:41 recall another question -> [[a]]")
+        self.assertEqual(self.run_check(path), 2)
+        timed = self.tool("Edit", file_path="hippocampus/log.md", new_string=f"{today} 09:41 recall x -> [[a]]\n")
+        self.assertEqual(self.run_check(self.transcript(self.prompt("go"), self.tool("Skill", skill="ask"), timed)), 0)
         missed = self.tool("Edit", file_path="hippocampus/log.md", new_string=f"{today} rehearse missed -> [[a]]\n")
         path = self.transcript(self.prompt("quiz me"), self.tool("Skill", skill="rehearse"), missed)
         self.assertEqual(self.run_check(path), 0)  # every page missed is still a logged rehearsal

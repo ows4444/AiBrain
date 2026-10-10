@@ -63,6 +63,7 @@ Then, inside Claude Code:
 | `/start`     | Set up and take the first tour                                   |
 | `/owner`     | Fill in or update who you are, your goals and projects           |
 | `/ingest`    | Encode new input (files, URLs, PDFs, transcripts, chat exports)  |
+| `/capture`   | Keep one line for later: a note in `inbox/`, encoded by `/ingest` |
 | `/tend`      | Clear the queues in one go: encode, consolidate, check, report   |
 | `/sleep`     | Consolidate episodes into concepts, entities and insights        |
 | `/ask`       | Answer from your pages, with citations                           |
@@ -76,6 +77,8 @@ Then, inside Claude Code:
 | `/health`    | Health metrics and trends                                        |
 | `/maintain`  | Fix links, orphans, duplicates; rename, merge, split             |
 | `/guard`     | Scan for secrets and private data; check what is safe to publish |
+| `/export`    | Check chosen pages, then write clean copies to `motor/export/`   |
+| `/restore`   | Bring a faded page back from `dormant/`                          |
 | `/forget`    | Remove one source: its input, its episodes and every citation    |
 | `/commit`    | Check, then commit                                               |
 | `/rollback`  | Show and undo what the last run changed                          |
@@ -89,7 +92,9 @@ brain check           # broken links, schema, index drift
 brain search QUERY    # pages by their words
 brain recall QUERY    # words, then associations along links
 brain since 2026-09-01
+brain capture "a line" # keep it for later: a note in inbox/, which /ingest encodes
 brain fit senses/FILE # what an input bears on, before it is encoded; /ingest runs it
+brain restore PAGE    # bring a faded page back from dormant/; the move is logged
 brain ground FILE     # a draft: links, numbers and quotations with no page behind them
 brain tend --check    # everything that needs you, in one read-only digest
 brain mcp             # a read-only MCP server for other programs: search, recall, since, gaps
@@ -184,6 +189,30 @@ Every command reads it from then on; remove the line to go back to the default.
 `brain check` fails on a name that is not a threshold or a value outside its
 range. A brain from before this page has none and needs none: copy it from
 `engine/templates/brain/hippocampus/tuning.md` when the first value is kept.
+
+## Backup and a second machine
+
+The brain is a git repository, and its history is its backup. `/commit`
+checks it and commits; nothing else is needed on one machine.
+
+To keep a copy elsewhere, add a remote and push it yourself:
+
+```sh
+git remote add origin <address of a repository only you can read>
+git push -u origin main
+```
+
+A brain holds your notes, your goals and what you decided, so the remote
+should be private. A session cannot push: `.claude/settings.json` denies
+`git push` on purpose, because where a copy goes is your decision.
+
+On another machine: `git clone` it, run `./install.sh` there, then
+`brain check`. Pull before a session and push after it. `.cache/` is not in
+git and rebuilds itself. If both machines added lines to the log, the
+metrics or the fingerprints, the merge keeps both (`.gitattributes`), and the
+log reads in the order things happened, since each line carries its time.
+Two machines editing the same page still conflict as any file does: settle
+it by hand, then `brain check`.
 
 ## Layout
 

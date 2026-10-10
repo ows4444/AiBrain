@@ -7,7 +7,7 @@ import re
 from collections import Counter
 from itertools import chain
 
-from vault_events import is_rehearsal_pass, is_rehearsal_miss
+from vault_events import as_written, is_rehearsal_pass, is_rehearsal_miss
 from vault_model import (CLAIM_RESULTS, CLAIM_SECTIONS, CLAIM_TAGS, FADE_IGNORES_LINKS_FROM, LINK, OPS, OUTCOMES,
                          PROBABILITY_TAGS, RELATIONS, REHEARSED_TYPES, SALIENT, STUB_TYPES, FENCE, as_list,
                          claim_problems, parse_date, same_idea, tag_vocabulary, tokens)
@@ -35,7 +35,7 @@ class MemoryMixin:
 
     def log_problems(self):
         """Log lines whose operation is not in the vocabulary (CLAUDE.md > Log)."""
-        return [f"{day} {op} {rest}" for day, op, rest in self.log_lines() if op not in OPS]
+        return [as_written(e) for e in self.events if e.op not in OPS]
 
     def log_unresolved(self):
         """(line, names) for recall and rehearse lines naming a page that is neither here nor in dormant/.
@@ -50,7 +50,7 @@ class MemoryMixin:
                 continue
             lost = [t for t in e.targets if self.resolve(t) is None and t.lower() not in self.dormant_names]
             if lost:
-                out.append((f"{e.date} {e.op} {e.rest}", lost))
+                out.append((as_written(e), lost))
         return out
 
     def usage(self):
@@ -105,11 +105,12 @@ class MemoryMixin:
         return {p: sorted(d) for p, d in dates.items()}
 
     def _rehearsals(self):
-        """Page -> sorted (date, passed) for every rehearsal of it by the owner.
+        """Page -> (date, passed) for every rehearsal of it by the owner, in the order they happened.
 
         `DATE recall rehearse -> [[page]]` is a pass; `DATE rehearse missed -> [[page]]`
         is a miss. Any other recall line is the model reading the page, which
-        keeps it from fading but is not the owner remembering it.
+        keeps it from fading but is not the owner remembering it. Two on one day
+        stand in the order of their times (the events come in that order).
         """
         out = {}
         for e, pages in zip(self.events, self._event_pages()):
@@ -119,7 +120,7 @@ class MemoryMixin:
             for page in pages:
                 if page:
                     out.setdefault(page, []).append((e.day, passed))
-        return {p: sorted(e) for p, e in out.items()}
+        return out
 
     def strength(self, page):
         """Spaced rehearsals passed: one counts only once the interval earned so far has passed; a miss starts over."""

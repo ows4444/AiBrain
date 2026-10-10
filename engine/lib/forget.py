@@ -112,13 +112,14 @@ def report(vault, source):
             "other_inputs": others}
 
 
-def apply(vault, found, today):
-    """Log, mark the fingerprint, then remove. Returns the files removed."""
+def apply(vault, found, now):
+    """Log, mark the fingerprint, then remove. Returns the files removed. `now` dates the log line."""
     root = vault.root
+    today = now.strftime("%Y-%m-%d")
     removed = [f for f in [found["input"], found["asset"], *found["episodes"]] if f]
     what = found["input"] or found["episodes"][0]
     with open(os.path.join(root, LOG_PATH), "a", encoding="utf-8") as fh:
-        fh.write(f"{today} forget {what} -> {len(found['episodes'])} episodes and "
+        fh.write(f"{now:%Y-%m-%d %H:%M} forget {what} -> {len(found['episodes'])} episodes and "
                  f"{sum(1 for f in (found['input'], found['asset']) if f)} input files removed on the owner's yes; "
                  f"{len(found['citing'])} pages cited them\n")
     marks = [f for f in (found["input"], found["asset"]) if f]
@@ -153,7 +154,7 @@ def run(root, args):
     if found is None:
         raise Refused(f"forget: {args.source} is neither a file in senses/ nor an episode")
     if args.yes:
-        found["removed"] = apply(vault, found, datetime.date.today().isoformat())
+        found["removed"] = apply(vault, found, datetime.datetime.now())
     return found
 
 

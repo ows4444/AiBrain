@@ -57,6 +57,8 @@ if [ -n "$new_dir" ]; then
     cp -R "$root/engine/templates/brain/." "$new_dir/"
     mkdir -p "$new_dir/.claude"
     cp "$root/.claude/settings.json" "$new_dir/.claude/settings.json"
+    # What git must not keep (.cache/, exports) and how it merges the append-only files.
+    cp "$root/.gitignore" "$root/.gitattributes" "$new_dir/"
     if [ ! -d "$new_dir/.git" ]; then
         git -C "$new_dir" init -q
     fi

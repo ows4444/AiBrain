@@ -19,7 +19,9 @@ FILE_NAME = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 FENCE = re.compile(r"^(```|~~~).*?^\1", re.S | re.M)
 INLINE_CODE = re.compile(r"`[^`\n]*`")
 DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
-LOG_LINE = re.compile(r"^(\d{4}-\d{2}-\d{2}) (\S+)\s(.*)$")
+# A line of the log: its date, the time of day when it has one (`brain log` writes it; older lines
+# have none), the operation, and the rest.
+LOG_LINE = re.compile(r"^(\d{4}-\d{2}-\d{2})(?: ((?:[01]\d|2[0-3]):[0-5]\d))? (\S+)\s(.*)$")
 CANDIDATES = re.compile(r"^## Candidates\s*\n(.*?)(?=^## |\Z)", re.S | re.M)
 GAPS = re.compile(r"^## Gaps\s*\n(.*?)(?=^## |\Z)", re.S | re.M)
 # A typed link states how one page bears on another: `(supports:: [[Page]])`.

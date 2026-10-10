@@ -251,9 +251,10 @@ Not ordered: pick any whose tags are met. Each is smaller once 12 is done.
 
 ### Getting material in
 
-- [ ] **34. `/capture`** (ROADMAP S4, score 6, S)
-  - [ ] One line from inside a session to `inbox/<date>-<slug>.md`; `/ingest` already sweeps `inbox/`
-  - [ ] Done when: a captured line shows in the briefing's inbox count
+- [x] **34. `/capture`** (ROADMAP S4, score 6, S)
+  - [x] One line from inside a session to `inbox/<date>-<slug>.md`; `/ingest` already sweeps `inbox/`. The skill runs `brain capture "<the line>"` (`lib/capture.py`), which writes the owner's words as given, never over a note that is there, and refuses a line holding a credential. `Bash(brain capture *)` is allowed, so it does not stop the work it interrupts
+  - [x] Decided: capturing writes no log line. A note in `inbox/` is no memory yet; `/ingest` logs it when it is encoded. `test_skills.py` exempts it by name, with `commit`, `start` and `tend`
+  - [x] Done when: a captured line shows in the briefing's inbox count (and in the status line)
 - [ ] **35. Low-friction capture, one door** (ROADMAP F4, score 7, M)
   - [ ] Name the one concrete door first (the roadmap does not name one)
   - [ ] Build that door only, into `inbox/`
@@ -285,12 +286,14 @@ Not ordered: pick any whose tags are met. Each is smaller once 12 is done.
 
 ### Hygiene
 
-- [ ] **42. `/restore`** (ROADMAP S8, score 4, S)
-  - [ ] Log it, move the page back from `dormant/`, put it in the index (`brain index` after 16)
-  - [ ] Done when: `brain check` no longer lists links to it as faded
-- [ ] **43. `/export`** (ROADMAP S9, score 4, S)
-  - [ ] A wrapper for `brain export`, with `/guard` run first
-  - [ ] Done when: an export with a credential in a chosen page is refused
+- [x] **42. `/restore`** (ROADMAP S8, score 4, S)
+  - [x] Log it, move the page back from `dormant/`, put it in the index. `brain restore NAME` (`lib/restore.py`) does the three in that order: the `maintain restore` line first, then the file to the folder of its type, then `brain index`. The page is not edited. It refuses a name no faded page has, one two have, a page already in `cortex/` under that name, and a type with no folder; `--dry-run` shows the move. It is not on the allow-list: moving a page asks
+  - [x] The skill finds the page, shows the move, restores it, and asks what will link it, since a page nothing uses fades again
+  - [x] Done when: `brain check` no longer lists links to it as faded
+- [x] **43. `/export`** (ROADMAP S9, score 4, S)
+  - [x] A wrapper for `brain export`, with `/guard` run first: choose, guard, export, log `guard export`
+  - [x] The refusal is the command's, not the skill's: `brain export` now scans the chosen pages, stops on a credential (file, kind and line, never the value) and writes nothing; personal data in what was exported is listed for the owner (`personal` in the JSON)
+  - [x] Done when: an export with a credential in a chosen page is refused
 - [ ] **44. Contradiction resolver agent** (ROADMAP A2, score 7, S)
   - [ ] Prepares each side of a `disputed` page for `/maintain settle`: sources, dates, strength
   - [ ] It does not settle
@@ -317,16 +320,18 @@ Not ordered: pick any whose tags are met. Each is smaller once 12 is done.
 
 ### Platform
 
-- [ ] **50. Time of day in log lines** (ROADMAP F9, score 4, S, after 6)
-  - [ ] An optional `HH:MM` after the date, written by `brain log`
-  - [ ] Check every parser that assumes `LOG_LINE` in `vault_model.py`
-  - [ ] Done when: two operations on one day sort by time, and old lines still parse
+- [x] **50. Time of day in log lines** (ROADMAP F9, score 4, S, after 6)
+  - [x] An optional `HH:MM` after the date, written by `brain log`: `2026-10-10 09:39 recall a question -> [[page]]`. `CLAUDE.md` > Log states the format; the examples in `templates/README.md` carry a time
+  - [x] Check every parser that assumes `LOG_LINE` in `vault_model.py`: the events (`time`, `""` on a line without one), the briefing's last activity, the recall sensor (a literal line in an edit, and a line a shell built with today's date), and what `brain check` and `eval --from-log` reprint, which is now the line as it was written. A time that is none (`25:99`) is not read as one: the line is listed as an unknown operation
+  - [x] Events are read in the order they happened, by date and then time: a line with no time comes before the timed ones of its day, and keeps the file's order. So a log merged from two copies of a brain reads right, and a rehearsal's rows are in the order of the day, where a miss was always put before a pass
+  - [x] Done when: two operations on one day sort by time, and old lines still parse (`TimeOfDay` in `test_log.py`; the fixture's and every test's untimed logs read as before)
 - [ ] **51. Visual interface** (ROADMAP F8, score 5, L)
   - [ ] A static HTML graph from `brain graph`; no server
   - [ ] Done when: the file opens from `motor/graph/` with no network
-- [ ] **52. Backup and sync** (ROADMAP F10, score 4, S)
-  - [ ] Document a git remote; `git push` stays denied to a session on purpose
-  - [ ] Done when: the README says how, and a second clone passes `brain check`
+- [x] **52. Backup and sync** (ROADMAP F10, score 4, S)
+  - [x] Document a git remote; `git push` stays denied to a session on purpose (README > Backup and a second machine: a private remote, pushed by the owner; clone, `./install.sh`, `brain check` on the other machine)
+  - [x] Added for the second machine: `.gitattributes` merges the three append-only files by union, so lines both copies added are both kept, with no conflict; with 50 the log then reads in the order things happened. `install.sh --new` now gives a new brain this file and `.gitignore`, which it did not (its `.cache/` was not ignored)
+  - [x] Done when: the README says how, and a second clone passes `brain check` (a test makes two copies of a brain log on the same day, merges them and runs `brain check`; CI runs it on a fresh clone at every push)
 - [ ] **53. Windows support** (ROADMAP F13, score 4, M)
   - [ ] Paths, the `python3` name, symlinks
   - [ ] Done when: `brain test` passes on Windows in CI

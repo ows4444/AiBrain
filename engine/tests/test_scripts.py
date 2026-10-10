@@ -2,6 +2,7 @@
 import datetime
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -9,8 +10,11 @@ import unittest
 
 from support import ENGINE, TODAY, TempBrain, VALID, ago, page, run_brain, vaultlib
 
-import commands  # noqa: E402  (support puts engine/lib on the path)
+import capture  # noqa: E402  (support puts engine/lib on the path)
+import commands  # noqa: E402
 import fit  # noqa: E402
+import index  # noqa: E402
+import restore  # noqa: E402
 import tend  # noqa: E402
 
 
@@ -494,6 +498,116 @@ class TendCheck(TempBrain):
             self.write(f"senses/in{n}.md", "waiting\n")
         self.assertIn("  not encoded       7: senses/in0.md, senses/in1.md, senses/in2.md, senses/in3.md, senses/in4.md "
                       "and 2 more  (/ingest, or /tend)\n", run_brain(self.root, "tend", "--check").stdout)
+
+
+class Capture(TempBrain):
+    """`brain capture`: one line kept for later, in inbox/, and nothing else touched."""
+
+    def test_a_captured_line_is_a_note_the_briefing_counts(self):
+        r = run_brain(self.root, "capture", "Look", "up the SM-2", "intervals again; see https://example.org/sm2")
+        day = datetime.date.today().isoformat()
+        note = f"inbox/{day}-look-up-the-sm-2-intervals.md"
+        self.assertEqual((r.returncode, r.stdout), (0, f"captured: {note} (/ingest encodes it)\n"))
+        with open(os.path.join(self.root, note), encoding="utf-8") as fh:
+            self.assertEqual(fh.read(), "Look up the SM-2 intervals again; see https://example.org/sm2\n")  # as it was given
+        self.assertIn("Inbox: 1 notes waiting", self.run_hook("wake_up.py", {}).stdout)
+        self.assertIn("inbox 1", run_brain(self.root, "statusline").stdout)
+        again = capture.capture(self.root, "Look up the SM-2 intervals: a second thought")  # the same first words
+        self.assertEqual(again, {"note": f"inbox/{day}-look-up-the-sm-2-intervals-2.md", "bytes": 45})
+        self.assertEqual(set(os.listdir(os.path.join(self.root, "inbox"))), {os.path.basename(note),
+                                                                             os.path.basename(again["note"])})
+        self.assertFalse(os.path.exists(os.path.join(self.root, "hippocampus", "log.md")))  # no log line: no memory yet
+        self.assertEqual(capture.capture(self.root, "¿?", today=TODAY)["note"], "inbox/2026-10-03-note.md")  # no word to name it by
+
+    def test_an_empty_line_and_a_credential_are_refused(self):
+        for text, why in (("   ", "brain capture: nothing to capture: give the line to keep"),
+                          ("the key is AKIA" + "A" * 16, "brain capture: the line holds a possible credential (AWS access "
+                                                         "key), which is not repeated here; nothing was written")):
+            r = run_brain(self.root, "capture", text)
+            self.assertEqual((r.returncode, r.stdout, r.stderr), (1, "", why + "\n"))
+        self.assertFalse(os.path.exists(os.path.join(self.root, "inbox")))
+
+
+class Restore(TempBrain):
+    """`brain restore`: a faded page comes back to cortex/ and the index, and the move is logged first."""
+
+    def setUp(self):
+        super().setUp()
+        dates = dict(created="2026-01-01", updated="2026-01-01")
+        shutil.copy(index.TEMPLATE, os.path.join(self.root, index.INDEX))
+        self.old = self.write("dormant/old-idea.md", page("concept", "It faded.\n", title="Old idea", aliases="[Former idea]",
+                                                          status="emerging", summary="An idea that faded.", **dates))
+        self.write("cortex/episodes/talk.md", page("episode", "It mentions [[old-idea]].\n", title="A talk",
+                                                   consolidated="2026-01-02", summary="A talk.", **dates))
+        self.write("hippocampus/log.md", page("log", "\n2026-01-03 maintain fade old-idea -> dormant/\n"))
+
+    def check(self):
+        return json.loads(run_brain(self.root, "check", "--json").stdout)
+
+    def test_the_page_comes_back_and_its_links_are_links_again(self):
+        self.assertEqual(self.check()["to_dormant"], ["cortex/episodes/talk.md -> [[old-idea]]"])
+        dry = run_brain(self.root, "restore", "Former idea", "--dry-run")
+        self.assertEqual(dry.stdout, "would restore: dormant/old-idea.md -> cortex/concepts/old-idea.md (dry run, nothing moved)\n")
+        self.assertTrue(os.path.exists(self.old))
+        r = run_brain(self.root, "restore", "Old idea")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertRegex(r.stdout, r"^restored: dormant/old-idea.md -> cortex/concepts/old-idea.md\n  logged: \d{4}-\d\d-\d\d "
+                                   r"\d\d:\d\d maintain restore old-idea -> \[\[old-idea\]\], back from dormant/ to "
+                                   r"cortex/concepts/old-idea.md\n$")
+        self.assertFalse(os.path.exists(self.old))
+        with open(os.path.join(self.root, "cortex", "concepts", "old-idea.md"), encoding="utf-8") as fh:
+            self.assertIn("updated: 2026-01-01", fh.read())  # as it was: nobody edited it
+        report = self.check()
+        self.assertEqual((report["to_dormant"], report["not_in_index"], report["broken"]), ([], [], []))
+        with open(os.path.join(self.root, index.INDEX), encoding="utf-8") as fh:
+            self.assertIn("- [[old-idea]] - An idea that faded.", fh.read())
+        vault = self.brain()
+        self.assertEqual([p.stem for p in vault.in_links[vault.resolve("old-idea")] if not p.is_system], ["talk"])
+        self.assertEqual(vault.events[-1].op, "maintain")
+
+    def test_what_cannot_be_restored_is_refused_and_nothing_moves(self):
+        dates = dict(created="2026-01-01", updated="2026-01-01")
+        self.write("dormant/more/old-idea-2.md", page("concept", "Another.\n", title="Old idea", status="emerging", **dates))
+        self.write("dormant/untyped.md", "---\ntitle: Untyped\n---\nNo type.\n")
+        self.write("dormant/taken.md", page("concept", "Faded.\n", title="Taken", status="emerging", **dates))
+        self.write("cortex/entities/taken.md", page("entity", "Here already.\n", title="Taken", **dates))
+        for name, why in (("nope", "brain restore: no page named 'nope' in dormant/ (`brain search \"nope\" --dormant` "
+                                   "finds what is there)"),
+                          ("Old idea", "brain restore: 'Old idea' is the name of 2 pages in dormant/: dormant/old-idea.md, "
+                                       "dormant/more/old-idea-2.md; give the file name of one"),
+                          ("untyped", "brain restore: dormant/untyped.md has type 'untyped', which has no folder in "
+                                      "cortex/: set its `type:` first"),
+                          ("taken", "brain restore: a page named 'taken' is already in cortex/: `/maintain merge` the "
+                                    "two, or rename one")):
+            with self.assertRaises(commands.Refused) as refused:
+                commands.call("restore", [name], root=self.root)
+            self.assertEqual(str(refused.exception), why)
+        self.assertTrue(os.path.exists(self.old))
+        self.assertEqual(len(vaultlib.read_events(self.root)), 1)  # nothing was logged for a move that was not made
+        os.remove(os.path.join(self.root, index.INDEX))  # an index kept by hand, or none: the page still comes back
+        self.write(index.INDEX, page("index", "\n# Index\n\nKept by hand.\n"))
+        self.assertTrue(restore.restore(self.root, "old-idea", today=TODAY)["restored"])
+
+
+class ExportGuard(TempBrain):
+    """`brain export` stops on a credential in a chosen page, and lists the personal data in what it wrote."""
+
+    def test_a_page_with_a_credential_is_not_exported_and_personal_data_is_listed(self):
+        dates = dict(created="2026-01-01", updated="2026-01-01")
+        self.write("cortex/concepts/clean.md", page("concept", "Nothing private. Ask ana@example.org.\n", title="Clean",
+                                                    status="emerging", **dates))
+        self.write("cortex/concepts/leaky.md", page("concept", "The key is AKIA" + "A" * 16 + ".\n", title="Leaky",
+                                                    status="emerging", **dates))
+        r = run_brain(self.root, "export", "clean", "leaky")
+        self.assertEqual((r.returncode, r.stdout), (1, ""))
+        self.assertEqual(r.stderr, "not exported: possible credential in cortex/concepts/leaky.md:8: AWS access key. Remove it at "
+                                   "the source and rotate it; nothing was written.\n")
+        self.assertFalse(os.path.exists(os.path.join(self.root, "motor", "export")))
+        ok = run_brain(self.root, "export", "clean")
+        self.assertEqual(ok.returncode, 0, ok.stderr)
+        self.assertTrue(ok.stdout.endswith("personal data in what was exported (the owner decides whether it may leave):\n"
+                                           "  cortex/concepts/clean.md:8: email address\n"))
+        self.assertTrue(os.path.exists(os.path.join(self.root, "motor", "export", "cortex", "concepts", "clean.md")))
 
 
 class NewPage(TempBrain):

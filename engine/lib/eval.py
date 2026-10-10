@@ -99,8 +99,8 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from commands import Refused, brain_root  # noqa: E402
-from vaultlib import (LINK, Vault, is_rehearsal_pass, parse_date, plain, setting, shown, tokens,  # noqa: E402
-                      tuning_of)
+from vaultlib import (LINK, Vault, as_written, is_rehearsal_pass, parse_date, plain, setting, shown,  # noqa: E402
+                      tokens, tuning_of)
 
 EVAL = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "eval")
 FIXTURE = os.path.join(EVAL, "fixture")
@@ -185,8 +185,8 @@ def log_cases(vault):
 
     A question is what the line says before its arrow; the pages expected are the ones it
     names that are here now. A line that names none is a question no page answered. `line` is
-    where it stands among the log's dated lines and `day` its date: it is asked of the brain
-    as it was then (Vault.as_of). A line all of whose pages are gone since cannot be scored.
+    where it stands among the log's lines in the order they happened and `day` its date: it
+    is asked of the brain as it was then (Vault.as_of). A line all of whose pages are gone since cannot be scored.
     """
     questions, gone = [], []
     for at, e in enumerate(vault.events):
@@ -194,7 +194,7 @@ def log_cases(vault):
             continue
         here = [p.stem for p in map(vault.resolve, e.targets) if p is not None and not p.is_system]
         if e.targets and not here:
-            gone.append(f"{e.date} recall {e.rest}")
+            gone.append(as_written(e))
             continue
         asked = {"id": f"{e.date}#{at + 1}", "question": e.what, "date": e.date, "line": at, "day": e.day}
         questions.append(dict(asked, expect=sorted(set(here))) if here else dict(asked, covered=False))

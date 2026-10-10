@@ -12,6 +12,10 @@ would leave as the title of a page that was not exported, so the export stops
 and lists those titles; --keep-titles lets them through. Frontmatter fields that
 describe the brain rather than the content (those marked private in
 `vaultlib.FIELDS`: input, tags, status, review, outcome, ...) are dropped.
+A page that holds what looks like a credential stops the export: nothing is
+written, and the file, the kind and the line are named, never the value.
+Personal data (an email address, a phone number) in what was exported is
+listed the same way; whether it may leave is the owner's call.
 Writes only under --out; never modifies the brain.
 """
 import os
@@ -20,6 +24,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from commands import Refused  # noqa: E402
+from secret_scan import scan_text  # noqa: E402
 from vaultlib import LINK, PRIVATE_FIELDS, Vault  # noqa: E402
 FIELD = re.compile(r"^([\w-]+):")
 
@@ -82,6 +87,11 @@ def run(root, args):
     out = args.out or os.path.join(vault.root, "motor", "export")
     exported, unlinked, leaked = set(chosen), 0, set()
     texts = {page: rewrite_links(strip_frontmatter(page.text), vault, exported, leaked) for page in chosen}
+    found = [(page.rel, kind, severity, line) for page in chosen for kind, severity, line in scan_text(page.text)]
+    secrets = [f"{rel}:{line}: {kind}" for rel, kind, severity, line in found if severity == "critical"]
+    if secrets:
+        raise Refused("not exported: possible credential in " + ", ".join(secrets)
+                      + ". Remove it at the source and rotate it; nothing was written.")
     if leaked and not args.keep_titles:
         raise Refused("not exported: these pages are not in the export, and their titles would leave as plain text: "
                       + ", ".join(sorted(p.title for p in leaked))
@@ -93,9 +103,14 @@ def run(root, args):
         os.makedirs(os.path.dirname(dest), exist_ok=True)
         with open(dest, "w", encoding="utf-8") as fh:
             fh.write(text)
-    return {"exported": [page.rel for page in chosen], "out": out, "unlinked": unlinked}
+    return {"exported": [page.rel for page in chosen], "out": out, "unlinked": unlinked,
+            "personal": [f"{rel}:{line}: {kind}" for rel, kind, severity, line in found if severity == "personal"]}
 
 
 def render(result, args):
-    return (f"exported {len(result['exported'])} pages to {result['out']}; "
+    said = (f"exported {len(result['exported'])} pages to {result['out']}; "
             f"{result['unlinked']} links to unexported pages made plain text")
+    if result["personal"]:
+        said += "\npersonal data in what was exported (the owner decides whether it may leave):\n" + \
+            "\n".join(f"  {found}" for found in result["personal"])
+    return said

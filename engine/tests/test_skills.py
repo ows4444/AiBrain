@@ -22,7 +22,8 @@ class SkillWiring(unittest.TestCase):
 
     def test_every_skill_that_records_an_operation_names_the_command(self):
         # commit, start and tend write no line of their own: the skills and agents they run do.
-        for name in sorted(set(os.listdir(SKILLS)) - {"commit", "start", "tend"}):
+        # capture writes none either: a note in inbox/ is no memory yet, and /ingest logs it when it is.
+        for name in sorted(set(os.listdir(SKILLS)) - {"commit", "start", "tend", "capture"}):
             self.assertIn("`brain log ", self.skill(name), name)
 
     def test_page_creating_skills_index_what_they_create(self):

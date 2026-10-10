@@ -99,7 +99,11 @@ brain log sleep "3 episodes" --result "1 concept established, 2 updated, 1 insig
 write these three lines:
 
 ```
-2026-09-07 ingest senses/some-article.md -> 1 episode, 2 candidates, 4 links
-2026-09-08 recall what is an llm wiki -> [[llm-wiki]], [[karpathy]]
-2026-09-09 sleep 3 episodes -> 1 concept established, 2 updated, 1 insight
+2026-09-07 09:12 ingest senses/some-article.md -> 1 episode, 2 candidates, 4 links
+2026-09-08 18:40 recall what is an llm wiki -> [[llm-wiki]], [[karpathy]]
+2026-09-09 07:05 sleep 3 episodes -> 1 concept established, 2 updated, 1 insight
 ```
+
+The time of day is the moment the line was written. Lines from before it was
+written have a date only and are read as before; within one day they come
+ahead of the lines that carry a time.

@@ -132,7 +132,7 @@ class Memory(TempBrain):
             self.assertFalse(os.path.exists(os.path.join(self.root, gone)), gone)
         self.assertTrue(os.path.exists(os.path.join(self.root, "senses", "good.md")))
         with open(os.path.join(self.root, "hippocampus", "log.md"), encoding="utf-8") as fh:
-            self.assertRegex(fh.read(), r"\d{4}-\d\d-\d\d forget senses/bad.md -> 1 episodes and 1 input files removed "
+            self.assertRegex(fh.read(), r"\d{4}-\d\d-\d\d \d\d:\d\d forget senses/bad.md -> 1 episodes and 1 input files removed "
                                         r"on the owner's yes; 2 pages cited them")
         with open(os.path.join(self.root, "hippocampus", "fingerprints.md"), encoding="utf-8") as fh:
             prints = fh.read()

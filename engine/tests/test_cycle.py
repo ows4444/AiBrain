@@ -139,7 +139,7 @@ class MemoryCycle(unittest.TestCase):
         refused = self.run_py("bin/brain", "log", "recall", "what is an llm wiki", "--pages", "llm-wikis")
         self.assertIn("no page named 'llm-wikis' (closest: llm-wiki)", refused.stderr)
         logged = self.run_py("bin/brain", "log", "recall", "what is an llm wiki", "--pages", "LLM wiki", "obsidian")
-        self.assertRegex(logged.stdout, r"^logged: \d{4}-\d\d-\d\d recall what is an llm wiki -> "
+        self.assertRegex(logged.stdout, r"^logged: \d{4}-\d\d-\d\d \d\d:\d\d recall what is an llm wiki -> "
                                         r"\[\[llm-wiki\]\], \[\[obsidian\]\]\n$")
         s = self.stats()
         self.assertIn({"page": "cortex/concepts/llm-wiki.md", "recalls": 1}, s["most_recalled"])

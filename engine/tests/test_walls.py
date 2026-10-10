@@ -426,6 +426,56 @@ class TheLibraryKeepsItsOwnCopies(TempBrain):
         self.assertEqual(shared.expected_of(page("decision", body)), "- [hypothesis] it works on two lines")
 
 
+@unittest.skipUnless(os.path.exists(os.path.join(REPO, ".gitattributes")), "the engine is not inside a brain")
+class TwoCopiesOfOneBrain(unittest.TestCase):
+    """A brain kept on two machines: what both appended survives the merge, and the log reads in order."""
+
+    def test_every_append_only_file_keeps_the_lines_of_both_sides(self):
+        with open(os.path.join(REPO, ".gitattributes"), encoding="utf-8") as fh:
+            rules = fh.read()
+        for path in link_check.APPEND_ONLY:
+            self.assertIn(f"\n{path} merge=union\n", rules)
+
+    def test_lines_both_copies_logged_are_merged_without_a_conflict_and_read_in_the_order_they_happened(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = os.path.join(tmp, "brain")
+            shutil.copytree(TEMPLATE, repo)
+            shutil.copy(os.path.join(REPO, ".gitattributes"), repo)
+            with open(os.path.join(repo, "cortex", "concepts", "a.md"), "w", encoding="utf-8") as fh:
+                fh.write(page("concept", "A page.\n", **VALID))
+            log = os.path.join(repo, "hippocampus", "log.md")
+
+            def git(*args):
+                r = subprocess.run(["git", "-C", repo, "-c", "user.name=t", "-c", "user.email=t@t", *args],
+                                   capture_output=True, text=True)
+                self.assertEqual(r.returncode, 0, r.stderr)
+                return r.stdout.strip()
+
+            def logged(line, message):
+                with open(log, "a", encoding="utf-8") as fh:
+                    fh.write(line + "\n")
+                git("commit", "-qam", message)
+
+            git("init", "-q")
+            git("add", "-A")
+            git("commit", "-qm", "start")
+            desk = git("rev-parse", "--abbrev-ref", "HEAD")
+            git("checkout", "-q", "-b", "laptop")
+            logged("2026-10-01 14:05 recall asked on the laptop, later -> [[a]]", "laptop")
+            git("checkout", "-q", desk)
+            logged("2026-10-01 09:10 recall asked at the desk, earlier -> [[a]]", "desk")
+            git("merge", "-q", "--no-edit", "laptop")  # both appended at the same place: no conflict
+            with open(log, encoding="utf-8") as fh:
+                merged = fh.read()
+            self.assertNotIn("<<<<<<<", merged)
+            self.assertEqual(merged.count(" recall asked "), 2)
+            self.assertEqual([(e.time, e.what) for e in vaultlib.read_events(repo)],
+                             [("09:10", "asked at the desk, earlier"), ("14:05", "asked on the laptop, later")])
+            r = subprocess.run([sys.executable, BRAIN, "check", "--json"], capture_output=True, text=True, cwd=repo,
+                               env={k: v for k, v in os.environ.items() if k != "BRAIN_ROOT"})
+            self.assertEqual((r.returncode, json.loads(r.stdout)["history"]), (0, []))
+
+
 class BrainTestRunsOnlyTheEngine(unittest.TestCase):
     def run_brain(self, *args):
         return subprocess.run([sys.executable, BRAIN, "test", *args], capture_output=True, text=True)

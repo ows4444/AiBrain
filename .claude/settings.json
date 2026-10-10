@@ -11,6 +11,7 @@
       "Bash(brain tend --check*)",
       "Bash(brain session*)",
       "Bash(brain eval*)",
+      "Bash(brain capture *)",
       "Bash(brain errors*)",
       "Bash(brain test*)",
       "Bash(brain fingerprint*)",

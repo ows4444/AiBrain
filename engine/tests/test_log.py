@@ -95,7 +95,8 @@ class LogCommand(TempBrain):
         self.assertEqual(self.lines(), ["2026-10-03 recall rehearse -> [[spacing-effect]]",
                                         "2026-10-03 rehearse missed -> [[spacing-effect]]"])
         vault = vaultlib.Vault(self.root, today=TODAY)
-        self.assertEqual(vault.rehearsals[vault.resolve("spacing-effect")], [(TODAY, False), (TODAY, True)])
+        # In the order they happened: recalled first, then missed on the same day.
+        self.assertEqual(vault.rehearsals[vault.resolve("spacing-effect")], [(TODAY, True), (TODAY, False)])
 
     def test_the_question_is_one_line_without_an_arrow_and_cut_at_120_characters(self):
         long = "why " + "x" * 200
@@ -118,14 +119,16 @@ class LogCommand(TempBrain):
 
     def test_a_dry_run_writes_nothing_and_json_gives_the_line(self):
         r = self.brain_log("recall", "what", "is", "it", "--pages", "cepeda-2006", "--dry-run")
-        today = datetime.date.today().isoformat()
-        self.assertEqual((r.returncode, r.stdout), (0, f"would log: {today} recall what is it -> [[cepeda-2006]]\n"))
+        now = rf"{datetime.date.today().isoformat()} \d\d:\d\d"  # the day and the time of day it was written at
+        self.assertEqual(r.returncode, 0)
+        self.assertRegex(r.stdout, rf"^would log: {now} recall what is it -> \[\[cepeda-2006\]\]\n$")
         self.assertEqual(self.lines(), [])
         r = self.brain_log("ingest", "senses/a.md", "--result", "1 episode", "--json")
-        self.assertEqual(json.loads(r.stdout), {"line": f"{today} ingest senses/a.md -> 1 episode", "pages": [],
-                                                "written": True})
+        written = json.loads(r.stdout)
+        self.assertRegex(written["line"], rf"^{now} ingest senses/a.md -> 1 episode$")
+        self.assertEqual((written["pages"], written["written"]), ([], True))
         r = self.brain_log("recall", "rehearse", "--pages", "spacing-effect")
-        self.assertEqual(r.stdout, f"logged: {today} recall rehearse -> [[spacing-effect]]\n")
+        self.assertRegex(r.stdout, rf"^logged: {now} recall rehearse -> \[\[spacing-effect\]\]\n$")
         self.assertEqual(len(self.lines()), 2)
 
     def test_a_missing_empty_or_unfinished_log_is_put_right_first(self):
@@ -145,6 +148,65 @@ class LogCommand(TempBrain):
         with self.assertRaises(commands.Refused) as stopped:
             commands.call("log", ["recall", "q"], root=os.path.join(self.root, "cortex"))
         self.assertIn("not a brain", str(stopped.exception))
+
+
+class TimeOfDay(TempBrain):
+    """A line carries the time it was written at; two of one day are then in order, and older lines still read."""
+
+    def setUp(self):
+        super().setUp()
+        self.write("cortex/concepts/a.md", page("concept", "A page.\n", title="A", status="established",
+                                                created="2026-01-01", updated="2026-01-01"))
+
+    def test_the_command_writes_the_time_and_a_line_dated_from_outside_has_one_only_when_given(self):
+        self.write("hippocampus/log.md", HEADER)
+        self.assertEqual(log.write(self.root, "sleep", "1 episode", today=TODAY, clock="07:30")["line"],
+                         "2026-10-03 07:30 sleep 1 episode -> none")
+        self.assertEqual(log.write(self.root, "sleep", "2 episodes", today=TODAY)["line"], "2026-10-03 sleep 2 episodes -> none")
+        written = log.write(self.root, "recall", "what is a", ["a"])["line"]
+        self.assertRegex(written, rf"^{datetime.date.today().isoformat()} \d\d:\d\d recall what is a -> \[\[a\]\]$")
+        events = vaultlib.read_events(self.root)
+        self.assertEqual([(e.date, e.time, e.op) for e in events[:2]],
+                         [("2026-10-03", "", "sleep"), ("2026-10-03", "07:30", "sleep")])  # no time: before the timed
+        self.assertEqual((events[2].op, events[2].targets, vaultlib.as_written(events[2])), ("recall", ["a"], written))
+
+    def test_two_operations_of_one_day_are_in_the_order_of_their_times_whatever_the_file_s(self):
+        self.log("2026-10-02 18:00 rehearse missed -> [[a]]",   # written late, as a log merged from two copies is
+                 "2026-10-01 14:05 recall the second question -> [[a]]",
+                 "2026-10-01 09:10 recall the first question -> [[a]]",
+                 "2026-10-01 recall asked before the time was written -> [[a]]",
+                 "2026-10-02 08:00 recall rehearse -> [[a]]",
+                 "2026-09-30 23:59 sleep 1 episode -> none")
+        vault = vaultlib.Vault(self.root, today=TODAY)
+        self.assertEqual([vaultlib.as_written(e) for e in vault.events], [
+            "2026-09-30 23:59 sleep 1 episode -> none",
+            "2026-10-01 recall asked before the time was written -> [[a]]",
+            "2026-10-01 09:10 recall the first question -> [[a]]",
+            "2026-10-01 14:05 recall the second question -> [[a]]",
+            "2026-10-02 08:00 recall rehearse -> [[a]]",
+            "2026-10-02 18:00 rehearse missed -> [[a]]"])
+        day = datetime.date(2026, 10, 2)
+        self.assertEqual(vault.rehearsals[vault.resolve("a")], [(day, True), (day, False)])  # recalled, then missed
+        since = commands.call("since", ["2026-10-01", "--until", "2026-10-01"], root=self.root)
+        self.assertEqual(since["questions"], ["2026-10-01 asked before the time was written", "2026-10-01 the first question",
+                                              "2026-10-01 the second question"])
+        self.assertEqual(vault.as_of(3).recall_count, {vault.resolve("a"): 2})  # the brain as it was at 14:05
+
+    def test_the_briefing_shows_a_timed_line_and_still_skips_recalls(self):
+        self.log("2026-10-01 09:10 recall a question -> [[a]]", "2026-10-01 10:00 sleep 1 episode -> none")
+        briefing = self.run_hook("wake_up.py", {}).stdout
+        self.assertIn("Last activity:\n  2026-10-01 10:00 sleep 1 episode -> none\n", briefing)
+        self.assertNotIn("a question", briefing)
+
+    def test_a_time_that_is_none_is_not_read_as_one(self):
+        self.log("2026-10-01 25:99 recall at no such time -> [[a]]", "2026-10-01 9:05 recall nor this -> [[a]]",
+                 "2026-10-01 23:59 recall the last minute -> [[a]]", "2026-10-01 tidy things -> done")
+        vault = vaultlib.Vault(self.root, today=TODAY)
+        self.assertEqual([(e.time, e.op) for e in vault.events], [("", "25:99"), ("", "9:05"), ("", "tidy"), ("23:59", "recall")])
+        self.assertEqual(vault.recall_count, {vault.resolve("a"): 1})
+        # What it could not read as a time is an operation it does not know: listed, with the line as it was written.
+        self.assertEqual(vault.log_problems(), ["2026-10-01 25:99 recall at no such time -> [[a]]",
+                                                "2026-10-01 9:05 recall nor this -> [[a]]", "2026-10-01 tidy things -> done"])
 
 
 class LogCheck(TempBrain):

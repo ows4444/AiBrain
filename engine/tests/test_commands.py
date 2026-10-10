@@ -49,7 +49,9 @@ KEYS = {
     "ground": ("ground", ["senses/cepeda.md"], ["checked", "file", "ungrounded"]),
     "graph": ("graph", [], ["edges", "format", "nodes", "out"]),
     "export": ("export", ["spacing-effect", "--keep-titles", "--out", "{tmp}/exported"],
-               ["exported", "out", "unlinked"]),
+               ["exported", "out", "personal", "unlinked"]),
+    "capture": ("capture", ["a", "line", "to", "keep"], ["bytes", "note"]),
+    "restore --dry-run": ("restore", ["old-idea", "--dry-run"], ["line", "page", "restored", "was"]),
     "cache": ("cache", [], STATS),
     "cache --rebuild": ("cache", ["--rebuild"], STATS + ["result"]),
     "cache --clear": ("cache", ["--clear"], ["path", "result"]),
@@ -91,6 +93,7 @@ class Brain(TempBrain):
         self.write("cortex/episodes/cepeda-2006.md", page(
             "episode", "A review of 254 studies of spacing.\n\n## Candidates\n\n- Cramming - massed study fades fast\n",
             title="Cepeda 2006", input="senses/cepeda.md", summary="A review of 254 studies.", **DATES))
+        self.write("dormant/old-idea.md", page("concept", "It faded.\n", title="Old idea", status="emerging", **DATES))
         self.log("2026-01-05 recall how long between sessions -> [[spacing-effect]]")
         self.beside = tempfile.TemporaryDirectory()
         self.addCleanup(self.beside.cleanup)
@@ -158,7 +161,7 @@ class OneSurface(Brain):
         out = os.path.join(self.tmp_dir, "exp")
         sent = json.loads(run_brain(self.root, "export", "spacing-effect", "cepeda-2006", "--out", out, "--json").stdout)
         self.assertEqual(sent, {"exported": ["cortex/concepts/spacing-effect.md", "cortex/episodes/cepeda-2006.md"],
-                                "out": out, "unlinked": 0})
+                                "out": out, "unlinked": 0, "personal": []})
         note = json.loads(run_brain(self.root, "resume", "--json").stdout)
         self.assertEqual(note["note"], os.path.join(".cache", "resume.md"))
         self.assertTrue(note["text"].startswith("# Where the work stood"))

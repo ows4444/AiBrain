@@ -14,6 +14,7 @@
     brain export PAGE ... | --published   pages for outside use, into motor/export/
     brain errors [--since D] [--tail N]   what the hooks swallowed or refused (.cache/errors.log), for refactoring
     brain cache [--rebuild|--clear]       the search cache (.cache/search.sqlite): size, rebuild, clear
+    brain capture TEXT                    one line kept for later: a note in inbox/, which /ingest encodes
     brain fetch URL [--name SLUG]         a web page cut down to its readable text, saved in senses/
     brain fit senses/FILE                 what an input bears on: the pages its own words reach, the held ideas it names
     brain new TYPE [--from senses/FILE]   a page from its template, frontmatter filled in from the input
@@ -21,6 +22,7 @@
     brain chats EXPORT OUT [...]          a Claude or ChatGPT export, one file per conversation
     brain session [TRANSCRIPT]            what the owner typed in this conversation, for /ingest session
     brain forget SOURCE [--yes]           what rests on one input; with the owner's yes, remove it and its episodes
+    brain restore NAME [--dry-run]        bring a faded page back from dormant/ to cortex/ and the index; the move is logged
     brain resume                          write where the work stands to the active project's process/resume.md
     brain statusline [--bar]              the queues and context fill on one line; --bar is the short form for Claude Code's row
     brain tend --check                    everything that needs the owner, in one read-only digest: safe to run on a schedule

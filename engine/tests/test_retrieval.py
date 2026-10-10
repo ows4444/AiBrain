@@ -554,19 +554,20 @@ class ReplayOfTheLog(TempBrain):
             ("2026-08-01", "what is alpha", ["alpha", "beta"]), ("2026-08-20", "more on alpha", ["alpha", "beta"]),
             ("2026-08-25", "the capital of australia", []), ("2026-08-26", "alpha and the weather", []),
             ("2026-08-28", "a third on alpha", ["alpha"])])  # a rehearsal is no question; a page gone since is not expected
-        self.assertEqual([q["id"] for q in asked], ["2026-08-01#1", "2026-08-20#2", "2026-08-25#5", "2026-08-26#6",
-                                                    "2026-08-28#8"])
+        # Its place among the log's lines in the order they happened: the line of no real day sorts first.
+        self.assertEqual([q["id"] for q in asked], ["2026-08-01#2", "2026-08-20#3", "2026-08-25#6", "2026-08-26#7",
+                                                    "2026-08-28#9"])
         r = result["retrieval"]
         rows = {row["id"]: row for row in r["per_question"]["recall"]}
         # On its day nothing had been recalled with alpha: beta is missed. Nineteen days on, the first line had
         # taught the pair, and beta comes back with alpha though no word of the question is on its page.
-        self.assertEqual((rows["2026-08-01#1"]["top"], rows["2026-08-01#1"]["missed"]), (["alpha"], ["beta"]))
-        self.assertEqual((rows["2026-08-20#2"]["top"], rows["2026-08-20#2"]["missed"]), (["alpha", "beta"], []))
+        self.assertEqual((rows["2026-08-01#2"]["top"], rows["2026-08-01#2"]["missed"]), (["alpha"], ["beta"]))
+        self.assertEqual((rows["2026-08-20#3"]["top"], rows["2026-08-20#3"]["missed"]), (["alpha", "beta"], []))
         self.assertEqual((r["recall"]["questions"], r["recall"]["hit_at_1"], r["recall"]["hit_at_k"], r["recall"]["all_at_k"]),
                          (3, 1.0, 0.833, 2))
         self.assertEqual((r["search"]["hit_at_k"], r["search"]["all_at_k"]), (0.667, 1))  # words alone never reach beta
         self.assertEqual([(u["id"], u["search_results"], bool(u["recall_results"])) for u in r["uncovered"]],
-                         [("2026-08-25#5", 0, False), ("2026-08-26#6", 1, True)])
+                         [("2026-08-25#6", 0, False), ("2026-08-26#7", 1, True)])
         self.assertEqual(result["problems"], ["not replayed, it names only pages that are not here: "
                                               "2026-08-27 recall an old name -> [[renamed-away]]"])
         self.assertEqual((result["from_log"]["log_lines"], result["from_log"]["limits"]), (11, list(eval_script.LIMITS)))

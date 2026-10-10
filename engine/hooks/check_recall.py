@@ -9,7 +9,8 @@ page in cortex/ or dormant/ to answer without any skill and wrote no page,
 and wrote no `DATE recall ... ->` line to hippocampus/log.md, Claude is asked
 to log before stopping. The line is written by `brain log recall ...` (or
 `brain log rehearse missed ...`: a rehearsal where every page was missed counts);
-another log line (`explore`, `decide`) does not. A call whose result was an
+another log line (`explore`, `decide`) does not; the line may carry its time
+of day after the date, as `brain log` writes it. A call whose result was an
 error wrote nothing: `brain log` refusing a misspelt page, a hook refusing an
 edit of the log. A line appended by a shell command still counts; when the
 shell builds the date itself (`$(date +%F) recall q -> ...`) the log must hold
@@ -29,7 +30,7 @@ from shared import ROOT, is_brain, note  # the brain may be above the folder the
 RECALL_SKILLS = {"ask", "rehearse", "explore", "decide", "write", "focus"}
 RECALL_COMMAND = re.compile(r"<command-name>/(?:[\w-]+:)?(?:%s)</command-name>" % "|".join(sorted(RECALL_SKILLS)))
 ANY_COMMAND = re.compile(r"<command-name>/([\w:-]+)</command-name>")
-RECALL_LINE = re.compile(r"\d{4}-\d{2}-\d{2} (?:recall|rehearse missed) .*->")
+RECALL_LINE = re.compile(r"\d{4}-\d{2}-\d{2} (?:\d{2}:\d{2} )?(?:recall|rehearse missed) .*->")
 # The engine writes the line and checks it: `brain log recall <question> --pages ...`.
 BRAIN_LOG = re.compile(r"(?:^|[\s;&|(/])brain\s+log\s+(?:recall|rehearse\s+missed)\b")
 # The recall line a shell command writes when it builds the date itself.
@@ -76,8 +77,8 @@ def in_log_today(text):
     """True when the log holds today's line `DATE <text>`: the line a shell command built, not any line."""
     try:
         with open(os.path.join(ROOT, LOG), encoding="utf-8") as fh:
-            today = datetime.date.today().isoformat()
-            return any(line.strip() == f"{today} {text.strip()}" for line in fh)
+            today = re.compile(rf"{datetime.date.today().isoformat()} (?:\d{{2}}:\d{{2}} )?{re.escape(text.strip())}")
+            return any(today.fullmatch(line.strip()) for line in fh)
     except OSError:
         return False
 

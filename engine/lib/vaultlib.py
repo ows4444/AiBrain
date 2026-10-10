@@ -20,7 +20,8 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from vault_events import Event, is_rehearsal_miss, is_rehearsal_pass, read_events, unread_lines  # noqa: E402,F401
+from vault_events import (Event, as_written, is_rehearsal_miss, is_rehearsal_pass, read_events,  # noqa: E402,F401
+                          unread_lines)
 from vault_graph import GraphMixin  # noqa: E402
 from vault_memory import MemoryMixin  # noqa: E402
 from vault_model import *  # noqa: E402,F401,F403
