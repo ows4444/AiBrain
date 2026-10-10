@@ -34,10 +34,15 @@ from vault_tuning import THRESHOLDS, TUNING_PATH, Tuning, plain, setting, shown,
 
 
 class Vault(GraphMixin, MemoryMixin, PurposeMixin, RetrievalMixin):
-    def __init__(self, root, today=None, tuning=None):
-        """`tuning` ({name: value}) is laid over the brain's own thresholds for this Vault only: a value being tried."""
+    def __init__(self, root, today=None, tuning=None, now=None):
+        """`tuning` ({name: value}) is laid over the brain's own thresholds for this Vault only: a value being tried.
+
+        `now` is the moment a reminder with a time of day is judged from: the clock's, unless
+        given. A Vault given only its day (`today`) stands at that day's last minute.
+        """
         self.root = os.path.abspath(root)
-        self.today = today or datetime.date.today()
+        self.now = now or (datetime.datetime.combine(today, datetime.time(23, 59)) if today else datetime.datetime.now())
+        self.today = today or self.now.date()
         self.tuning = tuning_of(self.root, tuning)
         self.pages = list(self._load())
         self.names = self._build_names()
@@ -68,6 +73,7 @@ class Vault(GraphMixin, MemoryMixin, PurposeMixin, RetrievalMixin):
         self.knowledge_edges(), self.typed_edges(), self._searchable(), self._link_weights(), self._pairs_recalled()
         then = copy.copy(self)
         then.today = today or self.today
+        then.now = datetime.datetime.combine(today, datetime.time(23, 59)) if today else self.now
         then.events = self.events[:line]
         for learned in [key for key in then.__dict__ if key == "_associations" or isinstance(key, tuple)]:
             del then.__dict__[learned]  # the association graph and the pair weights are folded from the log

@@ -4,41 +4,73 @@ Mixed into vaultlib.Vault; relies on its pages, edges, goals, tuning and resolve
 """
 import datetime
 import os
-import re
 
-from vault_model import GOAL_END, parse_date
+from vault_intentions import SPAN, clock, next_round, read_intentions
 
-# An intention in hippocampus/intentions.md: `- <what to do> when <YYYY-MM-DD or an event>`,
-# closed by `(done)` or `(dropped)` at the end of the line, as goals are.
-INTENTION = re.compile(r"^[-*]\s+(.+?)\s+when\s+(.+?)\s*$")
+LAST_MINUTE = datetime.time(23, 59)  # a log line with no time of day: the end of its day
 
 
 class PurposeMixin:
     def intentions(self):
-        """[{text, when, due, event, ended}] from hippocampus/intentions.md.
+        """Every reminder in hippocampus/intentions.md, as vault_intentions.read_intentions gives them.
 
-        `due` is set when `when` is a date; otherwise `event` holds the event to
-        watch for, which /ingest checks new input against, as it does `revisit_if`.
+        `due` is the day of a dated one, `every` the round of a repeat; otherwise `event` holds
+        the event to watch for, which `brain fit` holds new input against, as it does `revisit_if`.
         """
-        out = []
-        for page in self.of_type("intentions"):
-            for line in page.body.splitlines():
-                end = GOAL_END.search(line)
-                m = INTENTION.match(GOAL_END.sub("", line).strip())
-                if m:
-                    due = parse_date(m.group(2))
-                    out.append({"text": m.group(1), "when": m.group(2), "due": due,
-                                "event": None if due else m.group(2), "ended": end.group(1).lower() if end else None})
-        return out
+        return [i for page in self.of_type("intentions") for i in read_intentions(page.body)]
+
+    def _reminded(self):
+        """{a reminder's words: the moment of the last `remind` log line naming it}: its adding, or the last time done.
+
+        `brain log remind "<what>"` adds one and `brain log remind "done <what>"` closes one,
+        in the words of the line, so the two are matched by those words, whatever their
+        case and spacing. A line with no time of day stands for the end of its day.
+        """
+        if "_reminded_kept" not in self.__dict__:
+            last = {}
+            for e in self.events:
+                if e.op == "remind" and e.day:
+                    words = e.what.lower().split()
+                    words = words[1:] if words[:1] in (["done"], ["dropped"]) else words
+                    last[" ".join(words)] = datetime.datetime.combine(e.day, clock(e.time) if e.time else LAST_MINUTE)
+            self._reminded_kept = last
+        return self._reminded_kept
+
+    def next_round(self, intention):
+        """When an open repeat next comes round, counted from the last log line naming it; one never logged is due."""
+        since = self._reminded().get(" ".join(intention["text"].lower().split()))
+        if since is None:
+            since = self.now - datetime.timedelta(days=SPAN.get(intention["every"], 7))
+        return next_round(since, intention["every"], intention["time"])
 
     def due_intentions(self):
-        """Open intentions whose date has come, oldest first."""
-        return sorted((i for i in self.intentions() if not i["ended"] and i["due"] and i["due"] <= self.today),
-                      key=lambda i: i["due"])
+        """Open intentions whose time has come, the longest due first; `since` is when each came due."""
+        out = []
+        for i in self.intentions():
+            since = i["at"] or (self.next_round(i) if i["every"] else None)
+            if not i["ended"] and since and since <= self.now:
+                out.append(dict(i, since=since))
+        return sorted(out, key=lambda i: i["since"])
 
     def waiting_intentions(self):
         """Open intentions waiting on an event rather than a date."""
         return [i for i in self.intentions() if not i["ended"] and i["event"]]
+
+    def repeating_intentions(self):
+        """Open repeats, each with `next`: the round it is due for now, or the one to come."""
+        return [dict(i, next=self.next_round(i)) for i in self.intentions() if not i["ended"] and i["every"]]
+
+    def reminder_record(self):
+        """How the reminders that are over ended: {done, dropped, late}.
+
+        `late` is, for each one done whose closing mark gives its day and that had a date,
+        the days between the two, least first (0 for one closed on its day or before it).
+        A bare `(done)` is counted and has no lateness; a repeat is never closed by one.
+        """
+        over = [i for i in self.intentions() if i["ended"]]
+        return {"done": sum(i["ended"] == "done" for i in over), "dropped": sum(i["ended"] == "dropped" for i in over),
+                "late": sorted(max(0, (i["closed"] - i["due"]).days) for i in over
+                               if i["ended"] == "done" and i["closed"] and i["due"])}
 
 
     def links_from(self, page):

@@ -91,6 +91,7 @@ import sys
 from collections import Counter
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from vault_intentions import stamp  # noqa: E402
 from vaultlib import TUNING_PATH, Tuning, Vault, shown, verdicts  # noqa: E402
 
 TOP = 10
@@ -263,6 +264,16 @@ def _hubs(r):
 # Every view of the report, by name. A view is computed when it is first asked for and kept
 # (Report), and may ask for others. A name that starts with `_` is a part several views
 # share: computed once, never printed.
+def _intentions(r):
+    """Reminders: due, waiting on an event, repeating, and how the ones that are over ended."""
+    v = r.vault
+    return {"due": [{"text": i["text"], "when": i["when"], "since": stamp(i["since"], i["timed"])} for i in v.due_intentions()],
+            "waiting": [{"text": i["text"], "when": i["when"]} for i in v.waiting_intentions()],
+            "repeating": [{"text": i["text"], "when": i["when"], "next": stamp(i["next"], i["timed"])}
+                          for i in v.repeating_intentions()],
+            "closed": v.reminder_record()}
+
+
 VIEWS = {
     "_components": lambda r: r.vault.components(),
     "_stale": lambda r: r.vault.stale_concepts(),  # (every concept, the stale ones)
@@ -304,9 +315,7 @@ VIEWS = {
     "due": lambda r: [p.rel for p in r["_due"]],
     "risk": _risk,
     "decisions": _decisions,
-    "intentions": lambda r: {"due": [{"text": i["text"], "when": i["when"]} for i in r.vault.due_intentions()],
-                             "waiting": [{"text": i["text"], "when": i["when"]}
-                                         for i in r.vault.waiting_intentions()]},
+    "intentions": _intentions,
     "dormant": lambda r: [p.rel for p in r.vault.dormant_candidates()],
     "open": lambda r: {k: [p.rel if not isinstance(p, tuple) else f"{p[0].rel} contradicts {p[1].rel}" for p in v]
                        for k, v in r.vault.open_items().items()},
@@ -507,9 +516,20 @@ def render(r, args):
                        + (f", missing {', '.join(g['missing'])}" if g["missing"] else "")
                        + ("  AT RISK: nothing done toward it lately" if g["at_risk"] else "") for g in r["goals"]])
     if "remind" in show:
-        out += listed("reminders due", [f"{i['when']}  {i['text']}" for i in r["intentions"]["due"]])
+        out += listed("reminders due", [f"{i['when']}  {i['text']}"
+                                        + (f"  (since {i['since']})" if i["since"] != i["when"] else "")
+                                        for i in r["intentions"]["due"]])
         out += listed("reminders waiting on an event", [f"{i['text']}  (when {i['when']})"
                                                          for i in r["intentions"]["waiting"]])
+        if r["intentions"]["repeating"]:
+            out += listed("reminders that repeat", [f"{i['when']}  {i['text']}  (next {i['next']})"
+                                                    for i in r["intentions"]["repeating"]])
+        closed = r["intentions"]["closed"]
+        if closed["done"] or closed["dropped"]:
+            late = closed["late"]
+            out.append(f"\nreminders closed: {closed['done']} done, {closed['dropped']} dropped"
+                       + (f"; of the {len(late)} done that say when, the middle one {late[len(late) // 2]} days after "
+                          f"it was due, the latest {late[-1]}" if late else ""))
     if "links" in show:
         out += listed("links that probably belong (sleep proposes; the owner agrees or not)",
                       [f"{x['score']:>6.2f}  {' ~ '.join(x['pages'])}  ({x['why']})" for x in r["link_suggestions"]])

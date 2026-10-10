@@ -9,6 +9,7 @@ import os
 import re
 import sys
 
+from vault_intentions import END as GOAL_END, intention_problems
 from vault_tuning import Tuning, tuning_problems
 
 LINK =re.compile(r"\[\[([^\]|#]+)(?:#[^\]|]*)?(?:\|[^\]]*)?\]\]")
@@ -151,7 +152,6 @@ GOAL_LINE = re.compile(r"^[-*]\s+(.+?)(?:\s+by\s+(\d{4}-\d{2}-\d{2}))?\s*(?:->\s
 # A goal ends when its line says `(done)` or `(dropped)`. One more than
 # goal_stale_days past its date stops protecting its pages until it is closed
 # or re-dated, so purpose cannot silently grow forever.
-GOAL_END = re.compile(r"\s*\((done|dropped)\)", re.I)
 REHEARSED_TYPES = ("concept", "insight")
 # Pages something should link *to*. Decisions and /explore episodes are
 # records: they link out to what they used, and nothing is expected to link
@@ -338,7 +338,8 @@ def schema_problems(text, vocabulary=None, page_type=None, stem=None, rel=None):
         return ["missing frontmatter block"]
     kind = fields.get("type", "")
     if system_type_at(kind, rel):
-        return tuning_problems(body) if kind == "tuning" else []  # the one system page with a contract of its own
+        # The two system pages with a contract of their own: a threshold that is none, a reminder that cannot fire.
+        return {"tuning": tuning_problems, "intentions": intention_problems}.get(kind, lambda _: [])(body)
     if kind in SYSTEM_TYPES:
         where = SYSTEM_PATHS.get(kind, "prefrontal/<name>/CLAUDE.md, where the folder sets it")
         return [f"type '{kind}' belongs only to {where}; a memory page here is one of {', '.join(PAGE_TYPES)}"]

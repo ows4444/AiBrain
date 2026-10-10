@@ -57,12 +57,13 @@ Page contract: frontmatter `title`, `summary` (one sentence, max 200 chars), `ty
 
 ### 4.1 The model: `engine/lib/vaultlib.py`
 
-One `Vault` class, composed from four mixins over four base modules, so every script and hook reports the
+One `Vault` class, composed from four mixins over five base modules, so every script and hook reports the
 same numbers.
 
 ```
 vault_model.py      constants, field registry, page parsing, Page          (no brain walk)
 vault_tuning.py     every threshold: default, range, what it does; a brain's own values
+vault_intentions.py a reminder's line: a day, a time, a repeat or an event; how it closes
 vault_events.py     hippocampus/log.md parsed once into typed events
         │
 vaultlib.Vault = GraphMixin + MemoryMixin + PurposeMixin + RetrievalMixin
@@ -73,9 +74,9 @@ vaultlib.Vault = GraphMixin + MemoryMixin + PurposeMixin + RetrievalMixin
   vault_cache.py      term frequencies in .cache/search.sqlite (rebuildable, optional)
 ```
 
-Key property: **nothing derived is stored**. Recall strength, the Hebbian pair weights, rehearsal dates
-and goal activity are all folded out of the log at read time, so editing or rolling back the log changes
-every view at once.
+Key property: **nothing derived is stored**. Recall strength, the Hebbian pair weights, rehearsal dates,
+goal activity and when a repeating reminder was last done are all folded out of the log at read time, so
+editing or rolling back the log changes every view at once.
 
 Every number a judgment rests on (when a concept is stale, where recall stops, how a word in a title weighs)
 is one entry of the registry in `vault_tuning.py`. A brain changes one with a line under `## Overrides` in

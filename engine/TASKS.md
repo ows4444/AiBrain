@@ -377,11 +377,13 @@ Taken from the "synthetic brain" notes (`thoughts.md`) by D18. Today a reminder 
 a date is shown in the briefing once it has come, an event is compared with each new input by the model.
 Each item keeps the rules: the line in `hippocampus/intentions.md` and the log are the record, nothing else is stored.
 
-- [ ] **57. Reminders with a time and a repeat** (ROADMAP F14, score 6, S, after 50)
-  - [ ] `when` takes a time after the date (`2026-10-11 10:00`): due from that minute. A date alone is due from the start of its day, as now
-  - [ ] `when` takes a repeat (`every day`, `every monday`, `every month`). A repeat is not closed by `(done)`: each time it is done the `remind` log line says so, and it is due again at the next one after that line. `(dropped)` ends it
-  - [ ] Every reader takes both: the briefing, `brain introspect --remind`, `brain tend --check`, the status line; the `/remind` skill and the template of `intentions.md` say how to write them
-  - [ ] Done when: a timed reminder is not due a minute before its time, a weekly one is due again a week after it was done, and the lines written before read as they did
+- [x] **57. Reminders with a time and a repeat** (ROADMAP F14, score 6, S, after 50)
+  - [x] `when` takes a time after the date (`2026-10-11 10:00`): due from that minute. A date alone is due from the start of its day, as before. The Vault has a clock for this (`Vault.now`: the machine's, or one handed in; a Vault given only its day stands at that day's last minute, so every test and replay reads as it did)
+  - [x] `when` takes a repeat: `every day`, `every monday` (any weekday), `every month` (its first day), each with a time or without. A repeat is not closed by `(done)`: it is counted from the last `remind` log line that names it in the words of the line, its adding or the last time it was done, and is due at the first round after that. One the log never names was never done, and its latest round is due. `(dropped)` ends it. Nothing new is stored: the line and the log are the record
+  - [x] The grammar is one small module, `lib/vault_intentions.py` (no dependencies). A `when` that starts as a day or a repeat and cannot be read as one (`2026-02-30`, `2026-10-03 25:00`, `every fortnight`) would wait for ever as an event nothing reports, so it is a problem of the page: `brain check` fails on it and the page hook refuses the write, as for a bad line of `tuning.md`. So an event cannot start with `every`; the refusal says to write it another way
+  - [x] Every reader takes both: the briefing, `brain tend --check` and the status line through `due_intentions`; `brain introspect --remind` also lists the repeats with their next round, and says since when a repeat has been due. The `/remind` skill and the template of `intentions.md` say how to write them
+  - [x] Done when: a timed reminder is not due a minute before its time, a weekly one is due again a week after it was done, and the lines written before read as they did (`tests/test_learning.py`, `Intentions`)
+  - Not done here: a reminder with a time is still only seen when something looks, at the next session or the next `brain tend --check`. Showing it at its minute with no session open is 60
 - [x] **58. `brain fit` names the reminders and decisions an input bears on** (ROADMAP F15, score 7, S to M)
   - [x] After the pages and held ideas it lists now: every event the brain waits on, a reminder written `when <event>` and the `revisit_if` of each decision in force. One the input holds `trigger_coverage` (0.6) of the words of is marked `*` and comes first, with the words it holds; each word is weighed by its rarity, as search weighs it, so `a rival cuts prices` is not marked for an input that only names prices (`lib/fit.py`: `reached`, `waiting`; `triggers` in the JSON)
   - [x] Changed from the plan: it lists all of them, not only the marked ones. An input can report an event in other words, which no count of words sees; had the list held the marked ones alone, `/ingest` would have stopped reading the others and missed those. The unmarked ones are cut at `--limit`, the marked never
@@ -389,11 +391,12 @@ Each item keeps the rules: the line in `hippocampus/intentions.md` and the log a
   - [x] `/ingest` reads that list in place of running `brain introspect --decisions` and `--remind` and comparing by eye; `Triggers:` in its report starts from it, and the model still says what the input reports. `/remind` says to write an event in the words a source would use
   - [x] Its limit, said in its own text: the mark is where to look, never the verdict
   - [x] Done when: of two inputs, one reporting a reminder's event and one not, only the first lists it. Both list it, by the change above; only the first marks it (`tests/test_scripts.py`, `Fit`: of three reminders and a decision, the two whose words the input holds are marked, one that holds half is not until `trigger_coverage` is 0.5)
-- [ ] **59. A reminder closes with its date and what happened** (ROADMAP F16, score 5, S)
-  - [ ] `(done 2026-10-12: the setup was confirmed)` and `(dropped 2026-10-12: no longer needed)`; a bare `(done)` still closes a line
-  - [ ] `brain introspect --remind` says, of the reminders closed: how many were done and how many dropped, and how many days after their date (the middle one and the latest)
-  - [ ] `/remind` asks for the one line when it closes a reminder
-  - [ ] Done when: a reminder closed three days late shows as three days late, and one closed bare is counted with no lateness
+- [x] **59. A reminder closes with its date and what happened** (ROADMAP F16, score 5, S)
+  - [x] `(done 2026-10-12: the setup was confirmed)` and `(dropped 2026-10-12: no longer needed)`; a bare `(done)` still closes a line. Goals end with the same mark, so a goal may carry its day too
+  - [x] `brain introspect --remind` says, of the reminders closed: how many were done and how many dropped, and for the ones done that give their day and had a date, how many days after it (the middle one and the latest). One closed on its day or before it is 0 days late. `closed` in the JSON
+  - [x] `/remind` asks for the one line when it closes a reminder
+  - [x] Done when: a reminder closed three days late shows as three days late, and one closed bare is counted with no lateness
+  - Not counted: how late each round of a repeat was done. The log has it (the `remind done` lines against the rounds); nothing reads it yet
 - [ ] **60. A schedule that needs no session** (ROADMAP F17, score 7, M, after 28; closes 28's open step)
   - [ ] One command sets it and one removes it: a launchd job on macOS, the cron line printed elsewhere, running `brain tend --check` at the time of day you give
   - [ ] When something waits it shows a notification naming what and how many; when nothing does it shows none. `mail` is not needed
