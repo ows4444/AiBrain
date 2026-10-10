@@ -10,6 +10,8 @@
     "rows": 56,
     "bytes_read": 50032,
     "bytes_needed": 18162,
+    "bytes_by_section": 17107,
+    "sectioned": 52,
     "bytes_listing": 9075,
     "bytes_by_summary": 27237,
     "unsummarised": 0
@@ -23,6 +25,8 @@
     "rows": 47,
     "bytes_read": 40018,
     "bytes_needed": 18162,
+    "bytes_by_section": 14113,
+    "sectioned": 41,
     "bytes_listing": 7599,
     "bytes_by_summary": 25761,
     "unsummarised": 0
@@ -38,6 +42,8 @@
         "rows": 56,
         "bytes_read": 50032,
         "bytes_needed": 18162,
+        "bytes_by_section": 17107,
+        "sectioned": 52,
         "bytes_listing": 9075,
         "bytes_by_summary": 27237,
         "unsummarised": 0
@@ -51,6 +57,8 @@
         "rows": 47,
         "bytes_read": 40018,
         "bytes_needed": 18162,
+        "bytes_by_section": 14113,
+        "sectioned": 41,
         "bytes_listing": 7599,
         "bytes_by_summary": 25761,
         "unsummarised": 0
@@ -66,6 +74,8 @@
         "rows": 38,
         "bytes_read": 42117,
         "bytes_needed": 6934,
+        "bytes_by_section": 14075,
+        "sectioned": 34,
         "bytes_listing": 7111,
         "bytes_by_summary": 14045,
         "unsummarised": 0
@@ -79,6 +89,8 @@
         "rows": 35,
         "bytes_read": 38184,
         "bytes_needed": 6934,
+        "bytes_by_section": 12895,
+        "sectioned": 31,
         "bytes_listing": 6550,
         "bytes_by_summary": 13484,
         "unsummarised": 0
@@ -94,6 +106,8 @@
         "rows": 37,
         "bytes_read": 37621,
         "bytes_needed": 6800,
+        "bytes_by_section": 12631,
+        "sectioned": 36,
         "bytes_listing": 6418,
         "bytes_by_summary": 13218,
         "unsummarised": 0
@@ -107,6 +121,8 @@
         "rows": 32,
         "bytes_read": 30685,
         "bytes_needed": 6800,
+        "bytes_by_section": 11330,
+        "sectioned": 28,
         "bytes_listing": 5474,
         "bytes_by_summary": 12274,
         "unsummarised": 0

@@ -97,8 +97,8 @@ the dict with `--json`, which every command takes. Another program makes the sam
 | Group | Commands |
 |-------|----------|
 | Find | `search` (BM25), `recall` (words, then links), `since` (period view) |
-| Check | `check` (links, schema, index drift, edited inputs), `introspect` (18 views; `--gaps` is what was asked and not answered), `eval` (a question set, or with `--from-log` the log's own questions, each replayed as the brain was that day; `--set` tries a threshold at another value and writes nothing) |
-| Input | `fetch`, `chats`, `session`, `fingerprint`, `new` |
+| Check | `check` (links, schema, index drift, edited inputs), `introspect` (18 views; `--gaps` is what was asked and not answered), `eval` (a question set, or with `--from-log` the log's own questions, each replayed as the brain was that day; `--set` tries a threshold at another value and writes nothing), `ground` (a drafted answer or piece held to the pages it cites: the sensor for the core rule of `/ask` and `/write`) |
+| Input | `fetch`, `chats`, `session`, `fingerprint`, `fit` (the pages an input's own words reach, the held ideas it names), `new` |
 | Record | `log` (the one writer of log lines: it checks the operation and every page name), `index` (rewrites the index's listing from the pages) |
 | Output | `export`, `graph` |
 | Remove and continue | `forget` (remove an input), `resume` (write where the work stands) |
@@ -196,7 +196,8 @@ Only encoder and consolidator write. The critic judges a run in a clean context 
 
 1. `prompt_recall` (if enabled) adds a pointer: matching summaries only.
 2. `/ask` runs `brain recall`: BM25 seeds activation, which spreads 1 to 2 hops along links, stronger on typed
-   links and on pairs recalled together before. Each hit shows how it was reached and its confidence.
+   links and on pairs recalled together before. Each hit shows how it was reached, its confidence, and the
+   section to read first: the one holding the question's words that the page's title does not.
 3. The model reads the pages and answers from them with inline citations; outside knowledge is labelled.
    "Not covered by any page here" is a valid answer. A stale page is put to the owner, never overwritten.
 4. The skill runs `brain log recall`, which checks the page names and appends

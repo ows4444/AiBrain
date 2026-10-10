@@ -10,7 +10,7 @@ from itertools import chain
 from vault_events import is_rehearsal_pass, is_rehearsal_miss
 from vault_model import (CLAIM_RESULTS, CLAIM_SECTIONS, CLAIM_TAGS, FADE_IGNORES_LINKS_FROM, LINK, OPS, OUTCOMES,
                          PROBABILITY_TAGS, RELATIONS, REHEARSED_TYPES, SALIENT, STUB_TYPES, FENCE, as_list,
-                         claim_problems, parse_date, tag_vocabulary, tokens)
+                         claim_problems, parse_date, same_idea, tag_vocabulary, tokens)
 
 # Query parameters that say how a reader arrived, not which page it is.
 TRACKING = re.compile(r"^(utm_\w+|fbclid|gclid|igshid|mc_[ce]id|ref|ref_src)$")
@@ -231,13 +231,14 @@ class MemoryMixin:
         concept bar needs (two or more). `generated` holds /explore episodes,
         which raise an idea but never count, since imagining something is not
         evidence for it. Names that reach one page (its title or an alias) are
-        one candidate; without a page, only the same spelling is.
+        one candidate; without a page, names made of the same words once stemmed
+        are (same_idea), under the spelling met first.
         """
         tally = {}
         for src in self.pages:
             for name in src.candidates:
                 page = self.resolve(name)
-                row = tally.setdefault(("page", page.rel) if page else ("name", name.lower()),
+                row = tally.setdefault(("page", page.rel) if page else ("name", same_idea(name)),
                                        {"name": name, "episodes": [], "generated": [], "page": page})
                 bucket = row["generated" if src.generated else "episodes"]
                 if src not in bucket:
@@ -261,7 +262,7 @@ class MemoryMixin:
             if row["page"] or not row["episodes"]:
                 continue
             notes = [note for src in row["episodes"] for name, note in src.candidate_notes
-                     if name.lower() == row["name"].lower()]
+                     if same_idea(name) == same_idea(row["name"])]
             held.append((row["name"], set(tokens(row["name"])), set(tokens(" ".join([row["name"], *notes]))),
                          {self.source_of(p) for p in row["episodes"]}))
 

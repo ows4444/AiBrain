@@ -33,7 +33,9 @@ in one sentence and stop.
    source that have no page yet: answer from that line when it is enough,
    cite its episode, and say how many sources it rests on. Read the summaries first and open
    only the pages that bear on the question, top down; a page with no
-   summary has to be opened to judge it. `hippocampus/index.md` is
+   summary has to be opened to judge it. Where a row says `read first`, it
+   names the section that holds the question's words, with its lines: read
+   those lines, and the rest of the page only when they do not answer. `hippocampus/index.md` is
    the map when the ranking misses something you expect. For a question
    spanning many pages, hand it to the `researcher` agent and log the recall
    it returns.
@@ -42,7 +44,11 @@ in one sentence and stop.
 3. **Answer in plain prose** with `[[page]]` citations inline, in the mode
    asked for (below). State each cited concept's confidence as `brain recall`
    gives it (`low`, `medium`, `high`, with its source count), and say when a
-   page is `contradicted` by new input sleep has not weighed yet.
+   page is `contradicted` by new input sleep has not weighed yet. A long
+   answer (more than a paragraph, or one that gives numbers or quotes a
+   page) is checked before it is given: pass it to `brain ground -` on
+   stdin, and for each line it lists cite the page, label the sentence
+   outside knowledge, or take it out.
 4. **Log the recall,** always, even for an empty answer:
    `brain log recall "<the question as asked>" --pages <page> <page>` (pages
    that contributed, not every page opened; none: leave `--pages` out). It

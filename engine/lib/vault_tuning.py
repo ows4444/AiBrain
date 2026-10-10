@@ -129,6 +129,10 @@ THRESHOLDS = {name: Threshold(*spec) for name, spec in {
     # name, and at least held_coverage of the question in its name and one-line note.
     "held_coverage": (0.5, 0.0, 1.0, "share of the question a held idea's name and note must hold to be listed"),
     "held_limit": (3, 1, 100, "held ideas listed with a recall at most"),
+    # -- what an input bears on (`brain fit`) --------------------------------------------
+    # Of the input's words that some page also holds, the ones that mark it most (often in
+    # it, rare in the brain) are searched as one question.
+    "fit_words": (12, 1, 100, "words of an input, the ones that mark it most, searched for the pages it bears on"),
     # -- what was asked and not answered (`brain introspect --gaps`) ---------------------
     # Questions no page answered are one gap when they share a rare word; a question with
     # no rare word is known by all of its words.

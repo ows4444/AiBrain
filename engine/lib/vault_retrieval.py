@@ -24,7 +24,7 @@ from collections import Counter
 
 from vault_cache import TermCache
 from vault_events import is_rehearsal_pass
-from vault_model import DORMANT_DIR, QUESTION, RELATIONS, Page, as_list, prose, tokens
+from vault_model import DORMANT_DIR, QUESTION, RELATIONS, SECTION, Page, as_list, prose, same_idea, tokens
 
 
 def field_text(page, field):
@@ -243,8 +243,40 @@ class RetrievalMixin:
             frontier = spread
         return activation, via
 
+    def best_sections(self, query, pages, dormant=False):
+        """{page: {heading, line, end, bytes} or None}: the `## ` section of each page to read first for a question.
+
+        The words that count are the question's that the page's own names (title, aliases) do
+        not hold: a page named by the question is its subject and is read from the top, so it
+        gets no section, and neither does a page none of whose sections holds such a word (one
+        reached by a link). Among the rest, the section holding the rarest of those words wins,
+        its heading included; the first one, when two hold as much. `line` and `end` are the
+        lines of the file it spans, for a reader that opens a part of a file.
+        """
+        terms = set(tokens(query))
+        docs, _ = self._searchable(dormant=dormant)
+        n = len(docs)
+        df = Counter(t for tf in docs.values() for t in terms if t in tf)
+        idf = {t: math.log(1 + (n - df[t] + 0.5) / (df[t] + 0.5)) for t in terms}
+        out = {}
+        for page in pages:
+            wanted = terms - set(tokens(" ".join([page.title, *page.aliases])))
+            best, top = None, 0.0
+            for m in SECTION.finditer(page.body):
+                held = set(tokens(m.group(1) + " " + prose(m.group(2))))
+                weight = sum(idf[t] for t in wanted if t in held)
+                if weight > top:
+                    best, top = m, weight
+            out[page] = None
+            if best:
+                text = best.group(0).rstrip()
+                line = page.text[:len(page.text) - len(page.body) + best.start()].count("\n") + 1
+                out[page] = {"heading": best.group(1), "line": line, "end": line + text.count("\n"),
+                             "bytes": len(text.encode("utf-8"))}
+        return out
+
     def recall(self, query, project=None, limit=10, hops=None, dormant=False, floor=0.0, abstain=False):
-        """Ranked pages for a question: [{page, score, seed, hop, from, confidence, flags}].
+        """Ranked pages for a question: [{page, score, seed, hop, from, confidence, flags, section}].
 
         `floor` cuts rows scoring under that share of the best row; `abstain`
         returns nothing when the best search hit holds under min_coverage of
@@ -256,6 +288,7 @@ class RetrievalMixin:
         recalled depends on what the owner is working on.
         flags: disputed, contradicted, stale (a concept or insight not updated in
         stale_days: ask whether it still holds), generated (/explore), dormant.
+        section: the part of the page to read first, when one stands out (best_sections).
         """
         t = self.tuning
         hits = self.search(query, limit=t.seed_limit, dormant=dormant)
@@ -292,8 +325,10 @@ class RetrievalMixin:
                          "from": seed, "flags": flags})
         rows.sort(key=lambda r: (-r["score"], r["page"].rel))
         rows = [r for r in rows if r["score"] >= floor * rows[0]["score"]][:limit]
+        sections = self.best_sections(query, [r["page"] for r in rows], dormant)
         for r in rows:
             r["confidence"] = None if "dormant" in r["flags"] else self.confidence(r["page"])
+            r["section"] = sections[r["page"]]
         return rows
 
     def prompt_recall(self, prompt):
@@ -352,7 +387,7 @@ class RetrievalMixin:
             if row["page"] or not row["episodes"]:
                 continue
             notes = [note for src in row["episodes"] for name, note in src.candidate_notes
-                     if name.lower() == row["name"].lower() and note]
+                     if same_idea(name) == same_idea(row["name"]) and note]
             named, noted = set(tokens(row["name"])), set(tokens(" ".join(notes)))
             if 2 * len(terms & named) < len(named):  # the question has to name it: half the name's words or more
                 continue

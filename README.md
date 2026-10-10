@@ -89,6 +89,8 @@ brain check           # broken links, schema, index drift
 brain search QUERY    # pages by their words
 brain recall QUERY    # words, then associations along links
 brain since 2026-09-01
+brain fit senses/FILE # what an input bears on, before it is encoded; /ingest runs it
+brain ground FILE     # a draft: links, numbers and quotations with no page behind them
 brain log recall "a question" --pages a-page   # one checked line in the log; skills run it
 brain index           # rewrite the index's listing from the pages and their summaries
 brain test            # the engine's own tests

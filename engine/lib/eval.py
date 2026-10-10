@@ -23,7 +23,9 @@ names one), and each is scored:
             `summary:`, the size of that listing plus the expected pages:
             what an answer reads when the summaries lead it to the right
             pages and no others. That last number is a floor, not a
-            measurement of what a reader does
+            measurement of what a reader does. By section: what it reads
+            when it opens, of each page returned, the section recall names
+            to read first, and the whole page where it names none
 Questions are scored in sets, each reported apart, because they fail for
 different reasons and one number hides a change that helps one set and hurts
 another: the standard set (questions with no `set`), `paraphrase` (no word
@@ -199,13 +201,16 @@ def log_cases(vault):
     return questions, gone
 
 
-def rank_scores(pages, expect, k):
+def rank_scores(pages, expect, k, sections):
+    """How one ranking did. `sections` is {page: the section to read first, or None} (Vault.best_sections)."""
     top = [p.stem for p in pages[:k]]
     found = [e for e in expect if e in top]
     first = next((i for i, stem in enumerate(top, 1) if stem in expect), None)
     return {"hit": len(found) / len(expect), "all": len(found) == len(expect), "rr": 1 / first if first else 0.0,
             "rank": first,
             "missed": [e for e in expect if e not in top], "top": top, "bytes": sum(size(p) for p in pages[:k]),
+            "by_section": sum(sections[p]["bytes"] if sections[p] else size(p) for p in pages[:k]),
+            "sectioned": sum(1 for p in pages[:k] if sections[p]),
             "rows": len(pages[:k]),
             "listing": sum(len(f"{p.rel}\n{p.summary}\n".encode("utf-8")) for p in pages[:k]),
             "unsummarised": sum(not p.summary for p in pages[:k])}
@@ -217,6 +222,7 @@ def summary(rows):
             "hit_at_k": round(sum(r["hit"] for r in rows) / n, 3) if n else 0.0,
             "all_at_k": sum(r["all"] for r in rows), "mrr": round(sum(r["rr"] for r in rows) / n, 3) if n else 0.0,
             "rows": sum(r["rows"] for r in rows), "bytes_read": sum(r["bytes"] for r in rows), "bytes_needed": sum(r["needed"] for r in rows),
+            "bytes_by_section": sum(r["by_section"] for r in rows), "sectioned": sum(r["sectioned"] for r in rows),
             "bytes_listing": sum(r["listing"] for r in rows),
             "bytes_by_summary": sum(r["listing"] + r["needed"] for r in rows),
             "unsummarised": sum(r["unsummarised"] for r in rows)}
@@ -227,8 +233,8 @@ def retrieval(vault, questions, k):
 
     def recalled(q):  # as `brain recall` does it: weak rows cut, nothing on a gross mismatch
         then = vault.as_of(q["line"], q["day"]) if "line" in q else vault  # a logged question: the brain of its day
-        return [r["page"] for r in then.recall(q["question"], project=q.get("project"), limit=k,
-                                               floor=vault.tuning.recall_floor, abstain=True)]
+        return then.recall(q["question"], project=q.get("project"), limit=k, floor=vault.tuning.recall_floor,
+                           abstain=True)
 
     for q in questions:
         if "held" in q:  # the question names an idea still held on its episode
@@ -244,10 +250,14 @@ def retrieval(vault, questions, k):
                                      "recall_results": len(recalled(q))})
             continue
         searched = [p for p, _ in vault.search(q["question"], limit=k)]
+        rows = recalled(q)
         needed = sum(size(p) for p in map(vault.resolve, q["expect"]) if p)
         name = q.get("set", STANDARD)
-        out["search"].append(dict(rank_scores(searched, q["expect"], k), id=q["id"], set=name, needed=needed))
-        out["recall"].append(dict(rank_scores(recalled(q), q["expect"], k), id=q["id"], set=name, needed=needed))
+        out["search"].append(dict(rank_scores(searched, q["expect"], k, vault.best_sections(q["question"], searched)),
+                                  id=q["id"], set=name, needed=needed))
+        out["recall"].append(dict(rank_scores([r["page"] for r in rows], q["expect"], k,
+                                              {r["page"]: r["section"] for r in rows}),
+                                  id=q["id"], set=name, needed=needed))
     names = sorted({r["set"] for r in out["recall"]}, key=lambda s: (s != STANDARD, s))
     sets = {name: {mode: summary([r for r in out[mode] if r["set"] == name]) for mode in ("search", "recall")}
             for name in names}
@@ -481,6 +491,10 @@ def render(result, args):
                    f"the expected pages alone {s['bytes_needed']}{was}")
         out.append("    " + ", ".join(f"{row['id']} {row['bytes']}" for row in r["per_question"]["recall"]
                                       if row["set"] == STANDARD))
+        was = (f"   (baseline {base['recall']['bytes_by_section']})"
+               if base and "bytes_by_section" in base.get("recall", {}) else "")
+        out.append(f"  recall  by section: {s['bytes_by_section']}, {s['bytes_by_section'] // n} a question, when the section "
+                   f"recall names is read in place of its page ({s['sectioned']} of {s['rows']} rows name one){was}")
         out.append(f"  recall  by summary: {s['bytes_by_summary']} ({s['bytes_listing']} of listing, then the expected pages), "
                    f"{s['bytes_by_summary'] // n} a question, if every summary leads to the right page"
                    + (f"; {s['unsummarised']} returned pages had no summary" if s["unsummarised"] else ""))

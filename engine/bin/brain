@@ -9,11 +9,13 @@
     brain log OP [WHAT] [--pages ...]     write one checked line to the log: the operation, the pages, today's date
     brain index [--dry-run]               rewrite the listing of hippocampus/index.md from the pages and their summaries
     brain fingerprint                     record a hash of each new input in senses/
+    brain ground FILE | -                 a drafted answer or piece: links, numbers and quotations with no page behind them
     brain graph [out] [--format ...]      the link graph as CSV or GraphML
     brain export PAGE ... | --published   pages for outside use, into motor/export/
     brain errors [--since D] [--tail N]   what the hooks swallowed or refused (.cache/errors.log), for refactoring
     brain cache [--rebuild|--clear]       the search cache (.cache/search.sqlite): size, rebuild, clear
     brain fetch URL [--name SLUG]         a web page cut down to its readable text, saved in senses/
+    brain fit senses/FILE                 what an input bears on: the pages its own words reach, the held ideas it names
     brain new TYPE [--from senses/FILE]   a page from its template, frontmatter filled in from the input
     brain chats EXPORT OUT [...]          a Claude or ChatGPT export, one file per conversation
     brain session [TRANSCRIPT]            what the owner typed in this conversation, for /ingest session

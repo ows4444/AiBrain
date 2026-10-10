@@ -313,8 +313,19 @@ class AnswerTestSet(unittest.TestCase):
             # a change here is a change in what an answer costs: rerun `brain eval --save-baseline` on purpose
             self.assertEqual((now[mode]["bytes_read"], now[mode]["bytes_needed"], now[mode]["bytes_by_summary"]),
                              (base[mode]["bytes_read"], base[mode]["bytes_needed"], base[mode]["bytes_by_summary"]), mode)
+            self.assertEqual((now[mode]["bytes_by_section"], now[mode]["sectioned"]),
+                             (base[mode]["bytes_by_section"], base[mode]["sectioned"]), mode)
             self.assertEqual(now[mode]["unsummarised"], 0, "every fixture page says what it holds")
             self.assertLess(now[mode]["bytes_by_summary"], now[mode]["bytes_read"])  # or the summaries cost more than they save
+        # Reading the section recall names, in place of its page: under 2,500 bytes a question, from 3,078.
+        recall = now["recall"]
+        self.assertEqual(recall["bytes_by_section"], sum(r["by_section"] for r in now["per_question"]["recall"]
+                                                         if r["set"] == "standard"))
+        self.assertLess(recall["bytes_by_section"] / recall["questions"], 2500)
+        self.assertGreater(recall["bytes_read"] / recall["questions"], 3000)
+        self.assertLess(q02["by_section"], q02["bytes"])
+        self.assertIn("\n  recall  by section: 14113, 1085 a question, when the section recall names is read in place of "
+                      "its page (41 of 47 rows name one)   (baseline 14113)\n", run_brain(None, "eval").stdout)
         self.assertGreaterEqual(now["recall"]["bytes_read"], now["recall"]["bytes_needed"] * now["recall"]["hit_at_k"])
 
     def test_answers_are_scored_for_citations_and_admitted_gaps(self):
@@ -430,6 +441,49 @@ class OwnQuestionSet(TempBrain):
                       run("--save-baseline").stdout)
         with open(os.path.join(ENGINE, "eval", "baseline.json"), encoding="utf-8") as fh:
             self.assertEqual(json.load(fh)["sets"]["standard"]["recall"]["questions"], 13)  # the engine's is untouched
+
+
+class TheSectionToReadFirst(TempBrain):
+    """Recall names, for each page, the section that holds the words of the question its title does not."""
+
+    FIRST = "## In one paragraph\n\nStudy spread over sessions lasts.\nThe best gap depends on the test."
+
+    def setUp(self):
+        super().setUp()
+        self.spacing = self.write("cortex/concepts/spacing.md", concept(
+            f"\n# Spacing effect\n\n{self.FIRST}\n\n## What argues against it\n\nNothing yet.\n\n## Related\n\n"
+            "[[testing]]\n", title="Spacing effect", summary="Spread study lasts."))
+        self.write("cortex/concepts/testing.md", concept("\n# Testing effect\n\n## In one paragraph\n\nRecalling beats "
+                                                         "rereading.\n", title="Testing effect", summary="Recall wins."))
+        self.write("cortex/concepts/sleep.md", concept("\n## Before\n\nRest helps.\n\n## After\n\nRest helps again.\n",
+                                                       title="Sleep", summary="Rest."))
+
+    def sections(self, question):
+        return {r["page"].stem: r["section"] for r in self.brain().recall(question)}
+
+    def test_it_is_where_the_question_s_own_words_are(self):
+        asked = self.sections("how long should the gap be")
+        self.assertEqual(asked["spacing"], {"heading": "In one paragraph", "line": 12, "end": 15,
+                                            "bytes": len(self.FIRST.encode("utf-8"))})
+        with open(self.spacing, encoding="utf-8") as fh:
+            self.assertEqual("\n".join(fh.read().splitlines()[11:15]), self.FIRST)  # those lines are that section
+        self.assertIsNone(asked["testing"])  # reached by a link: no word of the question is on it
+        # A heading is part of its section, and says what the section answers.
+        self.assertEqual(self.sections("what argues against the spacing effect")["spacing"]["heading"],
+                         "What argues against it")
+        # A page the question names is its subject: it is read from the top, whatever its sections repeat.
+        self.assertIsNone(self.sections("What is the spacing effect?")["spacing"])
+        self.assertEqual(self.sections("does rest help")["sleep"]["heading"], "Before")  # of two that hold as much, the first
+
+    def test_recall_prints_it_with_its_lines_and_carries_it_as_data(self):
+        out = run_brain(self.root, "recall", "how long should the gap be", "--all").stdout
+        self.assertIn("\n           hit; low: 0 sources, 0 independent\n           read first: ## In one paragraph (lines 12-15)\n",
+                      out)
+        self.assertEqual(out.count("read first:"), 1)  # the page reached by a link has no line of the kind
+        rows = json.loads(run_brain(self.root, "recall", "how long should the gap be", "--all", "--json").stdout)["results"]
+        self.assertEqual([(r["page"], r["section"] and r["section"]["heading"]) for r in rows],
+                         [("cortex/concepts/spacing.md", "In one paragraph"), ("cortex/concepts/testing.md", None)])
+        self.assertNotIn("read first:", run_brain(self.root, "search", "gap").stdout)  # search lists pages, no more
 
 
 class TheBrainAsItWas(TempBrain):

@@ -12,6 +12,10 @@ recall  search hits seed an activation that spreads along links (typed links
         reached, its confidence (sources behind it) and flags: disputed,
         contradicted, stale (ask the owner whether it still holds), generated,
         dormant. --project biases toward the pages a project links to.
+        `read first` names the section of a page that holds the words of
+        the question its title does not, with its lines: open that part,
+        and the rest only if it does not answer. A page the question names
+        has none: it is read from the top.
         It stops where the match stops: rows scoring under 0.4 of the best
         are cut, and when the best page holds too little of the question it
         says so in one line and lists nothing. --all turns both off; use it
@@ -43,7 +47,8 @@ def recall_rows(vault, query, project=None, limit=10, hops=None, dormant=False, 
                         floor=0.0 if everything else vault.tuning.recall_floor, abstain=not everything)
     return [{"page": r["page"].rel, "title": r["page"].title, "type": r["page"].type, "score": r["score"],
              "summary": r["page"].summary,
-             "hop": r["hop"], "from": r["from"].rel, "confidence": r["confidence"], "flags": r["flags"]}
+             "hop": r["hop"], "from": r["from"].rel, "confidence": r["confidence"], "flags": r["flags"],
+             "section": r["section"]}
             for r in rows]
 
 
@@ -106,6 +111,8 @@ def render(result, args):
             how = "hit" if r["hop"] == 0 else f"{r['hop']} hop{'s' * (r['hop'] > 1)} from {r['from']}"
             conf = f"{r['confidence']['level']}: {r['confidence']['why']}" if r["confidence"] else "dormant"
             line += f"\n           {how}; {conf}" + (f"; {', '.join(r['flags'])}" if r["flags"] else "")
+            if r["section"]:
+                line += "\n           read first: ## {heading} (lines {line}-{end})".format(**r["section"])
         out.append(line)
     if mode == "recall" and not args.everything and len(rows) < args.limit:
         out.append("  weaker matches are cut (--all lists them)")

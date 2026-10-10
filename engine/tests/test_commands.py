@@ -30,8 +30,8 @@ KEYS = {
         "secrets", "shared_names", "stubs", "to_dormant", "tuning", "undated", "untagged"]),
     "introspect": ("introspect", [], SUMMARY),
     "introspect --json": ("introspect", ["--json"], SUMMARY + [
-        "candidate_pairs", "candidates", "contradictions", "decisions", "dormant", "due", "gaps", "intentions", "open",
-        "queue", "relations", "risk", "stale", "usage"]),
+        "candidate_pairs", "candidates", "contradictions", "decisions", "dormant", "due", "encoding", "gaps",
+        "intentions", "open", "queue", "relations", "risk", "stale", "usage"]),
     "introspect --due": ("introspect", ["--due"], SUMMARY + ["due", "risk"]),
     "introspect --graph": ("introspect", ["--graph"], SUMMARY + [
         "bridges", "bridges_estimated", "clusters", "cut_points", "hubs", "schema_candidates", "tags"]),
@@ -46,6 +46,7 @@ KEYS = {
     "log": ("log", ["recall", "a question", "--pages", "spacing-effect"], ["line", "pages", "written"]),
     "index": ("index", [], ["added", "changed", "listed", "removed", "written"]),
     "fingerprint": ("fingerprint", [], ["recorded"]),
+    "ground": ("ground", ["senses/cepeda.md"], ["checked", "file", "ungrounded"]),
     "graph": ("graph", [], ["edges", "format", "nodes", "out"]),
     "export": ("export", ["spacing-effect", "--keep-titles", "--out", "{tmp}/exported"],
                ["exported", "out", "unlinked"]),
@@ -57,6 +58,7 @@ KEYS = {
     "fetch": ("fetch", ["https://blog.example/spacing", "--file", "{tmp}/page.html"], [
         "author", "headings", "part", "path", "published", "raw_bytes", "saved", "saved_bytes", "title", "url",
         "words"]),
+    "fit": ("fit", ["senses/cepeda.md"], ["held", "input", "pages", "words"]),
     "new": ("new", ["concept", "--title", "A new idea"], ["filled", "page"]),
     "chats": ("chats", ["{tmp}/chats.json", "{tmp}/chats"], ["out", "short", "unknown", "written"]),
     "resume": ("resume", [], ["note", "text"]),
@@ -73,7 +75,7 @@ KEYS = {
     "bench": ("bench", ["--pages", "10"], ["commands", "hooks", "links", "log_lines", "pages", "repeat", "seed", "vault"]),
 }
 STATUSLINE = ["context", "decisions", "inbox", "line", "rehearse", "reminders", "senses", "sleep"]
-RECALL_ROW = sorted(ROW + ["confidence", "flags", "from", "hop"])
+RECALL_ROW = sorted(ROW + ["confidence", "flags", "from", "hop", "section"])
 
 
 class Brain(TempBrain):

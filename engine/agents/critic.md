@@ -27,7 +27,8 @@ optionally the summary it reported.
      `brain introspect --queue` (or one salient episode); replayed episodes
      have `consolidated:`; nothing moved to `dormant/` without approval.
    - recall-type runs (ask, write, focus, explore, decide): a `recall` line
-     names the pages actually used.
+     names the pages actually used; a piece saved in `motor/` passes
+     `brain ground motor/<file>`, and each line it lists is a defect.
    - decide: `## Expected` written in the owner's words, not supplied; every
      `[observation]` is something its cited page actually says; a decided
      page has a `revisit_if` that names an event, not a mood.

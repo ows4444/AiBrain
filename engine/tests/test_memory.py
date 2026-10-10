@@ -29,25 +29,34 @@ class Memory(TempBrain):
                                                  "progress\n- Sleep - rest matters\n", url="https://b.example"))
         self.write("cortex/episodes/e3.md", page("episode", "## Candidates\n- Fluent speech - talking smoothly\n",
                                                  url="https://a.example"))
+        self.write("cortex/episodes/e4.md", page("episode", "## Candidates\n- The fluency illusion effect - a name "
+                                                 "for it\n", url="https://c.example"))
         self.write("cortex/concepts/spacing.md", page("concept", title="Spacing effect", summary="Study spread over "
                                                       "sessions lasts; the best gap depends on how long it must last."))
         v = self.brain()
-        self.assertEqual({r["name"]: r["sources"] for r in v.candidate_tally()}["Illusion of fluency"], 1)
+        # Two names made of the same words are one idea, under the spelling met first: its two sources count.
+        tally = {r["name"]: (r["sources"], [p.stem for p in r["episodes"]]) for r in v.candidate_tally()}
+        self.assertEqual(tally["Illusion of fluency"], (2, ["e1", "e2"]))
+        self.assertNotIn("Fluency illusion", tally)
+        # A name with a word more is another candidate, paired with it for sleep to read.
         pairs = {(x["a"], x["b"]): x for x in v.candidate_pairs()}
-        self.assertEqual(sorted(pairs), [("Fluency illusion", "Illusion of fluency"), ("Optimal gap", "Spacing effect")])
-        self.assertEqual(pairs["Fluency illusion", "Illusion of fluency"]["why"], "names")
+        self.assertEqual(sorted(pairs), [("Illusion of fluency", "The fluency illusion effect"),
+                                         ("Optimal gap", "Spacing effect")])
+        self.assertEqual(pairs["Illusion of fluency", "The fluency illusion effect"]["why"], "names")
         self.assertEqual(pairs["Optimal gap", "Spacing effect"]["page"].stem, "spacing")
         out = run_brain(self.root, "introspect", "--queue").stdout
         self.assertIn("possibly one idea twice", out)
-        self.assertIn("Fluency illusion ~ Illusion of fluency  (shared: fluency, illusion)", out)
+        self.assertIn("Illusion of fluency ~ The fluency illusion effect  (shared: fluency, illusion)", out)
         self.assertIn("Optimal gap ~ cortex/concepts/spacing.md", out)
+        self.assertIn("\nencoding: 4 episodes, 0.0 links each; 5 ideas held, 1 of them named by two sources or more\n", out)
+        self.assertEqual(vaultlib.same_idea("Of the"), "of the")  # only stop words: known by its spelling
 
     def test_pairs_come_from_shared_words_and_one_source_naming_two_ideas_is_two_ideas(self):
         def episode(name, candidate, url):
             self.write(f"cortex/episodes/{name}.md", page("episode", f"## Candidates\n- {candidate}\n", url=url))
 
         episode("e1", "Desirable difficulty - effort during learning that improves retention later", "https://a.example")
-        episode("e2", "Desirable difficulties - struggle that helps", "https://a.example")
+        episode("e2", "Desirable difficulties at work - struggle that helps", "https://a.example")
         episode("e3", "Retrieval practice - recalling facts from memory strengthens later recall under test conditions "
                       "with feedback", "https://c.example")
         self.write("cortex/concepts/exam.md", page("concept", title="Exam technique", summary="Practice tests with "
@@ -56,9 +65,15 @@ class Memory(TempBrain):
         # One source naming an idea twice is not a second source; and three words shared with a
         # page are too few when they are under half of the candidate's own.
         self.assertEqual(self.brain().candidate_pairs(), [])
-        episode("e2", "Desirable difficulties - struggle that helps", "https://b.example")
+        episode("e2", "Desirable difficulties at work - struggle that helps", "https://b.example")
         self.assertEqual([(x["a"], x["b"], x["why"], x["words"]) for x in self.brain().candidate_pairs()],
-                         [("Desirable difficulties", "Desirable difficulty", "names", ["desirabl", "difficulty"])])
+                         [("Desirable difficulties at work", "Desirable difficulty", "names", ["desirabl", "difficulty"])])
+        # The same name in the plural, from a third source, is no third candidate: it is the first one
+        # again, which now has two sources, the bar for a concept.
+        episode("e4", "Desirable difficulties - the plural", "https://c.example")
+        row = {r["name"]: r for r in self.brain().candidate_tally()}["Desirable difficulty"]
+        self.assertEqual((row["sources"], len(row["episodes"])), (2, 2))
+        self.assertNotIn("Desirable difficulties", {r["name"] for r in self.brain().candidate_tally()})
 
     def test_a_fact_that_goes_out_of_date_needs_a_date_or_a_pointer(self):
         self.write("cortex/episodes/survey.md", page("episode", "The suite has 240 tests.\n"))

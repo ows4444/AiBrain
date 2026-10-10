@@ -30,7 +30,14 @@ behind it. Say plainly what the brain does not cover.
    - report: question / what the brain covers / where sources disagree / what
      could not be established / what would change this / pages read.
    - handoff: goal, state, decisions and why, open questions, where things live.
-4. **Save** to `motor/` and offer to encode the finished piece back as an
+4. **Save** to `motor/`, then **check it**, every time: `brain ground
+   motor/<file>` lists each link that reaches no page and each number or
+   quotation that is on none of the pages its paragraph cites. For each line
+   it lists: cite the page it is on, label the sentence outside knowledge,
+   or take it out; run it again until it lists nothing. It reads digits and
+   quotation marks, not meaning: when a line it lists is sound (the page
+   gives the number in other words), say so to the owner; do not reword the
+   piece to slip past it. Offer to encode the finished piece back as an
    episode by the owner.
 5. **Log** `brain log write "<mode> <topic>" --result motor/<file>` and
    `brain log recall "write <topic>" --pages <page> ...` for the pages the piece

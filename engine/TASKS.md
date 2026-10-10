@@ -184,29 +184,32 @@ that misses its target is closed, not shipped.
   - [ ] Eval questions may carry `also`, written by an agent that has not seen the pages
   - [ ] `/ask` and the researcher agent always pass two rewordings
   - [ ] Done when: paraphrase hit@5 is 1.000 (0.938 now) and q10 finds `forgetting-curve`
-- [ ] **24. `brain fit senses/FILE`** (REFACTOR 4.4, M)
-  - [ ] The input's own rarest words as the query: the pages it bears on, with summaries, and the held candidates it names
-  - [ ] Candidate names made of the same words after stemming count as one candidate in the tally
-  - [ ] `/ingest` steps 3 and 5 and the encoder agent use it in place of guessed topic words
-  - [ ] Done when: on real ingests, links per episode and candidates reaching two sources are both up, measured before and after
+- [ ] **24. `brain fit senses/FILE`** (REFACTOR 4.4, M; built, waits on real ingests to be measured)
+  - [x] The input's own rarest words as the query: the pages it bears on, with summaries, and the held candidates it names (`lib/fit.py`). Of the input's words that some page holds, the twelve that mark it most (`fit_words`: its count in the input times its rarity in the brain) are searched as one question. Rarity alone picked incidental words (`across`, `apart`), so the count weighs in. A held idea is named when every word of its name is in the input; an input already encoded is no source of its own ideas
+  - [x] Candidate names made of the same words after stemming count as one candidate in the tally (`same_idea`: `Fluency illusion` and `Illusion of fluency`, `Desirable difficulty` and `difficulties`), under the spelling met first. Two sources naming it so now reach the bar for a concept, where they were two candidates with one source each, paired for sleep to read
+  - [x] `/ingest` steps 3 and 5 use it in place of guessed topic words, and the encoder agent with them: it follows that skill. `Bash(brain fit *)` is allowed, as the other read-only commands are
+  - [x] The instrument for the measure: `brain introspect --queue` ends with `encoding: N episodes, X links each; H ideas held, T of them named by two sources or more`, also in the JSON
+  - [ ] Done when: on real ingests, links per episode and candidates reaching two sources are both up, measured before and after. In the real brain: note the `encoding` line now, ingest the next inputs with the new engine, and read it again
 - [ ] **25. Use, recency and rank** (REFACTOR 4.5, S, after 18 and 50 logged questions)
   - [ ] Behind a tuning key, off by default: a capped lift from a page's own recall lines, rehearsals left out
   - [ ] Run 18 with and without it; the fixture must not fall
   - [ ] Keep it or delete it; ARCHITECTURE 6.2 then says what is true
   - [ ] Done when: the decision and its numbers are in the log
-- [ ] **26. The best section with each row** (REFACTOR 4.6, S)
-  - [ ] `recall` names the section of each page that matches the question best, in text and JSON
-  - [ ] `brain eval` reports the bytes read when that section is opened in place of the page
-  - [ ] Done when: bytes read per question are under 2,500 (3,078 now)
+- [x] **26. The best section with each row** (REFACTOR 4.6, S)
+  - [x] `recall` names the section of each page that matches the question best, in text (`read first: ## Heading (lines 14-18)`) and JSON (`section`: heading, lines, bytes, or null). The words that count are the question's that the page's title and aliases do not hold: a page the question names is its subject and is read from the top, so it gets none. Counting every word chose `## Related` for "What is the forgetting curve?", because the definition does not repeat its own title
+  - [x] `brain eval` reports the bytes read when that section is opened in place of the page (`by section`; a page with no section named counts whole). The fixture's baseline is saved again with the two new numbers; nothing else in it moved
+  - [x] `/ask` reads those lines first, and the rest of the page only when they do not answer
+  - [x] Done when: bytes read per question are under 2,500 (3,078 for whole pages; 1,085 by section on the standard set, 41 of 47 rows naming one). No set moved: the ranking is untouched. What this does not show is whether an answer read from a section is as good as one read from the page: that takes an answers run
 
 ## Phase 5. Trust and time
 
-- [ ] **27. `brain ground FILE`** (REFACTOR 5.1, M)
-  - [ ] Every `[[link]]` in a drafted answer or piece resolves
-  - [ ] Every number and quoted phrase appears on a page cited in its paragraph, or sits in a sentence labelled outside knowledge
-  - [ ] List the rest by line; exit 1 when there are any; `--json`
-  - [ ] `/write` always runs it, `/ask` on long answers, the critic on a run
-  - [ ] Done when: it flags nothing in the reference answers and catches a planted number in the tests
+- [x] **27. `brain ground FILE`** (REFACTOR 5.1, M)
+  - [x] Every `[[link]]` in a drafted answer or piece resolves (`lib/ground.py`; a page in `dormant/` is a page)
+  - [x] Every number and quoted phrase appears on a page cited in its paragraph, or sits in a sentence labelled outside knowledge. A paragraph is a block of lines or one list item. A number the page spells out is on it (`ten` for 10), and so is a date; a quotation is three words or more, matched across the page's line breaks. Not read as claims: headings, code, the text of a link, a count of sources as `brain recall` gives it, a name with a number in it (`SM-2`), and the closing lines `Read:`, `Confidence:`, `Not covered:`
+  - [x] List the rest by line; exit 1 when there are any; `--json`. `brain ground -` reads the draft on stdin, for an answer that is in no file
+  - [x] `/write` always runs it, `/ask` on long answers, the critic on a run; `Bash(brain ground *)` is allowed
+  - [x] Its limit, said in its own text and in `/write`: it reads digits and quotation marks, not meaning. A claim in words alone is not checked, and a sound line can be listed (the page says `a month`, the draft `1 month`): the skill says to tell the owner, not to reword the piece past the check
+  - [x] Done when: it flags nothing in the reference answers and catches a planted number in the tests. There were no reference answers: `engine/eval/answers.json` now holds eight, written from the fixture's pages (citation recall and precision 1.0 by `brain eval --answers`, both uncovered questions said to be so). It reads 10 links, 11 numbers and a quotation in them and lists nothing; a planted number, a changed quotation, a wrong page and a page that does not exist are each caught
 - [ ] **28. `brain tend --check` and its schedule** (REFACTOR 5.2, ROADMAP F2 steps 1 and 2, S1, A1, M, after 12 and 19)
   - [ ] One read-only digest: queues, rehearsals and reminders due, decisions to review, goals at risk, the gaps of 19
   - [ ] A watcher agent: haiku, read-only tools, runs it and reports

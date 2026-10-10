@@ -20,7 +20,9 @@ are the defaults, and the text prints the brain's own.
              more is the bar for a concept page; episodes sharing a url or an
              input are one source; /explore episodes are listed apart and
              never count toward it; `salient` marks one from a salience 4+
-             episode), and new episodes that contradict a page (prediction error)
+             episode), and new episodes that contradict a page (prediction
+             error); and how encoding is doing: links an episode makes on
+             average, and how many held ideas two sources or more name
   --due      concept and insight pages due for rehearsal on the spaced-retrieval
              schedule: pages the owner's goals depend on first, then the more
              salient, then those most often missed (shown from 3 rehearsals)
@@ -227,6 +229,16 @@ def _risk(r):
             for p in r["_due"] for risk, n in [r.vault.miss_risk(p)] if n >= r.vault.tuning.risk_min_attempts}
 
 
+def _encoding(r):
+    """How encoding is doing: what an episode links on average, and how many held ideas a second source has named."""
+    vault = r.vault
+    episodes = [p for p in vault.of_type("episode") if not p.generated]
+    links = sum(not q.is_system for p in episodes for q in vault.links_from(p))
+    held = [c for c in r["candidates"] if not c["page"] and c["episodes"]]
+    return {"episodes": len(episodes), "links_per_episode": round(links / len(episodes), 1) if episodes else 0.0,
+            "held": len(held), "held_by_two_sources": sum(c["sources"] >= 2 for c in held)}
+
+
 def _decisions(r):
     vault = r.vault
     return {"due": [{"page": p.rel, "review": p.fields["review"]} for p in r["_decisions_due"]],
@@ -288,6 +300,7 @@ VIEWS = {
                                    "why": x["why"], "words": x["words"]} for x in r.vault.candidate_pairs()],
     "contradictions": lambda r: [{"episode": a.rel, "page": b.rel, "status": b.fields.get("status")}
                                  for a, b in r.vault.contradiction_queue()],
+    "encoding": _encoding,
     "due": lambda r: [p.rel for p in r["_due"]],
     "risk": _risk,
     "decisions": _decisions,
@@ -315,7 +328,7 @@ SUMMARY = ("pages", "by_type", "links", "avg_degree", "orphan_rate", "components
            "goals", "projects", "calibration", "most_recalled", "tuning")
 # What each flag adds to the summary. --goals and --projects print views the summary already holds.
 FLAG_VIEWS = {
-    "queue": ("queue", "candidates", "candidate_pairs", "contradictions"),
+    "queue": ("queue", "candidates", "candidate_pairs", "contradictions", "encoding"),
     "due": ("due", "risk"),
     "decisions": ("decisions",),
     "open": ("open",),
@@ -336,8 +349,8 @@ FLAG_VIEWS = {
 EVERYTHING = ("pages", "by_type", "links", "avg_degree", "orphan_rate", "components", "main_component_share",
               "verdicts", "stale_concept_rate", "broken_links", "awaiting_consolidation", "due_for_rehearsal",
               "decisions_due", "goals", "projects", "relations", "calibration", "usage", "most_recalled", "stale",
-              "queue", "candidates", "candidate_pairs", "contradictions", "due", "risk", "decisions", "intentions",
-              "dormant", "open", "gaps", "tuning")
+              "queue", "candidates", "candidate_pairs", "contradictions", "encoding", "due", "risk", "decisions",
+              "intentions", "dormant", "open", "gaps", "tuning")
 ORDER = EVERYTHING + ("hubs", "bridges", "bridges_estimated", "cut_points", "clusters", "schema_candidates", "tags",
                       "link_suggestions")
 GRAPH = ("hubs", "bridges", "clusters", "tags")  # the flags `--graph` stands for
@@ -462,6 +475,9 @@ def render(r, args):
         out += listed("prediction errors (new episodes contradicting a page; sleep records both sides)",
                       [f"{x['episode']} contradicts {x['page']}" + (f" ({x['status']})" if x["status"] else "")
                        for x in r["contradictions"]])
+        e = r["encoding"]
+        out.append(f"\nencoding: {e['episodes']} episodes, {e['links_per_episode']} links each; {e['held']} ideas held, "
+                   f"{e['held_by_two_sources']} of them named by two sources or more")
     if "due" in show:
         out += listed("due for rehearsal (goals first, then salience, misses, most overdue)",
                       [p + (f"  misses {r['risk'][p]['miss_rate']:.0%} of {r['risk'][p]['attempts']}"

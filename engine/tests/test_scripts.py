@@ -9,6 +9,9 @@ import unittest
 
 from support import ENGINE, TempBrain, VALID, ago, page, run_brain, vaultlib
 
+import commands  # noqa: E402  (support puts engine/lib on the path)
+import fit  # noqa: E402
+
 
 class BrainCommand(TempBrain):
     BIN = os.path.join(ENGINE, "bin", "brain")
@@ -344,6 +347,76 @@ class Fetch(TempBrain):
         self.assertFalse(os.path.isdir(os.path.join(self.root, "senses")) and os.listdir(os.path.join(self.root, "senses")))
         bad = run_brain(self.root, "fetch", "file:///etc/passwd")
         self.assertEqual((bad.returncode, bad.stderr.strip()), (1, "brain fetch: only http and https addresses"))
+
+
+class Fit(TempBrain):
+    """`brain fit`: what an input bears on, found from its own words, before it is encoded."""
+
+    def setUp(self):
+        super().setUp()
+        dates = dict(created="2026-01-01", updated="2026-01-01")
+        self.write("cortex/concepts/spacing.md", page("concept", "Study sessions spread over days are kept longer.\n",
+                                                      title="Spacing effect", status="established",
+                                                      summary="Spread study lasts.", **dates))
+        self.write("cortex/concepts/layout.md", page("concept", "Rows and columns of a table.\n", title="Layout",
+                                                     status="established", summary="How a table is set out.", **dates))
+        self.write("senses/old.md", "An older note.\n")
+        self.write("cortex/episodes/e1.md", page("episode", "A talk on study habits.\n\n## Candidates\n\n"
+                                                 "- Illusion of fluency - ease is taken for learning\n- It - x\n",
+                                                 title="A talk", input="senses/old.md", summary="A talk.", **dates))
+        self.write("senses/new.md", "---\ntitle: Notes on spacing\n---\n\nI spaced my sessions a week apart; spacing "
+                                    "the sessions beat one long sitting.\nThe fluency illusion fooled me, and zebras "
+                                    "have nothing to do with it.\n")
+
+    def fit(self, *args, **kw):
+        return commands.call("fit", list(args), root=self.root, **kw)
+
+    def test_the_input_s_own_words_find_the_pages_and_the_held_ideas_it_names(self):
+        found = self.fit("senses/new.md")
+        self.assertEqual((found["input"], [p["page"] for p in found["pages"]][0]),
+                         ("senses/new.md", "cortex/concepts/spacing.md"))
+        self.assertEqual(found["pages"][0], {"page": "cortex/concepts/spacing.md", "title": "Spacing effect",
+                                             "type": "concept", "score": found["pages"][0]["score"],
+                                             "summary": "Spread study lasts."})
+        self.assertNotIn("cortex/concepts/layout.md", [p["page"] for p in found["pages"]])
+        # The words it is searched by are the ones a page also holds, as the input first spells them, the
+        # most telling first: `spacing` three times with `spaced`, `sessions` twice. A word no page holds
+        # (zebras, week) finds nothing and is left out.
+        self.assertEqual(found["words"], ["spacing", "sessions", "fluency", "illusion"])
+        # The idea another episode holds is named here in other words of the same stems: one idea.
+        self.assertEqual(found["held"], [{"name": "Illusion of fluency", "note": "ease is taken for learning",
+                                          "episodes": ["cortex/episodes/e1.md"], "sources": 1}])
+        self.assertEqual(vaultlib.Vault(self.root, tuning={"fit_words": 1}).tuning.fit_words, 1)
+        self.assertEqual(len(fit.fit(vaultlib.Vault(self.root, tuning={"fit_words": 1}), "senses/new.md")["words"]), 1)
+
+    def test_its_text_and_its_refusals(self):
+        out = run_brain(self.root, "fit", "senses/new.md").stdout.splitlines()
+        self.assertEqual(out[0], "fit: senses/new.md  (searched by: spacing, sessions, fluency, illusion)")
+        self.assertEqual(out[1], "  pages it bears on (link the ones it is about; say so where it says the opposite):")
+        self.assertRegex(out[2], r"^  +\d+\.\d{3}  cortex/concepts/spacing\.md$")
+        self.assertEqual(out[3], "           Spread study lasts.")
+        self.assertEqual(out[-2:], ["  held ideas it names (no page yet: use the same name under ## Candidates):",
+                                    "    Illusion of fluency - ease is taken for learning  [cortex/episodes/e1.md; 1 source]"])
+        only_held = run_brain(self.root, "fit", "senses/new.md", "--limit", "0").stdout.splitlines()
+        self.assertEqual(only_held[1], out[-2])  # no page asked for: the held ideas are still said
+        self.write("senses/odd.md", "Zebra quartz violin.\n")
+        self.assertEqual(run_brain(self.root, "fit", "senses/odd.md").stdout,
+                         "fit: senses/odd.md shares no word with any page, and names no held idea: all of it is new here\n")
+        r = run_brain(self.root, "fit", "senses/none.md")
+        self.assertEqual((r.returncode, r.stderr), (1, "brain fit: no such file: senses/none.md\n"))
+
+    def test_an_input_already_encoded_is_no_source_of_its_own_ideas_and_a_file_elsewhere_keeps_its_path(self):
+        self.write("senses/old.md", "An older note on the illusion of fluency and study habits.\n")
+        own = self.fit("senses/old.md")
+        self.assertEqual((own["held"], [p["page"] for p in own["pages"]]),
+                         ([], ["cortex/episodes/e1.md", "cortex/concepts/spacing.md"]))  # its own episode, and `study`
+        self.assertNotIn("held ideas", run_brain(self.root, "fit", "senses/old.md").stdout)  # pages, and no more to say
+        with tempfile.TemporaryDirectory() as elsewhere:
+            path = os.path.join(elsewhere, "draft.md")
+            with open(path, "w", encoding="utf-8") as fh:
+                fh.write("Spacing my study sessions.\n")  # no frontmatter either
+            found = self.fit(path)
+            self.assertEqual((found["input"], found["pages"][0]["page"]), (path, "cortex/concepts/spacing.md"))
 
 
 class NewPage(TempBrain):

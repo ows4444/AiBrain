@@ -1,0 +1,11 @@
+{
+  "about": "Reference answers to some of the fixture's questions, written from its pages: each claim cites the page it is on, the numbers and the quotation are the pages' own, and an uncovered question is said to be uncovered. `brain eval --answers eval/answers.json` scores their citations; the tests hold `brain ground` to finding nothing wrong in them.",
+  "q01": "Memory for newly learned material drops fast at first and then more slowly [[forgetting-curve]]. Ebbinghaus measured it on himself in 1885, testing lists of nonsense syllables after delays of up to a month: retention \"falls steeply in the first hour after learning and then levels off\" [[ebbinghaus-1885]].",
+  "q03": "It depends on how long the material must be kept [[spacing-effect]]. A meta-analysis of 317 experiments puts the best gap at roughly 10 to 20 percent of the retention interval, so a test a year away wants sessions about a month apart [[cepeda-2006]].",
+  "q04": "Yes, over time. Students who took practice tests remembered more of a passage after one week than students who reread it, although rereading did better on a test five minutes later [[roediger-karpicke-2006]]. Pulling an answer out of memory strengthens it more than reading it again [[testing-effect]].",
+  "q05": "SuperMemo schedules reviews by the SM-2 rule [[supermemo]]. Each card's interval grows after every successful review, multiplied by its ease factor, which starts at 2.5; answers are graded from 0 to 5, a grade below 3 resets the card to an interval of one day, and the first two intervals are fixed at 1 and 6 days [[wozniak-sm2]].",
+  "q09": "A per-card multiplier for the next review interval: it starts at 2.5 and drops when answers are graded hard [[wozniak-sm2]].",
+  "q11": "Relearning a list takes less time than learning it did; the time saved, which Ebbinghaus called savings, measures what was retained [[ebbinghaus-1885]].",
+  "u01": "Not covered by any page here.",
+  "u05": "Not covered by any page here: no page mentions Picasso."
+}

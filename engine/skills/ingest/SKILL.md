@@ -34,8 +34,10 @@ from the owner, in the conversation.
    hash of each new input so `brain check` catches any later edit.
 2. **Read it completely** before writing. Pages built from the introduction
    are built from the least specific part.
-3. **Check fit.** `brain search "<topic words>"` for the entities and
-   concepts it touches; input that fits existing pages is the fast path.
+3. **Check fit.** `brain fit senses/<file>` lists the pages the input bears
+   on, found from its own words, each with its summary, and the ideas other
+   episodes hold that it names too. `brain search "<words>"` for anything you
+   expect and do not see; input that fits existing pages is the fast path.
    **Salience:** set `salience:` on the episode, 1 to 5, from what is in front
    of you: 1-3 when it contradicts an established page, touches a live goal
    or project, or carries high stakes (say which). 4 or 5 only when the owner
@@ -59,12 +61,15 @@ from the owner, in the conversation.
    numbers with the conditions they hold under. Correct `url:` only when the
    input relays someone else's work: it is where the content originally came
    from, so relays of one source count once. Leave `consolidated:` empty.
-5. **Link** the first mention of every existing concept and entity. Under
+5. **Link** the first mention of every existing concept and entity: the
+   pages `brain fit` listed that the input is in fact about. Under
    `## Candidates`, list each new idea or entity as `- Name - one line on what
-   this episode says about it`. Reuse an existing candidate name exactly when
-   another episode already lists it (`brain introspect --queue`), and run
-   `brain search "<name>"` first: an idea already on a page under another
-   name is a link to that page, not a new candidate.
+   this episode says about it`. Where `brain fit` listed a held idea, use
+   that name: names made of the same words count as one idea, and its second
+   source is what makes it a concept (`brain introspect --queue` has every
+   held name). Run `brain search "<name>"` before adding a new one: an idea
+   already on a page under another name is a link to that page, not a new
+   candidate.
 6. **Index and log** in the same run: `brain index` (it lists the episode with its `summary:`), then
    `brain log ingest <path> --result "1 episode, <n> candidates, <n> links"`.
 

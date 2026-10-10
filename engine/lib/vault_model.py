@@ -272,6 +272,16 @@ def candidates_in(body):
     return [name for name, _ in candidate_notes(body)]
 
 
+def same_idea(name):
+    """What two names of one held idea have in common: the same words once stemmed, in any order.
+
+    `Fluency illusion` and `Illusion of fluency` are one candidate, and so are `Desirable
+    difficulty` and `Desirable difficulties`: two episodes naming it so are two sources for
+    it. A name made only of stop words is known by its spelling.
+    """
+    return frozenset(tokens(name)) or name.strip().lower()
+
+
 def check_fields(fields, specs):
     problems = []
     for name, spec in specs.items():
