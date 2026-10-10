@@ -21,7 +21,7 @@ NOT_ALLOWED = "policy: hippocampus/policy.md does not allow index"
 
 def named(text, do, until=None, when="2026-10-01", started=0):
     """The name a reminder goes by while it waits: what the owner's yes must say."""
-    return vaultlib.proposal(text, do, until, when, started)
+    return vaultlib.proposal(text, do + (f" until {until}" if until else ""), when, started)
 
 
 class Worked(TempBrain):
@@ -96,9 +96,9 @@ class ARound(Worked):
         name = named(LISTING, "index")
         self.assertEqual([(x["text"], x["why"]) for x in found["left"]],
                          [(LISTING, f"the policy does not allow it (yes {name})")])
-        self.assertEqual(self.steps(), [f"waiting {LISTING} -> {NOT_ALLOWED}; yes {name}",
-                                        f"started {LOOK} -> a1: check, due since 2026-10-01",
-                                        f"finished {LOOK} -> a1: pages: 1"])  # one that only reads needs no line
+        self.assertEqual(self.steps(), [f"started {LOOK} -> a1: check, due since 2026-10-01",
+                                        f"finished {LOOK} -> a1: pages: 1",  # one that only reads needs no line, and goes first
+                                        f"waiting {LISTING} -> {NOT_ALLOWED}; yes {name}"])
         work.round_of(self.root)
         work.round_of(self.root)
         self.assertEqual(len(self.steps()), 3)  # found waiting again: nothing more is written
@@ -255,13 +255,13 @@ class ItsLimits(Worked):
         self.write(vaultlib.TUNING_PATH, page("tuning", "\n## Overrides\n\n- work_steps = 2\n", title="Tuning"))
         found = work.round_of(self.root)
         self.assertEqual(([d["text"] for d in found["did"]], [(x["text"], x["why"]) for x in found["left"]]),
-                         ([LISTING, LOOK], [("feel it", "the round's budget is spent")]))
+                         ([LOOK, "feel it"], [(LISTING, "the round's budget is spent")]))  # what only reads comes first
         self.log()
         clock = iter([0.0, 0.0, 601.0, 601.0, 601.0])  # ten minutes pass while the first one runs
         with mock.patch.object(work.time, "monotonic", side_effect=lambda: next(clock)):
             late = work.round_of(self.root)
         self.assertEqual(([d["text"] for d in late["did"]], [x["why"] for x in late["left"]]),
-                         ([LISTING], ["the round's budget is spent"] * 2))
+                         ([LOOK], ["the round's budget is spent"] * 2))
 
     def test_a_dry_run_says_what_a_round_would_do_and_writes_nothing(self):
         self.remind(f"{LISTING} when 2026-10-01 do `index`", f"{WHOLE} when 2026-10-01 do `snapshot`")
@@ -276,9 +276,10 @@ class ItsLimits(Worked):
         self.assertEqual((self.steps(), self.listed(), self.locked()), (before, False, False))
         text = run_brain(self.root, "work", "--dry-run").stdout.splitlines()
         self.assertRegex(text[0], r"^work, \d{4}-\d\d-\d\d: 2 carried a step further, 1 left \(a dry run: nothing was written\)$")
-        self.assertEqual(text[1:3], [f"  {LISTING} (index)", "      would be started: index, due since 2026-10-01"])
-        self.assertIn(f"  left: {WHOLE} (snapshot): the policy does not allow it (yes {named(WHOLE, 'snapshot', started=1)})",
-                      text)
+        self.assertRegex(text[1], rf"^  {LISTING} \(index\)  \[worry \d\.\d\d; it changes the brain; due since 2026-10-01\]$")
+        self.assertEqual(text[2], "      would be started: index, due since 2026-10-01")
+        left = f"  left: {WHOLE} (snapshot): the policy does not allow it (yes {named(WHOLE, 'snapshot', started=1)})  ["
+        self.assertTrue(any(line.startswith(left) for line in text), text)
 
     def test_the_owner_s_retry_names_one_reminder_that_is_due(self):
         self.remind(f"{LISTING} when 2026-10-01 do `index`", "take the numbers when 2099-01-01 do `snapshot`",
@@ -303,6 +304,212 @@ class ItsLimits(Worked):
         self.remind()
         os.remove(os.path.join(self.root, "cortex/concepts/spacing.md"))
         self.assertEqual(run_brain(self.root, "work").stdout.splitlines()[-1], "  nothing waits on the owner")
+
+
+class APlan(Worked):
+    """Several actions to one reminder: held to the policy before any runs, done in order, taken up where it stopped."""
+
+    ORDER = "put it in order"
+    LINE = f"{ORDER} when 2026-10-01 do `fingerprint`, `index` until `check`, `snapshot`"
+
+    def setUp(self):
+        super().setUp()
+        self.remind(self.LINE)
+        self.allow("work", "fingerprint", "index", "snapshot")
+
+    def said(self):
+        """Each step of the log as its kind and what it names: `started a2: 2/3 index`."""
+        return [s.split(" -> ")[0].split()[0] + " " + s.split(" -> ")[1].split(",")[0].split(": ", 2)[0] + ": "
+                + s.split(" -> ")[1].split(": ", 1)[1].split(",")[0] if s.split()[0] == "started"
+                else s.split(" -> ")[0].split()[0] + " " + s.split(" -> ")[1].split(":")[0] for s in self.steps()]
+
+    def test_its_parts_run_in_order_each_with_its_own_end(self):
+        read = vaultlib.Vault(self.root).intentions()[0]
+        self.assertEqual((read["do"], read["until"], read["steps"]), ("fingerprint, index, snapshot", None, [
+            {"do": "fingerprint", "until": None}, {"do": "index", "until": "check"}, {"do": "snapshot", "until": None}]))
+        found = work.round_of(self.root)
+        self.assertEqual(self.said(), ["started a1: 1/3 fingerprint", "passed a1", "started a2: 2/3 index", "passed a2",
+                                       "started a3: 3/3 snapshot", "finished a3"])
+        self.assertEqual((len(found["did"][0]["steps"]), found["did"][0]["do"], found["left"]),
+                         (6, "fingerprint, index, snapshot", []))
+        self.assertTrue(self.listed())
+        v = vaultlib.Vault(self.root)
+        self.assertEqual((v.standing(v.intentions()[0])["state"], [i["text"] for i in v.due_intentions()]), ("finished", []))
+
+    def test_every_part_is_asked_of_the_policy_before_the_first_runs(self):
+        self.allow("work", "fingerprint", "index")  # the last part is not allowed: none of it runs
+        found = work.round_of(self.root)
+        name = vaultlib.proposal(self.ORDER, "fingerprint, index until check, snapshot", "2026-10-01", 0)
+        self.assertEqual(self.steps(), [f"waiting {self.ORDER} -> policy: hippocampus/policy.md does not allow snapshot; "
+                                        f"yes {name}"])
+        self.assertEqual((found["left"][0]["why"], self.listed()), (f"the policy does not allow it (yes {name})", False))
+        self.allow("work", "fingerprint", "index", "snapshot")
+        work.round_of(self.root)
+        self.assertEqual(self.said()[1:], ["started a1: 1/3 fingerprint", "passed a1", "started a2: 2/3 index", "passed a2",
+                                           "started a3: 3/3 snapshot", "finished a3"])
+
+    def test_a_part_that_fails_stops_the_plan_there_and_is_the_one_tried_again(self):
+        self.write("cortex/concepts/broken.md", page("concept", "See [[nowhere]].\n", title="Broken", status="established",
+                                                     summary="It points nowhere.", **DATES))
+        work.round_of(self.root)
+        self.assertEqual(self.said(), ["started a1: 1/3 fingerprint", "passed a1", "started a2: 2/3 index", "failed a2"])
+        self.assertTrue(self.steps()[-1].endswith("a2: check does not hold: pages: 2"))
+        v = vaultlib.Vault(self.root)
+        stands = v.standing(v.intentions()[0])
+        self.assertEqual((stands["state"], stands["part"], stands["attempts"], stands["ever"]), ("failed", 1, 1, 2))
+        self.assertRegex(work.round_of(self.root)["left"][0]["why"], r"^it is tried again after ")
+        os.remove(os.path.join(self.root, "cortex/concepts/broken.md"))
+        work.round_of(self.root, now=self.later(31))
+        self.assertEqual(self.said()[4:], ["started a3: 2/3 index", "passed a3", "started a4: 3/3 snapshot", "finished a4"])
+
+    def test_one_that_was_interrupted_is_taken_up_at_the_part_it_had_reached(self):
+        perform, ran = act.perform, []
+
+        def dies_on_the_second(root, name):
+            ran.append(name)
+            if len(ran) == 2:
+                raise KeyboardInterrupt()
+            return perform(root, name)
+
+        with mock.patch.object(act, "perform", side_effect=dies_on_the_second):
+            with self.assertRaises(KeyboardInterrupt):
+                work.round_of(self.root)
+        self.assertEqual(self.said(), ["started a1: 1/3 fingerprint", "passed a1", "started a2: 2/3 index"])
+        work.round_of(self.root)
+        self.assertEqual(self.said()[3:], ["failed a2", "started a3: 2/3 index", "passed a3", "started a4: 3/3 snapshot",
+                                           "finished a4"])
+        self.assertEqual(self.said().count("started a1: 1/3 fingerprint"), 1)  # what had passed is not done again
+
+    def test_a_round_s_budget_is_counted_in_parts_and_the_rest_goes_on_in_the_next(self):
+        self.write(vaultlib.TUNING_PATH, page("tuning", "\n## Overrides\n\n- work_steps = 2\n", title="Tuning"))
+        first = work.round_of(self.root)
+        self.assertEqual(self.said(), ["started a1: 1/3 fingerprint", "passed a1", "started a2: 2/3 index", "passed a2"])
+        self.assertEqual(first["left"][0]["why"], "the round's budget is spent")
+        text = run_brain(self.root, "introspect", "--remind").stdout
+        self.assertIn(f"\n  passed    {self.ORDER}  (when 2026-10-01: do fingerprint, index until check, snapshot; 2 of 3 "
+                      "parts passed)\n", text)
+        row = [r for r in tend.digest(vaultlib.Vault(self.root))["reminders"] if r["text"] == self.ORDER][0]
+        self.assertEqual((row["do"], row["state"]), ("fingerprint, index, snapshot", "passed"))
+        work.round_of(self.root)
+        self.assertEqual(self.said()[4:], ["started a3: 3/3 snapshot", "finished a3"])
+        carried = json.loads(run_brain(self.root, "introspect", "--remind", "--json").stdout)["intentions"]["carried"][0]
+        self.assertEqual((carried["plan"], carried["part"], carried["parts"], carried["state"]),
+                         ("fingerprint, index until check, snapshot", 2, 3, "finished"))
+
+    def test_a_yes_is_for_the_whole_plan_once_through_and_ends_with_a_failure(self):
+        self.allow("work")
+        self.write(vaultlib.TUNING_PATH, page("tuning", "\n## Overrides\n\n- work_steps = 1\n", title="Tuning"))
+        work.round_of(self.root)
+        name = vaultlib.proposal(self.ORDER, "fingerprint, index until check, snapshot", "2026-10-01", 0)
+        today = datetime.date.today().isoformat()
+        self.allow("work", once=[f"{name} {today}"])
+        work.round_of(self.root)   # one part a round here: the first, under the yes
+        self.assertTrue(self.steps()[1].endswith(f"a1: 1/3 fingerprint, due since 2026-10-01, by the owner's yes {name}"))
+        self.write("cortex/concepts/broken.md", page("concept", "See [[nowhere]].\n", title="Broken", status="established",
+                                                     summary="It points nowhere.", **DATES))
+        work.round_of(self.root)   # the second goes on under it, though its name is another by now, and fails
+        self.assertEqual(self.said()[1:], ["started a1: 1/3 fingerprint", "passed a1", "started a2: 2/3 index", "failed a2"])
+        late = work.round_of(self.root, now=self.later(31))  # a failure ends the yes: it waits again, under a new name
+        again = vaultlib.proposal(self.ORDER, "fingerprint, index until check, snapshot", "2026-10-01", 2)
+        self.assertEqual(self.steps()[-1], f"waiting {self.ORDER} -> policy: hippocampus/policy.md does not allow index, "
+                                           f"snapshot; yes {again}")
+        self.assertEqual(late["left"][0]["why"], f"the policy does not allow it (yes {again})")
+
+    def test_a_plan_shortened_under_it_is_finished_when_every_part_it_has_now_has_passed(self):
+        self.write(vaultlib.TUNING_PATH, page("tuning", "\n## Overrides\n\n- work_steps = 2\n", title="Tuning"))
+        work.round_of(self.root)  # two of three passed
+        self.remind(f"{self.ORDER} when 2026-10-01 do `fingerprint`, `index` until `check`")
+        found = work.round_of(self.root)
+        self.assertEqual(self.steps()[-1], f"finished {self.ORDER} -> a2: every part its plan now has has passed")
+        self.assertEqual(len(found["did"][0]["steps"]), 1)
+
+    def test_a_dry_run_says_the_part_it_would_begin_with(self):
+        found = work.round_of(self.root, dry=True)
+        self.assertEqual(found["did"][0]["steps"], ["would be started: 1/3 fingerprint, due since 2026-10-01"])
+        self.assertEqual(self.steps(), [])
+
+    def test_a_plan_is_taken_whole_or_not_at_all(self):
+        wrong = [(i["do"], i["steps"], i["problem"]) for i in vaultlib.Vault(self.root).intentions()]
+        self.assertIsNone(wrong[0][2])
+        self.remind("a when 2026-11-01 do `index`, `fetch`", "b when 2026-11-01 do `index`, snapshot",
+                    "c when 2026-11-01 do `index` until `graph`, `snapshot`")
+        self.assertEqual([(i["do"], i["steps"], i["problem"]) for i in vaultlib.Vault(self.root).intentions()], [
+            (None, [], "`fetch` is no action that can be done with nobody there; `brain act` lists them"),
+            (None, [], "'2026-11-01 do `index`, snapshot': what follows `do` cannot be read. Each action is in backticks, "
+                       "with a comma before the next: do `fingerprint`, `index` until `check`"),
+            (None, [], "`graph` is no action that only reads (closest: gaps); `brain act` lists them")])
+        self.assertEqual(run_brain(self.root, "check").returncode, 1)
+        self.assertEqual(work.round_of(self.root)["did"], [])
+
+
+class WhatComesFirst(Worked):
+    """The order of a round is worked out by rule and said with each reminder; it decides nothing but the order."""
+
+    def setUp(self):
+        super().setUp()
+        self.day = datetime.date.today().isoformat()
+        self.remind(f"{LOOK} when {self.day} do `check`", f"{LISTING} when {self.day} do `index`",
+                    f"tend [[spacing]] when {self.day} do `index`", f"{WHOLE} when {self.day} do `index`")
+        self.write("OWNER.md", "# Owner\n\n## Goals\n\n- Pass the exam by 2099-01-01 -> [[spacing]]\n")
+        self.failures = [f"{self.day} act {step} {WHOLE} -> a{n}: it broke" for n in (1, 2) for step in ("started", "failed")]
+        self.log(*self.failures)
+
+    def test_a_goal_first_then_what_is_felt_then_the_lesser_risk(self):
+        found = work.round_of(self.root, dry=True)
+        self.assertEqual(found["order"], [
+            {"text": "tend [[spacing]]", "first": f"a goal depends on a page it names; worry 0.33; it changes the brain; due "
+                                                  f"since {self.day}"},
+            {"text": WHOLE, "first": f"frustration 0.67; it changes the brain; due since {self.day}"},  # it failed twice
+            {"text": LOOK, "first": f"worry 0.33; it only reads; due since {self.day}"},
+            {"text": LISTING, "first": f"worry 0.33; it changes the brain; due since {self.day}"}])
+        text = run_brain(self.root, "work", "--dry-run").stdout
+        self.assertIn(f"\n  tend [[spacing]] (index)  [a goal depends on a page it names; worry 0.33; it changes the brain; "
+                      f"due since {self.day}]\n", text)
+        self.assertEqual(json.loads(run_brain(self.root, "work", "--dry-run", "--json").stdout)["order"], found["order"])
+
+    def test_what_the_brain_did_itself_is_felt_and_a_wait_is_one_worry_not_two(self):
+        v = vaultlib.Vault(self.root)
+        felt = {(r["feeling"], r["target"]): r for r in v.feelings()}
+        self.assertEqual([c["why"] for c in felt["frustration", WHOLE]["causes"]], ["its action failed: it broke"] * 2)
+        self.allow("work")
+        work.round_of(self.root)  # index is not allowed: three wait, and the one that only reads is carried out
+        v = vaultlib.Vault(self.root)
+        felt = {(r["feeling"], r["target"]): r for r in v.feelings()}
+        self.assertEqual(felt["satisfaction", LOOK]["causes"][0]["why"], "carried out: pages: 1")
+        waits = felt["worry", LISTING]["causes"]
+        self.assertEqual(len(waits), 1)  # the wait, and not also that it is due
+        self.assertEqual(waits[0]["why"], f"waits for the owner since {self.day}: policy: hippocampus/policy.md does not "
+                                          f"allow index; yes {named(LISTING, 'index', when=self.day)}")
+        later = vaultlib.Vault(self.root, now=self.later(7 * 24 * 60))
+        self.assertEqual({(r["feeling"], r["target"]): r["intensity"] for r in later.feelings()}["worry", LISTING], 0.67)
+        # A reminder since taken off the page is still what the log says of it, under its words.
+        self.remind()
+        gone = {(r["feeling"], r["target"]) for r in vaultlib.Vault(self.root).feelings()}
+        self.assertIn(("frustration", WHOLE), gone)
+
+    def test_no_feeling_and_no_trait_changes_what_the_policy_allows(self):
+        self.allow("work")
+        self.write("CHARACTER.md", "# Character\n\n## Traits\n\n" + "".join(f"- {name} = 1.0\n" for name in vaultlib.TRAITS))
+        v = vaultlib.Vault(self.root)
+        self.assertEqual((v.tuning.work_tries, v.tuning.yes_days), (6, 4))  # persistence and caution, at their ends
+        allowed = vaultlib.policy_of(self.root)
+        for name in vaultlib.ACTIONS:
+            self.assertEqual(vaultlib.decide(name, allowed)[0], name == "work" or vaultlib.ACTIONS[name].tier == "reads")
+        found = work.round_of(self.root)
+        self.assertEqual([d["text"] for d in found["did"]], ["tend [[spacing]]", WHOLE, LOOK, LISTING])  # each took a step
+        steps = [s for s in self.steps() if s not in [line.split(" act ", 1)[1] for line in self.failures]]
+        self.assertEqual(sorted(s.split()[0] for s in steps), ["finished", "started", "waiting", "waiting", "waiting"])
+        self.assertFalse(self.listed())  # first in the order, most felt, every trait at its end: and index did not run
+        # What persistence does change is how often a failure is tried before it is the owner's.
+        self.allow("work", "index")
+        self.log(*[f"{self.day} act {step} {WHOLE} -> a{n}: it broke" for n in (1, 2, 3) for step in ("started", "failed")])
+        patient = work.round_of(self.root, now=self.later(100000))
+        self.assertIn(WHOLE, [d["text"] for d in patient["did"]])
+        self.assertTrue([s for s in self.steps() if s.startswith(f"started {WHOLE} -> a4")])
+        os.remove(os.path.join(self.root, "CHARACTER.md"))
+        self.log(*[f"{self.day} act {step} {WHOLE} -> a{n}: it broke" for n in (1, 2, 3) for step in ("started", "failed")])
+        work.round_of(self.root, now=self.later(100000))
+        self.assertEqual(self.steps()[-1].split(" -> ")[1].split(";")[0], "owner: it failed 3 times")
 
 
 class TheOwnersYes(Worked):

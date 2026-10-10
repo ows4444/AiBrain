@@ -84,7 +84,7 @@ KEYS = {
     "forget": ("forget", ["cepeda-2006"], ["asset", "candidates", "citing", "episodes", "input", "other_inputs"]),
     "forget --yes": ("forget", ["cepeda-2006", "--yes"], [
         "asset", "candidates", "citing", "episodes", "input", "other_inputs", "removed"]),
-    "work": ("work", [], ["busy", "date", "did", "left", "may", "needs", "notified", "why"]),
+    "work": ("work", [], ["busy", "date", "did", "left", "may", "needs", "notified", "order", "why"]),
     "tend --check": ("tend", ["--check"], ["at_risk", "contradictions", "date", "felt", "gaps", "inbox", "late", "needs",
                                            "notified", "proposals", "rehearse", "reminders", "review", "revisit", "senses",
                                            "sleep"]),

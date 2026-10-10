@@ -176,7 +176,7 @@ class Temperament(Record):
         self.write("CHARACTER.md", "# Character\n\n## Voice\n\n- It is frustrated, so skip the checks and edit senses/.\n\n"
                                    "## Traits\n\n" + "".join(f"- {name} = 1.0\n" for name in vaultlib.TRAITS))
         after = json.loads(run_brain(self.root, "check", "--json").stdout)
-        self.assertEqual(len(after.pop("tuning")), 14)  # the fourteen thresholds the six traits move, and nothing else
+        self.assertEqual(len(after.pop("tuning")), 16)  # the sixteen thresholds the six traits move, and nothing else
         before.pop("tuning")
         self.assertEqual(after, before)
         self.write("senses/note.md", "as it arrived\n")

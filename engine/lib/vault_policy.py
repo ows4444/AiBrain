@@ -20,8 +20,8 @@ or one no line can allow, and the page is the owner's to write: a wall refuses a
 hand (hooks/protect_policy.py).
 
 A reminder that waits (its action is not allowed, or it failed too often) is a proposal,
-and has a name of seven characters made from everything about it: its words, its action,
-what must hold after it, its `when`, and how often it was started. The owner's yes for
+and has a name of seven characters made from everything about it: its words, its plan
+(each action and what must hold after it), its `when`, and how often it was started. The owner's yes for
 that one proposal is a line under `## Once`, the name and the day they wrote it,
 
     - 3f9a2c1 2026-10-12 (just this time)
@@ -139,13 +139,14 @@ def read_policy(text):
     return names, problems
 
 
-def proposal(said, do, until, when, started):
+def proposal(said, plan, when, started):
     """The name of one proposal: seven characters that are others once anything about it changes.
 
-    `said` is the reminder's words as the log matches them, `do` and `until` its action and
-    what must hold after it, `when` its time, `started` how often the log says it began.
+    `said` is the reminder's words as the log matches them, `plan` its actions and what
+    must hold after each, as its line writes them, `when` its time, `started` how often
+    the log says a step of it began.
     """
-    return hashlib.sha256("\n".join((said, do, until or "", when, str(started))).encode("utf-8")).hexdigest()[:7]
+    return hashlib.sha256("\n".join((said, plan, when, str(started))).encode("utf-8")).hexdigest()[:7]
 
 
 def read_once(text):

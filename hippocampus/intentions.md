@@ -18,9 +18,11 @@ only by `(dropped)`. Written by `/remind`.
 
 A reminder the brain carries out itself ends with its action in backticks,
 and may say what must hold once it is done: `- keep the listing current when
-every day do `index``, or `... do `index` until `check``. `brain act` lists
-the actions. Only a day, a time or a repeat starts one, and whether it may
-run with nobody there is `policy.md`'s to say. `brain introspect --remind`
-shows where each stands, from the log.
+every day do `index``, or `... do `index` until `check``. Several, with
+commas between them, are a plan, done in that order: `... do `fingerprint`,
+`index` until `check``. `brain act` lists the actions. Only a day, a time or
+a repeat starts one, and whether it may run with nobody there is
+`policy.md`'s to say, for every part before the first runs. `brain
+introspect --remind` shows where each stands, from the log.
 
 ## Open

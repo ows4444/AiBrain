@@ -10,12 +10,14 @@ for; none is kept. A rule reads an event or a state that stands today:
                   other than expected
     frustration   a rehearsal missed; a question asked again and still not
                   answered; a decision that turned out worse; a reminder done
-                  after its day
+                  after its day; an action of the brain's own that failed
     curiosity     a question no page answers, each time it is asked
     satisfaction  a rehearsal passed; a decision that turned out as expected
-                  or better; a reminder done by its day
+                  or better; a reminder done by its day, or one the brain
+                  carried out itself
     worry         a goal at risk or past its date; a decision past its
-                  review; a reminder due
+                  review; a reminder due, or one of the brain's own that
+                  waits for the owner
 
 An event counts for one and fades by half every 7 days; a state that stands
 counts one more for each 7 days it has stood. Three fresh events of one kind

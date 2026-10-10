@@ -42,10 +42,10 @@ confidence, from the evidence alone.
 | Feeling | Raised by | What changes it |
 |---|---|---|
 | surprise | new input says the opposite of a page; a decision turned out otherwise | `/sleep` records both sides; `/review-decision` writes the lesson |
-| frustration | a rehearsal missed; a question asked again; a decision that went worse; a reminder done late | `/rehearse`; an input that answers the question; a smaller next step |
+| frustration | a rehearsal missed; a question asked again; a decision that went worse; a reminder done late; an action of the brain's own that failed | `/rehearse`; an input that answers the question; a smaller next step; what its last step in the log says went wrong |
 | curiosity | a question no page answers | an input worth encoding: say where to look |
-| worry | a goal at risk or past its date; a review or a reminder due | close, re-date or drop the goal; `/review-decision`; do it and close the reminder |
-| satisfaction | a rehearsal passed; a decision as expected or better; a reminder done by its day | nothing: it fades by itself |
+| worry | a goal at risk or past its date; a review or a reminder due; a reminder of the brain's own that waits for the owner | close, re-date or drop the goal; `/review-decision`; do it and close the reminder; the owner's line in `hippocampus/policy.md`, which only they write |
+| satisfaction | a rehearsal passed; a decision as expected or better; a reminder done by its day, or carried out by the brain | nothing: it fades by itself |
 
 ## Output
 

@@ -38,9 +38,10 @@ are the defaults, and the text prints the brain's own.
              within 30 days with nothing edited or recalled in 28)
   --remind   intentions (hippocampus/intentions.md) whose date has come, and
              those waiting on an event; the ones the brain carries out
-             itself (a line ending do `action`), each with where it stands
-             (scheduled, ready, started, finished, failed, waiting) and
-             the steps the log holds of it
+             itself (a line ending do `action`, or several for a plan),
+             each with where it stands (scheduled, ready, started, passed,
+             finished, failed, waiting), how many parts of a plan have
+             passed, and the steps the log holds of it
   --links    pairs of pages not linked that probably should be: shared
              neighbours (Adamic-Adar) and pages recalled together
   --projects each project in prefrontal/: status, goal, the pages it uses,
@@ -106,7 +107,7 @@ import sys
 from collections import Counter
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from vault_intentions import stamp  # noqa: E402
+from vault_intentions import plan_said, stamp  # noqa: E402
 from vaultlib import CHARACTER_FILE, TUNING_PATH, Tuning, Vault, shown, verdicts  # noqa: E402
 
 TOP = 10
@@ -288,6 +289,7 @@ def _intentions(r):
             "repeating": [{"text": i["text"], "when": i["when"], "next": stamp(i["next"], i["timed"])}
                           for i in v.repeating_intentions()],
             "carried": [{"text": i["text"], "when": i["when"], "do": i["do"], "until": i["until"],
+                         "plan": plan_said(i["steps"]), "part": i["stands"]["part"], "parts": len(i["steps"]),
                          "state": i["stands"]["state"], "attempts": i["stands"]["attempts"],
                          "course": [{"date": day.isoformat(), "time": time, "step": step, "attempt": attempt, "note": note}
                                     for day, time, step, attempt, note in i["stands"]["course"]]}
@@ -445,9 +447,10 @@ def gap_line(g):
 def carried_line(i):
     """One reminder with an action: what it does and when, where it stands, and the last steps said of it."""
     steps = i["course"][-COURSE_STEPS:]
-    return (f"{i['state']:<9} {i['text']}  (when {i['when']}: do {i['do']}" + (f" until {i['until']}" if i["until"] else "")
-            + ")" + "".join(f"\n        {' '.join(filter(None, (s['date'], s['time'], s['step'], s['attempt'])))}"
-                            + (f": {s['note']}" if s["note"] else "") for s in steps))
+    at = f"; {i['part']} of {i['parts']} parts passed" if i["parts"] > 1 and i["state"] != "finished" else ""
+    return (f"{i['state']:<9} {i['text']}  (when {i['when']}: do {i['plan']}{at})"
+            + "".join(f"\n        {' '.join(filter(None, (s['date'], s['time'], s['step'], s['attempt'])))}"
+                      + (f": {s['note']}" if s["note"] else "") for s in steps))
 
 
 def listed(title, rows):

@@ -197,14 +197,16 @@ WEIGHT = "weight_"  # weight_<field>: the fields search reads, in the registry's
 #        No threshold is moved by two traits, so a value always has one reason.
 Trait = collections.namedtuple("Trait", "what moves")
 TRAITS = {
-    "caution": Trait("how sure it must be before it lists a page or a held idea: higher, and it says sooner that "
-                     "nothing covers the question", (("min_coverage", 1), ("recall_floor", 1), ("held_coverage", 1))),
+    "caution": Trait("how sure it must be before it lists a page or a held idea, and how soon it asks again: higher, "
+                     "and it says sooner that nothing covers the question, and the owner's yes lapses sooner",
+                     (("min_coverage", 1), ("recall_floor", 1), ("held_coverage", 1), ("yes_days", -1))),
     "curiosity": Trait("how much of what is unresolved it raises: higher, and more held ideas come with a recall, "
                        "and a smaller cluster of concepts already wants a page that frames it",
                        (("held_limit", 1), ("schema_min", -1))),
-    "persistence": Trait("how long it holds on to what is not in use: higher, and a page takes longer to fade, a "
-                         "goal past its date keeps its pages longer, and pages recalled together stay paired longer",
-                         (("dormant_days", 1), ("goal_stale_days", 1), ("hebbian_half_life", 1))),
+    "persistence": Trait("how long it holds on: higher, and a page takes longer to fade, a goal past its date keeps "
+                         "its pages longer, pages recalled together stay paired longer, and an action of its own "
+                         "that failed is tried more often before it is left to the owner",
+                         (("dormant_days", 1), ("goal_stale_days", 1), ("hebbian_half_life", 1), ("work_tries", 1))),
     "openness": Trait("how far recall reaches from the words asked: higher, and it follows more links and each "
                       "carries more", (("spread_hops", 1), ("spread_decay", 1), ("unlinked_association", 1))),
     "resilience": Trait("how fast what it feels fades: higher, and an event stops counting sooner, in a feeling "

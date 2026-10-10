@@ -23,14 +23,20 @@ action, in backticks, and may say what must hold once it is done:
 
     - keep the listing current when every day 07:00 do `index`
     - see the listing is whole when 2026-11-01 do `index` until `check`
+    - put it in order when every friday do `fingerprint`, `index` until `check`, `snapshot`
 
 The action is one of the brain's own (vault_policy) that can run with nobody
-there, and `until` names one that only reads and gives a verdict. Only a day, a
-time or a repeat can start one: nothing but a reader can tell that an event has
-come. Whether the action is allowed is the policy page's to say at the moment it
-would run, not this line's. How one was carried out is lines in the log, one a
-step (`act started <the reminder's words> -> a1: index, due since ...`), and
-where it stands is read from them: NEXT is every step that may follow another.
+there, and `until` names one that only reads and gives a verdict. Several, with
+commas between them, are a plan: done in that order, each with its own check, the
+next begun only when the one before it passed. Only a day, a time or a repeat can
+start one: nothing but a reader can tell that an event has come. Whether an
+action is allowed is the policy page's to say at the moment the plan would run,
+for every step of it before the first, not this line's. How one was carried out
+is lines in the log, one a step (`act started <the reminder's words> -> a1:
+index, due since ...`), and where it stands is read from them: NEXT is every
+step that may follow another. A part of a plan that is done is `passed`, and
+the plan `finished` with its last; so one that was interrupted is taken up at
+the part it had reached.
 
 Nothing here reads a file: the page's text is handed in. It knows the actions
 by vault_policy, which has no dependencies either.
@@ -42,17 +48,22 @@ import re
 from vault_policy import ACTIONS, CHANGES, READS
 
 LINE = re.compile(r"^[-*]\s+(.+?)\s+when\s+(.+?)\s*$")
-# ... do `index`, and then: until `check`. The names are in backticks, so prose that holds the word `do` is not one.
-DO = re.compile(r"\s+do\s+`([^`]*)`(?:\s+until\s+`([^`]*)`)?\s*$")
+# ... do `index`, and then: until `check`; several with commas between them are a plan. The names are in
+# backticks, so prose that holds the word `do` is not one.
+PART = r"`([^`]*)`(?:\s+until\s+`([^`]*)`)?"
+DO = re.compile(rf"\s+do\s+({PART}(?:\s*,\s*{PART})*)\s*$")
 BARE = re.compile(r"\s+do\s+([a-z]+)(?:\s+until\s+[a-z]+)?\s*$")  # the same without them: said, not guessed at
 # How an intention with an action is carried out: each step is one `act` line of the log.
-VERBS = ("started", "finished", "failed", "waiting")
-STEP = re.compile(r"^(started|finished|failed|waiting)\s+(.+)$")
+VERBS = ("started", "passed", "finished", "failed", "waiting")
+STEP = re.compile(r"^(started|passed|finished|failed|waiting)\s+(.+)$")
 ATTEMPT = re.compile(r"^(a\d+)(?::\s*(.*))?$")
 # Where one stands -> the steps that may follow. Nothing follows `waiting` but a start, so a
 # worker that finds it waiting again writes no second line: the log holds each thing once.
-NEXT = {"scheduled": (), "ready": ("started", "waiting"), "started": ("finished", "failed"),
-        "failed": ("started", "waiting"), "waiting": ("started",), "finished": ()}
+# `passed` is a part of a plan done with more to come; `finished` after it is a plan that was
+# shortened under it, so that every part it now has has passed.
+NEXT = {"scheduled": (), "ready": ("started", "waiting"), "started": ("passed", "finished", "failed"),
+        "passed": ("started", "waiting", "finished"), "failed": ("started", "waiting"), "waiting": ("started",),
+        "finished": ()}
 # `(done)`, `(done 2026-11-03)`, `(dropped: no longer needed)`, `(done 2026-11-03: confirmed)`; goals end the same way.
 END = re.compile(r"\s*\((done|dropped)(?:\s+(\d{4}-\d{2}-\d{2}))?(?:\s*:\s*([^)]*?))?\s*\)", re.I)
 DAY = re.compile(r"^(\d{4}-\d{1,2}-\d{1,2})(?:\s+(.+))?$")
@@ -120,16 +131,23 @@ def read_intentions(body):
                 closed = datetime.date.fromisoformat(closed) if closed else None
             except ValueError:
                 closed = None
-            when, do, until, wrong = read_do(m.group(2))
+            when, steps, wrong = read_do(m.group(2))
             said = read_when(when)
-            if do and said["event"] and not said["problem"]:
-                do, wrong = None, (f"'{when}' is an event, and an event cannot start `{do}`: only a day, a time or a "
-                                   "repeat can, since nothing but a reader can tell that an event has come")
+            if steps and said["event"] and not said["problem"]:
+                steps, wrong = [], (f"'{when}' is an event, and an event cannot start `{steps[0]['do']}`: only a day, a "
+                                    "time or a repeat can, since nothing but a reader can tell that an event has come")
+            steps = [] if said["problem"] else steps
             out.append(dict(said, text=m.group(1), when=when, due=said["at"].date() if said["at"] else None,
                             ended=end.group(1).lower() if end else None, closed=closed,
-                            outcome=(end.group(3) or "").strip() if end else "",
-                            do=None if said["problem"] else do, until=until, problem=wrong or said["problem"]))
+                            outcome=(end.group(3) or "").strip() if end else "", steps=steps,
+                            do=", ".join(s["do"] for s in steps) or None, until=steps[0]["until"] if len(steps) == 1 else None,
+                            problem=wrong or said["problem"]))
     return out
+
+
+def plan_said(steps):
+    """A plan as its line writes it, without the backticks: `fingerprint, index until check, snapshot`."""
+    return ", ".join(s["do"] + (f" until {s['until']}" if s["until"] else "") for s in steps)
 
 
 def words(text):
@@ -138,26 +156,34 @@ def words(text):
 
 
 def read_do(when):
-    """(the `when` without its action, the action, what must hold after it, what is wrong) from what follows `when`.
+    """(the `when` without its plan, the plan as [{do, until}], what is wrong) from what follows `when`.
 
-    The action is one that can run with nobody there, a reading or a changing one; `until`
+    Each action is one that can run with nobody there, a reading or a changing one; `until`
     is one that only reads. A name that is neither, and an action written without its
-    backticks where that leaves no `when` to read, are said as a problem and nothing is done.
+    backticks where that leaves no `when` to read, are said as a problem and nothing is
+    done: a plan is taken whole or not at all.
     """
     m = DO.search(when)
+    if not m and re.search(r"\sdo\s+`", when):
+        return re.split(r"\s+do\s+`", when)[0].strip(), [], (
+            f"'{when}': what follows `do` cannot be read. Each action is in backticks, with a comma before the next: "
+            "do `fingerprint`, `index` until `check`")
     if not m:
         bare = BARE.search(when)
         if bare and bare.group(1) in ACTIONS and read_when(when)["problem"]:
-            return when[:bare.start()].strip(), None, None, (
+            return when[:bare.start()].strip(), [], (
                 f"'{when}': an action is written in backticks, do `{bare.group(1)}`, so that prose is never taken for one")
-        return when, None, None, None
-    rest, do, until = when[:m.start()].strip(), m.group(1).strip(), (m.group(2) or "").strip() or None
-    for name, tiers, what in ((do, (READS, CHANGES), "can be done with nobody there"), (until, (READS,), "only reads")):
-        if name is not None and (name not in ACTIONS or ACTIONS[name].tier not in tiers):
-            close = difflib.get_close_matches(name, [n for n, a in ACTIONS.items() if a.tier in tiers], n=1)
-            return rest, None, None, (f"`{name}` is no action that {what}" + (f" (closest: {close[0]})" if close else "")
-                                      + "; `brain act` lists them")
-    return rest, do, until, None
+        return when, [], None
+    rest = when[:m.start()].strip()
+    steps = [{"do": do.strip(), "until": until.strip() or None} for do, until in re.findall(PART, m.group(1))]
+    for step in steps:
+        for name, tiers, what in ((step["do"], (READS, CHANGES), "can be done with nobody there"),
+                                  (step["until"], (READS,), "only reads")):
+            if name is not None and (name not in ACTIONS or ACTIONS[name].tier not in tiers):
+                close = difflib.get_close_matches(name, [n for n, a in ACTIONS.items() if a.tier in tiers], n=1)
+                return rest, [], (f"`{name}` is no action that {what}" + (f" (closest: {close[0]})" if close else "")
+                                  + "; `brain act` lists them")
+    return rest, steps, None
 
 
 def read_course(events):

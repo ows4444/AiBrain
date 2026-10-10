@@ -117,8 +117,8 @@ class TheCourse(Carried):
 
     def test_no_step_is_written_that_may_not_follow(self):
         # Every state against every step: a step is accepted where the table has it, and nowhere else.
-        reach = {"ready": [], "started": ["started"], "failed": ["started", "failed"], "waiting": ["waiting"],
-                 "finished": ["started", "finished"]}
+        reach = {"ready": [], "started": ["started"], "passed": ["started", "passed"], "failed": ["started", "failed"],
+                 "waiting": ["waiting"], "finished": ["started", "finished"]}
         for state, taken in reach.items():
             for step in VERBS:
                 with self.subTest(state=state, step=step):
@@ -136,7 +136,8 @@ class TheCourse(Carried):
                         self.assertEqual(str(refused.exception), f"'{WHOLE}' is {state}: it cannot be {step} now (what may "
                                          f"follow: {', '.join(NEXT[state]) or 'nothing'})")
                         self.assertEqual(self.steps(), before)
-        self.assertEqual(set(NEXT), {"scheduled", "ready", "started", "failed", "waiting", "finished"})
+        self.assertEqual(set(NEXT), {"scheduled", "ready", "started", "passed", "failed", "waiting", "finished"})
+        self.assertEqual(VERBS, ("started", "passed", "finished", "failed", "waiting"))
         self.assertEqual(NEXT["waiting"], ("started",))  # found waiting again, nothing more is written
         self.assertFalse(set(VERBS) & set(vaultlib.ACTIONS))  # a step is never mistaken for an action that ran
         self.log()

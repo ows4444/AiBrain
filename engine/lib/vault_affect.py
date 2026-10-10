@@ -12,11 +12,13 @@ about what is true (confidence is from the evidence only), and nothing about exp
 
     surprise      new input says the opposite of a page; a decision turned out other than expected
     frustration   a rehearsal missed; a question asked again and still not answered; a decision
-                  that turned out worse; a reminder done after its day
+                  that turned out worse; a reminder done after its day; an action of its own
+                  that failed, or began and has no end
     curiosity     a question no page answers, each time it is asked
     satisfaction  a rehearsal passed; a decision that turned out as expected or better; a
-                  reminder done by its day
-    worry         a goal at risk or past its date; a decision past its review; a reminder due
+                  reminder done by its day, or one the brain carried out itself
+    worry         a goal at risk or past its date; a decision past its review; a reminder due,
+                  or one of its own that waits for the owner
 
 The mood is the same events read over a longer time (mood_half_life) and added up across every
 target: how the last weeks lean, where a feeling is what one thing draws now.
@@ -24,6 +26,7 @@ target: how the last weeks lean, where a feeling is what one thing draws now.
 Only the pages and the log are read. What sits in .cache/ (the error log) is no record: lose it
 and a feeling would change with nothing having happened.
 """
+from vault_intentions import read_course, words
 from vault_model import LINK, parse_date
 
 FEELINGS = ("surprise", "frustration", "curiosity", "satisfaction", "worry")
@@ -54,8 +57,8 @@ class AffectMixin:
         for page, events in self.rehearsals.items():
             out += [("satisfaction" if passed else "frustration", "page", page.rel, day, 1.0,
                      "recalled in rehearsal" if passed else "missed in rehearsal") for day, passed in events]
-        for words, asked in self.open_gaps():
-            name = ", ".join(sorted(words))
+        for known_by, asked in self.open_gaps():
+            name = ", ".join(sorted(known_by))
             for n, (date, question) in enumerate(asked):
                 out.append(("curiosity", "gap", name, parse_date(date), 1.0, f"asked and not answered: {question}"))
                 if n:
@@ -74,7 +77,19 @@ class AffectMixin:
                 out.append(("frustration" if late > 0 else "satisfaction", "reminder", i["text"], i["closed"], 1.0,
                             f"done {late} days after it was due" if late > 0 else
                             "done by its day" if i["due"] else "done"))
+        written = {words(i["text"]): i["text"] for i in self.intentions()}  # a reminder as its line says it
+        for said, course in read_course(self.events).items():  # what the brain did about one itself
+            for day, _, kind, _, note in course:
+                if kind in ("failed", "finished"):
+                    out.append(("frustration" if kind == "failed" else "satisfaction", "reminder", written.get(said, said),
+                                day, 1.0, ("its action failed" if kind == "failed" else "carried out")
+                                + (f": {note}" if note else "")))
         for i in self.due_intentions():
+            if i["stands"] and i["stands"]["state"] == "waiting":  # its worry is the wait, counted from when it began
+                day, _, _, _, note = i["stands"]["course"][-1]
+                out.append(("worry", "reminder", i["text"], self.today, standing((self.today - day).days),
+                            f"waits for the owner since {day.isoformat()}" + (f": {note}" if note else "")))
+                continue
             out.append(("worry", "reminder", i["text"], self.today, standing((self.now - i["since"]).days),
                         f"due since {i['since'].date().isoformat()}"))
         for p in self.decisions_due():

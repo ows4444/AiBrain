@@ -5,7 +5,7 @@ Mixed into vaultlib.Vault; relies on its pages, edges, goals, tuning and resolve
 import datetime
 import os
 
-from vault_intentions import SPAN, STEP, clock, next_round, read_course, read_intentions, words
+from vault_intentions import SPAN, STEP, clock, next_round, plan_said, read_course, read_intentions, words
 from vault_policy import proposal, yes_of
 
 LAST_MINUTE = datetime.time(23, 59)  # a log line with no time of day: the end of its day
@@ -39,17 +39,19 @@ class PurposeMixin:
         return self._reminded_kept
 
     def standing(self, intention):
-        """Where a reminder the brain carries out itself stands: {state, attempt, attempts, ever, course}; None for
-        one that only reminds.
+        """Where a reminder the brain carries out itself stands: {state, part, attempt, attempts, ever, course,
+        proposal}; None for one that only reminds.
 
         Read from the log alone (vault_intentions.read_course). `state` is scheduled (its
         time has not come), ready (it has, and nothing was done), or the last step said of
         it: started, finished, failed, waiting. A repeat that finished is over for that
         round and stands by what was said since; a dated one that finished is done.
-        `attempt` names the last one started, `attempts` counts them, and `course` is the
-        steps that count, each (day, time, step, attempt, note). `ever` counts every start
-        the log holds of it, so an attempt's name is never used twice. `proposal` is the
-        name it has while it waits, for the owner's yes (vault_policy.proposal).
+        `part` is how many parts of its plan have passed, which is the one it is at.
+        `attempt` names the last one started, `attempts` counts the starts of the part it is
+        at, and `course` is the steps that count, each (day, time, step, attempt, note).
+        `ever` counts every start the log holds of it, so an attempt's name is never used
+        twice. `proposal` is the name it has while it waits, for the owner's yes
+        (vault_policy.proposal).
         """
         if not intention.get("do"):
             return None
@@ -61,9 +63,11 @@ class PurposeMixin:
         due = (self.next_round(intention) if intention["every"] else intention["at"]) <= self.now
         state = course[-1][2] if course else "ready" if due else "scheduled"
         started = [step[3] for step in course if step[2] == "started"]
-        return {"state": state, "attempt": started[-1] if started else None, "attempts": len(started), "ever": ever,
-                "course": course, "proposal": proposal(words(intention["text"]), intention["do"], intention["until"],
-                                                       intention["when"], ever)}
+        passed = [n for n, step in enumerate(course) if step[2] == "passed"]
+        here = course[passed[-1] + 1:] if passed else course  # what was said of the part it is at
+        return {"state": state, "part": len(passed), "attempt": started[-1] if started else None,
+                "attempts": sum(step[2] == "started" for step in here), "ever": ever, "course": course,
+                "proposal": proposal(words(intention["text"]), plan_said(intention["steps"]), intention["when"], ever)}
 
     def proposals(self):
         """The reminders that wait and have no yes that holds: [{text, do, why, yes}], in the order they came due.
