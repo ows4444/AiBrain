@@ -360,7 +360,7 @@ class ModelAndRetrievalCorners(TempBrain):
         rows, why = self.brain().prompt_recall("How does spaced retrieval practice strengthen memory?")
         self.assertTrue(why.startswith("match"), why)
         self.assertEqual(len(rows), 3)  # the fourth would pass 900 characters
-        self.assertLessEqual(sum(len(line) for _, line in rows), vaultlib.PROMPT_CHARS)
+        self.assertLessEqual(sum(len(line) for _, line in rows), self.brain().tuning.prompt_chars)
 
 
 class CacheThatCannotBeUsed(TempBrain):
@@ -381,7 +381,7 @@ class CacheThatCannotBeUsed(TempBrain):
         os.makedirs(os.path.join(self.root, ".cache"))
         path = self.write(os.path.join(".cache", "search.sqlite"), "what another process is writing")
         with mock.patch.object(vault_cache.sqlite3, "connect", return_value=Refusing()) as connect:
-            cache = vault_cache.TermCache(self.root)
+            cache = vault_cache.TermCache(self.root, self.brain().tuning.cache_key)
         return cache, connect.call_count, Refusing.closed, os.path.exists(path)
 
     def test_a_locked_cache_is_left_alone(self):

@@ -185,10 +185,12 @@ class Structure(TempBrain):
 
     def test_usage_lists_every_threshold(self):
         u = self.brain().usage()
-        self.assertEqual(u["thresholds"]["dormant_days"], vaultlib.DORMANT_DAYS)
-        self.assertIn("hebbian_half_life", u["thresholds"])
+        self.assertEqual(list(u["thresholds"]), list(vaultlib.THRESHOLDS))
+        self.assertEqual(u["thresholds"]["dormant_days"], {
+            "value": 180, "default": 180, "low": 1, "high": 3650,
+            "what": "days unlinked, unrecalled and unedited before a page is proposed for dormant/"})
         text = run_brain(self.root, "introspect", "--usage").stdout
-        self.assertIn("rehearsal_days = [1, 3, 7, 14, 30, 60, 120]", text)
+        self.assertIn("\n  rehearsal_days = 1, 3, 7, 14, 30, 60, 120  (1 to 3650): days until the next rehearsal", text)
 
 
 class Inbox(TempBrain):

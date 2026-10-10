@@ -224,9 +224,9 @@ class AnswerTestSet(unittest.TestCase):
     def test_recall_stops_where_the_match_stops(self):
         vault = vaultlib.Vault(FIXTURE)
         every = vault.recall("What is the ease factor?")
-        cut = vault.recall("What is the ease factor?", floor=vaultlib.RECALL_FLOOR, abstain=True)
+        cut = vault.recall("What is the ease factor?", floor=vault.tuning.recall_floor, abstain=True)
         self.assertEqual(([r["page"].stem for r in cut], len(every)), (["wozniak-sm2"], 10))
-        self.assertTrue(all(r["score"] < vaultlib.RECALL_FLOOR * every[0]["score"] for r in every[1:]))
+        self.assertTrue(all(r["score"] < vault.tuning.recall_floor * every[0]["score"] for r in every[1:]))
         out = self.recall_cmd("What is the ease factor?")
         self.assertIn("wozniak-sm2.md", out)
         self.assertNotIn("supermemo.md", out)
@@ -236,8 +236,8 @@ class AnswerTestSet(unittest.TestCase):
     def test_recall_lists_nothing_when_the_best_page_holds_too_little_of_the_question(self):
         vault, asked = vaultlib.Vault(FIXTURE), "What did the 2024 sleep and memory consolidation trials find?"
         best = vault.search(asked)[0][0]
-        self.assertLess(vault.coverage(asked, best), vaultlib.MIN_COVERAGE)
-        self.assertEqual(vault.recall(asked, floor=vaultlib.RECALL_FLOOR, abstain=True), [])
+        self.assertLess(vault.coverage(asked, best), vault.tuning.min_coverage)
+        self.assertEqual(vault.recall(asked, floor=vault.tuning.recall_floor, abstain=True), [])
         out = self.recall_cmd(asked)
         self.assertTrue(out.startswith("recall: no confident match for"), out)
         self.assertIn(f"its words barely reach {best.rel}", out)
@@ -375,7 +375,7 @@ class PromptRecall(TempBrain):
             rows, got = v.prompt_recall(prompt)
             self.assertEqual((rows, got.split(" (")[0]), ([], why), prompt)
         self.assertLessEqual(sum(len(line) for _, line in v.prompt_recall("What is the spacing effect?")[0]),
-                             vaultlib.PROMPT_CHARS)
+                             v.tuning.prompt_chars)
 
     def test_the_hook_is_off_by_default_bounded_and_logs_each_decision(self):
         asked = {"prompt": "What is the spacing effect?"}
@@ -471,7 +471,7 @@ class SearchCache(TempBrain):
         self.assertEqual([stem for stem, _ in results], ["spacing"])
         os.remove(os.path.join(self.root, "cortex/concepts/layout.md"))
         self.counted_search("spacing")
-        cache = vault_cache.TermCache(self.root)
+        cache = vault_cache.TermCache(self.root, self.brain().tuning.cache_key)
         self.assertEqual(cache.stats()["pages"], 1)
         cache.close()
 
@@ -522,7 +522,7 @@ class SearchCache(TempBrain):
 
     def test_a_cache_broken_after_opening_still_answers(self):
         self.counted_search("spacing")
-        cache = vault_cache.TermCache(self.root)
+        cache = vault_cache.TermCache(self.root, self.brain().tuning.cache_key)
         cache.db.execute("DROP TABLE terms")  # as if another process damaged it mid-run
         page_list = self.brain().knowledge
         out = cache.get_many(page_list, lambda p: {"x": 1.0})

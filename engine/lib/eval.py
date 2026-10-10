@@ -2,7 +2,7 @@
 
 Usage:
     brain eval [--root DIR] [--questions FILE] [--answers FILE] [--k N] [--json]
-               [--save-baseline] [--baseline FILE] [--draft N]
+               [--save-baseline] [--baseline FILE] [--draft N] [--set NAME=VALUE ...]
 
 Runs on the fixture brain in engine/eval/fixture/ with engine/eval/questions.json
 unless --root and --questions point elsewhere (an owner can keep a question
@@ -31,7 +31,7 @@ the JSON are the standard set's. A "buried" question is one whose first
 expected page is below rank 3 or absent; it is listed with the page that
 came first instead.
 
-Recall is scored as `brain recall` runs it: rows under RECALL_FLOOR of the
+Recall is scored as `brain recall` runs it: rows under recall_floor of the
 best are cut and a gross mismatch returns nothing, so `rows` and `bytes` are
 what the command would hand an answer.
 
@@ -55,6 +55,13 @@ compares against), with a hash of the brain's pages: numbers from a changed
 brain are not comparable, and the report says when the hash differs. The
 tests fail when `recall` falls below the saved one on any set. Reads only, apart from that.
 
+--set NAME=VALUE runs the set with one threshold at another value (repeat it
+for more): how a value is measured before the brain keeps it. Nothing is
+written, the search cache included; the report names what was tried and the
+brain's own value. To keep one, add `- NAME = VALUE (why)` under `## Overrides`
+in the brain's hippocampus/tuning.md; `brain introspect --usage` lists every
+threshold with its range. A baseline is never saved from a tried value.
+
 A question set for a brain other than the fixture keeps its baseline beside
 it (`motor/eval-questions.json` -> `motor/eval-questions-baseline.json`), so
 it never overwrites the engine's. `--draft N` prints, as JSON, N questions to
@@ -74,7 +81,8 @@ import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from vaultlib import LINK, RECALL_FLOOR, Vault, parse_date, tokens  # noqa: E402
+from commands import Refused  # noqa: E402
+from vaultlib import LINK, Vault, parse_date, plain, setting, shown, tokens, tuning_of  # noqa: E402
 
 EVAL = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "eval")
 FIXTURE = os.path.join(EVAL, "fixture")
@@ -176,7 +184,7 @@ def retrieval(vault, questions, k):
 
     def recalled(q):  # as `brain recall` does it: weak rows cut, nothing on a gross mismatch
         return [r["page"] for r in vault.recall(q["question"], project=q.get("project"), limit=k,
-                                                floor=RECALL_FLOOR, abstain=True)]
+                                                floor=vault.tuning.recall_floor, abstain=True)]
 
     for q in questions:
         if "held" in q:  # the question names an idea still held on its episode
@@ -250,6 +258,8 @@ def arguments(ap):
     ap.add_argument("--save-baseline", action="store_true")
     ap.add_argument("--baseline")
     ap.add_argument("--draft", type=int, metavar="N")
+    ap.add_argument("--set", action="append", dest="tried", metavar="NAME=VALUE", default=[],
+                    help="run with a threshold at another value; nothing is written")
 
 
 def baseline_of(args):
@@ -273,12 +283,29 @@ def cache_off():
             os.environ["BRAIN_CACHE"] = was
 
 
+def tried(args):
+    """{name: value} for every --set; Refused for a name that is no threshold or a value outside its range."""
+    trial = {}
+    for item in args.tried:
+        try:
+            name, value = setting(item)
+        except ValueError as why:
+            raise Refused(f"brain eval --set: {why}") from None
+        trial[name] = value
+    if trial and args.save_baseline:
+        raise Refused("brain eval: --set tries a value, and a baseline holds the numbers of the brain's own "
+                      "thresholds; leave one of the two out")
+    return trial
+
+
 def run(root, args):
     """`root` is not used: the brain tested is --root, the engine's fixture unless another is given."""
+    trial = tried(args)
     spec = load(args.questions) if os.path.exists(args.questions) or not args.draft else {"questions": []}
     fixture = os.path.realpath(args.root) == os.path.realpath(FIXTURE)
-    with cache_off() if fixture else contextlib.nullcontext():  # the engine never writes into its own folder
-        vault = Vault(args.root, today=parse_date(spec.get("today", "")) or None)
+    # The engine never writes into its own folder, and a value being tried leaves nothing behind.
+    with cache_off() if fixture or trial else contextlib.nullcontext():
+        vault = Vault(args.root, today=parse_date(spec.get("today", "")) or None, tuning=trial)
         if args.draft is not None:
             return {"questions": draft(vault, spec["questions"], args.draft)}
         asked = [q for q in spec["questions"] if q.get("question", "").strip()]
@@ -286,6 +313,10 @@ def run(root, args):
                   "problems": question_problems(vault, asked)}
         if args.answers:
             result["answers"] = answers(vault, asked, load(args.answers))
+    if trial:
+        own = tuning_of(args.root)
+        result["set"] = {name: {"value": plain(value), "was": plain(getattr(own, name))}
+                         for name, value in trial.items()}
     if args.save_baseline:
         r = result["retrieval"]
         with open(baseline_of(args), "w", encoding="utf-8") as fh:
@@ -304,6 +335,9 @@ def render(result, args):
     base = load(baseline_of(args)) if os.path.exists(baseline_of(args)) else None
     covered = r['recall']['questions'] or sum(sets['recall']['questions'] for sets in r['sets'].values())
     out = [f"retrieval over {covered} covered questions, top {r['k']}"]
+    if "set" in result:
+        out.append("  tried with " + ", ".join(f"{name} = {shown(x['value'])} (the brain's own: {shown(x['was'])})"
+                                               for name, x in result["set"].items()) + "; nothing was written")
     if base and base.get("brain") not in (None, r["brain"]):
         out.append(f"  the brain's pages changed since the baseline was saved ({base['brain']} then, {r['brain']} now): "
                    "its numbers are not comparable")

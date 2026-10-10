@@ -2,8 +2,9 @@
 
 Tokenizing every page is most of what a search costs, and a page's terms only
 change when its text does. The cache keys each page by its path and a hash of
-its text, so an edited page is recomputed and an unchanged one is not; a
-change to the tokenizer or field weights (CACHE_VERSION) starts it over.
+its text, so an edited page is recomputed and an unchanged one is not. A
+change to the tokenizer (CACHE_VERSION), or to the weights a brain gives the
+fields it searches (its `key`, from vault_tuning), starts it over.
 
     <brain>/.cache/search.sqlite    rebuilt on demand, never committed
 
@@ -21,8 +22,8 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from errlog import note  # noqa: E402
 
-# Raise when tokens(), stem(), STOP_WORDS or FIELD_WEIGHTS change meaning:
-# every cached row was computed by the old rules.
+# Raise when tokens(), stem() or STOP_WORDS change meaning: every cached row was
+# computed by the old rules. The field weights need no raise: they are in the key.
 CACHE_VERSION = "2"
 CACHE_DIR = ".cache"
 CACHE_FILE = "search.sqlite"
@@ -41,11 +42,16 @@ def digest(text):
 
 
 class TermCache:
-    """Term frequencies by page; `get_many` is the only call search needs."""
+    """Term frequencies by page; `get_many` is the only call search needs.
 
-    def __init__(self, root):
+    `key` names what the rows depend on besides the page's text and the tokenizer: the
+    brain's field weights (Tuning.cache_key). A cache filled under another key is emptied.
+    """
+
+    def __init__(self, root, key):
         self.root = root
         self.path = cache_path(root)
+        self.version = f"{CACHE_VERSION} {key}".strip()
         self.db = None
         if enabled():
             try:
@@ -61,10 +67,10 @@ class TermCache:
             db.execute("CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
             db.execute("CREATE TABLE IF NOT EXISTS terms (rel TEXT PRIMARY KEY, digest TEXT NOT NULL, tf TEXT NOT NULL)")
             row = db.execute("SELECT value FROM meta WHERE key = 'version'").fetchone()
-            if row is None or row[0] != CACHE_VERSION:
+            if row is None or row[0] != self.version:
                 with db:
                     db.execute("DELETE FROM terms")
-                    db.execute("INSERT OR REPLACE INTO meta VALUES ('version', ?)", (CACHE_VERSION,))
+                    db.execute("INSERT OR REPLACE INTO meta VALUES ('version', ?)", (self.version,))
         except sqlite3.OperationalError:
             # Locked by another process, or read-only: the file may be sound, so it is left
             # alone and this run goes without it.

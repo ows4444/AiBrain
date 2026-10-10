@@ -1,7 +1,8 @@
 """Retrieval: keyword search, links that strengthen with use, and spreading activation.
 
-Mixed into vaultlib.Vault; relies on its pages, events, edges, resolve(),
+Mixed into vaultlib.Vault; relies on its pages, events, edges, tuning, resolve(),
 typed_edges(), contradicted_by(), strength(), confidence() and links_from().
+Every number here is the brain's own (vault_tuning): the defaults are named below.
 
     search    BM25 over title (x3), aliases (x2), body and summary (x0.5);
               dormant/ on request
@@ -23,28 +24,11 @@ from collections import Counter
 
 from vault_cache import TermCache
 from vault_events import is_rehearsal_pass
-from vault_model import (DORMANT_DIR, HEBBIAN_HALF_LIFE, HELD_COVERAGE, HELD_LIMIT, MIN_COVERAGE, PROJECT_BOOST,
-                         PROMPT_CHARS, PROMPT_COVERAGE, PROMPT_MIN_WORDS, PROMPT_ROWS, QUESTION, RECALL_FLOOR,
-                         SEED_LIMIT, SPREAD_DECAY, SPREAD_HOPS, STALE_DAYS, Page, as_list, prose, tokens)
-
-# The summary says what the page holds in other words than its title, so a
-# question in a person's words can reach it. It restates the body, so it counts
-# for half: at 1.0 and above the eval's `first` and standard sets fall.
-FIELD_WEIGHTS = (("title", 3.0), ("aliases", 2.0), ("body", 1.0), ("summary", 0.5))
-BM25_K1, BM25_B = 1.2, 0.75
-# How much a typed link carries activation, against 1.0 for a plain link. A
-# contradiction is followed like a plain link (the other side must be seen),
-# and the result is flagged.
-RELATION_WEIGHT = {"supports": 1.2, "extends": 1.2, "part-of": 1.1, "applies": 1.1, "contradicts": 1.0}
-# A pair only ever recalled together, with no link, still associates, but weakly.
-UNLINKED_ASSOCIATION = 0.5
-# Pages a project links to join the seeds this strongly when they were not hits.
-PROJECT_SEED = 0.2
-# How much the owner's rehearsal strength (0-7) lifts a page at the end.
-STRENGTH_LIFT = 0.05
+from vault_model import DORMANT_DIR, QUESTION, RELATIONS, Page, as_list, prose, tokens
 
 
 def field_text(page, field):
+    """The text of one searched part of a page: a field named by a `weight_<field>` threshold."""
     if field == "title":
         return page.title
     if field == "aliases":
@@ -76,7 +60,7 @@ class RetrievalMixin:
         cache = self.__dict__.setdefault("_tf", {})
         if page not in cache:
             tf = Counter()
-            for field, weight in FIELD_WEIGHTS:
+            for field, weight in self.tuning.field_weights:
                 for t in tokens(field_text(page, field)):
                     tf[t] += weight
             cache[page] = tf
@@ -88,7 +72,7 @@ class RetrievalMixin:
         missing = [p for p in pages if p not in memo]
         if missing:
             if "_term_cache" not in self.__dict__:
-                self._term_cache = TermCache(self.root)
+                self._term_cache = TermCache(self.root, self.tuning.cache_key)
             memo.update(self._term_cache.get_many(missing, self._term_frequencies))
         return {p: memo[p] for p in pages}
 
@@ -132,6 +116,7 @@ class RetrievalMixin:
         average = sum(lengths.values()) / len(docs) or 1.0
         df = Counter(t for tf in docs.values() for t in terms if t in tf)
         n = len(docs)
+        k1, b = self.tuning.bm25_k1, self.tuning.bm25_b
         scores = {}
         for p, tf in docs.items():
             score = 0.0
@@ -139,19 +124,21 @@ class RetrievalMixin:
                 f = tf.get(t)
                 if f:
                     idf = math.log(1 + (n - df[t] + 0.5) / (df[t] + 0.5))
-                    score += idf * f * (BM25_K1 + 1) / (f + BM25_K1 * (1 - BM25_B + BM25_B * lengths[p] / average))
+                    score += idf * f * (k1 + 1) / (f + k1 * (1 - b + b * lengths[p] / average))
             if score > 0:
                 scores[p] = score
         return sorted(scores.items(), key=lambda kv: (-kv[1], kv[0].rel))[:limit]
 
     # -- Hebbian weights ----------------------------------------------------
 
-    def edge_weights(self, half_life=HEBBIAN_HALF_LIFE):
+    def edge_weights(self, half_life=None):
         """{frozenset({a, b}): weight} from recall lines naming both pages, each halving every `half_life` days.
 
         Rehearsal lines are left out: quizzing two pages in one session is the
         owner being tested, not the two ideas being used together.
+        `half_life` is the brain's hebbian_half_life unless given.
         """
+        half_life = self.tuning.hebbian_half_life if half_life is None else half_life
         key = ("_hebbian", half_life)
         if key not in self.__dict__:
             weights = {}
@@ -172,10 +159,12 @@ class RetrievalMixin:
         """{page: {neighbour: weight}}: links (typed ones weighted), strengthened by co-recall."""
         if "_associations" not in self.__dict__:
             graph = {p: {} for p in self.knowledge}
+            # relation_<name> for each relation of the vocabulary; one outside it carries like a plain link
+            carries = {rel: getattr(self.tuning, "relation_" + rel.replace("-", "_")) for rel in RELATIONS}
             relation = {}
             for a, rel, b in self.typed_edges():
                 pair = frozenset((a, b))
-                relation[pair] = max(relation.get(pair, 1.0), RELATION_WEIGHT.get(rel, 1.0))
+                relation[pair] = max(relation.get(pair, 1.0), carries.get(rel, 1.0))
             hebb = self.edge_weights()
             for a, b in self.knowledge_edges():
                 pair = frozenset((a, b))
@@ -184,7 +173,7 @@ class RetrievalMixin:
                 graph[b][a] = max(graph[b].get(a, 0.0), w)
             for pair, h in hebb.items():
                 a, b = tuple(pair)
-                w = UNLINKED_ASSOCIATION * math.log1p(h)
+                w = self.tuning.unlinked_association * math.log1p(h)
                 # A co-recall old enough to decay to 0.0 associates nothing; a zero
                 # weight would also be a page's strongest link and divide by zero.
                 if w > 0 and a in graph and b in graph and b not in graph[a]:
@@ -194,14 +183,17 @@ class RetrievalMixin:
 
     # -- spreading activation -----------------------------------------------
 
-    def activate(self, seeds, hops=SPREAD_HOPS, decay=SPREAD_DECAY):
+    def activate(self, seeds, hops=None, decay=None):
         """({page: activation}, {page: (seed, hop)}) after spreading `hops` times from `seeds` ({page: score}).
 
         Each hop passes on `decay` of a page's new activation, split by link
         weight relative to its strongest link and damped by the square root of
         its degree, so a hub does not flood every answer with its neighbours.
         Every weight in the association graph is positive, so every gain is.
+        `hops` and `decay` are the brain's (spread_hops, spread_decay) unless given.
         """
+        hops = self.tuning.spread_hops if hops is None else hops
+        decay = self.tuning.spread_decay if decay is None else decay
         graph = self.association_graph()
         activation = dict(seeds)
         via = {p: (p, 0) for p in seeds}
@@ -221,22 +213,23 @@ class RetrievalMixin:
             frontier = spread
         return activation, via
 
-    def recall(self, query, project=None, limit=10, hops=SPREAD_HOPS, dormant=False, floor=0.0, abstain=False):
+    def recall(self, query, project=None, limit=10, hops=None, dormant=False, floor=0.0, abstain=False):
         """Ranked pages for a question: [{page, score, seed, hop, from, confidence, flags}].
 
         `floor` cuts rows scoring under that share of the best row; `abstain`
-        returns nothing when the best search hit holds under MIN_COVERAGE of
-        the question. `brain recall` uses both (RECALL_FLOOR) unless given --all.
+        returns nothing when the best search hit holds under min_coverage of
+        the question. `brain recall` uses both (recall_floor) unless given --all.
 
         Search hits seed the spread (scaled so the best is 1.0). With `project`
-        (a prefrontal/ folder name), its pages count PROJECT_BOOST times more
+        (a prefrontal/ folder name), its pages count project_boost times more
         when they are hits, and join as weak seeds when they are not: what is
         recalled depends on what the owner is working on.
         flags: disputed, contradicted, stale (a concept or insight not updated in
-        STALE_DAYS: ask whether it still holds), generated (/explore), dormant.
+        stale_days: ask whether it still holds), generated (/explore), dormant.
         """
-        hits = self.search(query, limit=SEED_LIMIT, dormant=dormant)
-        if abstain and hits and self.coverage(query, hits[0][0], dormant=dormant) < MIN_COVERAGE:
+        t = self.tuning
+        hits = self.search(query, limit=t.seed_limit, dormant=dormant)
+        if abstain and hits and self.coverage(query, hits[0][0], dormant=dormant) < t.min_coverage:
             return []
         seeds = {}
         if hits:
@@ -249,19 +242,19 @@ class RetrievalMixin:
             for p in self.links_from(focus):
                 if p.is_system:
                     continue
-                seeds[p] = seeds[p] * PROJECT_BOOST if p in seeds else PROJECT_SEED
+                seeds[p] = seeds[p] * t.project_boost if p in seeds else t.project_seed
         if not seeds:
             return []
         activation, via = self.activate(seeds, hops=hops)
         rows = []
         for p, a in activation.items():
-            score = a * (1 + STRENGTH_LIFT * self.strength(p))
+            score = a * (1 + t.strength_lift * self.strength(p))
             seed, hop = via.get(p, (p, 0))
             flags = [f for f, on in (
                 ("disputed", "disputed" in as_list(p.fields.get("tags"))),
                 ("contradicted", bool(self.contradicted_by(p))),
                 ("stale", p.type in ("concept", "insight") and p.updated
-                 and (self.today - p.updated).days > STALE_DAYS),
+                 and (self.today - p.updated).days > t.stale_days),
                 ("generated", p.generated),
                 ("dormant", p.rel.startswith(DORMANT_DIR + os.sep) or p.rel.startswith(DORMANT_DIR + "/")),
             ) if on]
@@ -277,13 +270,14 @@ class RetrievalMixin:
         """(rows, why) for a prompt nobody asked to recall on: [(page, summary)] or [] and the reason.
 
         Stricter than `recall`: a command, a short prompt, a prompt that is not
-        a question, or one whose best page holds under PROMPT_COVERAGE of its
-        words gets nothing. Rows are cut to PROMPT_ROWS and PROMPT_CHARS.
+        a question, or one whose best page holds under prompt_coverage of its
+        words gets nothing. Rows are cut to prompt_rows and prompt_chars.
         """
+        t = self.tuning
         text = prompt.strip()
         if text.startswith(("/", "<")):
             return [], "command"
-        if len(text.split()) < PROMPT_MIN_WORDS:
+        if len(text.split()) < t.prompt_min_words:
             return [], "short"
         if not QUESTION.search(text):
             return [], "not a question"
@@ -291,21 +285,21 @@ class RetrievalMixin:
         if not hits:
             return [], "no word matches"
         covered = self.coverage(text, hits[0][0])
-        if covered < PROMPT_COVERAGE:
+        if covered < t.prompt_coverage:
             return [], f"weak match ({covered:.2f})"
         rows, used = [], 0
-        for r in self.recall(text, limit=PROMPT_ROWS, floor=RECALL_FLOOR, abstain=True):
+        for r in self.recall(text, limit=t.prompt_rows, floor=t.recall_floor, abstain=True):
             page = r["page"]
             line = f"{page.rel}: {page.summary or page.title}"
-            if rows and used + len(line) > PROMPT_CHARS:
+            if rows and used + len(line) > t.prompt_chars:
                 break
-            rows.append((page, line[:PROMPT_CHARS]))
+            rows.append((page, line[:t.prompt_chars]))
             used += len(line)
         return rows, f"match ({covered:.2f})"
 
     # -- ideas held on episodes ---------------------------------------------
 
-    def held_ideas(self, query, limit=HELD_LIMIT):
+    def held_ideas(self, query, limit=None):
         """Candidates with no page yet that the question names: [{name, note, episodes, sources}], best first.
 
         An idea waits on its episode until a second source names it. Until
@@ -313,7 +307,9 @@ class RetrievalMixin:
         the episode and say it rests on one source, without opening the
         episode. Ideas raised only by /explore are not listed: they are not
         evidence. Nothing here makes a page or lowers the bar for one.
+        At most `limit`: the brain's held_limit unless given.
         """
+        limit = self.tuning.held_limit if limit is None else limit
         terms = set(tokens(query))
         docs = self._searchable()
         if not terms:
@@ -330,7 +326,7 @@ class RetrievalMixin:
             named, noted = set(tokens(row["name"])), set(tokens(" ".join(notes)))
             if 2 * len(terms & named) < len(named):  # the question has to name it: half the name's words or more
                 continue
-            if sum(w for t, w in idf.items() if t in named | noted) < HELD_COVERAGE * sum(idf.values()):
+            if sum(w for t, w in idf.items() if t in named | noted) < self.tuning.held_coverage * sum(idf.values()):
                 continue
             score = sum(w * (3.0 if t in named else 1.0) for t, w in idf.items() if t in named | noted)
             rows.append({"name": row["name"], "note": notes[0] if notes else "", "episodes": row["episodes"],

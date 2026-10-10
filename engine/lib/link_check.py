@@ -28,7 +28,9 @@ nor in dormant/ (`brain log` refuses these as they are written; history may
 hold them for pages since merged), open decisions with untagged lines, possible
 near-duplicate pages and undated facts (a count or a status in the present
 tense, on a concept, entity or insight, with no date and no pointer) are
-reported but do not fail.
+reported but do not fail. A line in hippocampus/tuning.md that names no
+threshold, or gives one a value outside its range, is a schema problem of that
+page, and fails; `tuning` in the result is the overrides in force.
 --guard also scans every file for credentials (fails) and personal data
 (listed), naming the file, kind and line, never the value.
 Reads only; never modifies anything.
@@ -41,7 +43,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from fingerprint import fingerprint_problems, forgotten  # noqa: E402
 from secret_scan import scan_tree  # noqa: E402
-from vaultlib import STUB_WORDS, Vault, owner_file, parse_frontmatter, summary_problems, unread_lines  # noqa: E402
+from vaultlib import Tuning, Vault, owner_file, parse_frontmatter, summary_problems, unread_lines  # noqa: E402
 
 LIMIT = 40
 APPEND_ONLY = ("hippocampus/log.md", "hippocampus/metrics.md", "hippocampus/fingerprints.md")
@@ -110,6 +112,7 @@ def history_problems(root):
 
 
 # The sections of the text report, in order: the key of the result, its heading, how one entry is written.
+# A heading that names a threshold is a function of the brain's thresholds (`tuning` in the result).
 SECTIONS = (
     ("broken", "broken links", lambda b: f"{b['page']} -> [[{b['target']}]]"),
     ("schema", "schema problems", lambda x: f"{x['page']}: {'; '.join(x['problems'])}"),
@@ -134,7 +137,7 @@ SECTIONS = (
     ("to_dormant", "links to pages that faded to dormant/", str),
     ("not_in_index", "pages missing from the index (`brain index` lists them)", str),
     ("orphans", "orphans", str),
-    ("stubs", f"stubs (<{STUB_WORDS} words, no links)", str),
+    ("stubs", lambda t: f"stubs (<{t.stub_words} words, no links)", str),
     ("no_summary", "pages without a summary (recall cannot say what they hold)", str),
 )
 FAILING = ("broken", "schema", "ambiguous", "relations", "claims", "history", "secrets")  # any of these: exit 1
@@ -179,16 +182,18 @@ def run(root, args):
         "orphans": sorted(p.rel for p in vault.orphans()),
         "stubs": sorted(p.rel for p in vault.stubs()),
         "no_summary": sorted(p.rel for p in vault.knowledge if summary_problems(p.text)),
+        "tuning": vault.tuning.changed(),
     }
 
 
 def render(result, args):
     out = [f"pages: {result['pages']}", f"links: {result['links']} (avg degree {result['avg_degree']})"]
+    tuning = Tuning(result["tuning"])
     for key, label, fmt in SECTIONS:
         if key in ("secrets", "personal") and not args.guard:
             continue
         items = result[key]
-        out.append(f"{label}: {len(items)}")
+        out.append(f"{label(tuning) if callable(label) else label}: {len(items)}")
         out += [f"  {fmt(item)}" for item in items[:LIMIT]]
         if len(items) > LIMIT:
             out.append(f"  ... {len(items) - LIMIT} more (use --json)")

@@ -18,15 +18,7 @@
       {
         "matcher": "Write|Edit|MultiEdit|NotebookEdit|Bash",
         "hooks": [
-          { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}\"/hooks/protect_senses.py" }
-        ]
-      },
-      {
-        "matcher": "Write|Edit|MultiEdit",
-        "hooks": [
-          { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}\"/hooks/protect_log.py" },
-          { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}\"/hooks/protect_expected.py" },
-          { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}\"/hooks/validate_page.py --pre" }
+          { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}\"/hooks/gate.py pre" }
         ]
       }
     ],
@@ -34,8 +26,7 @@
       {
         "matcher": "Write|Edit|MultiEdit",
         "hooks": [
-          { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}\"/hooks/validate_page.py" },
-          { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}\"/hooks/scan_secrets.py" }
+          { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}\"/hooks/gate.py post" }
         ]
       }
     ],

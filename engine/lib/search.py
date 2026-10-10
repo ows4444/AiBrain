@@ -15,7 +15,8 @@ recall  search hits seed an activation that spreads along links (typed links
         It stops where the match stops: rows scoring under 0.4 of the best
         are cut, and when the best page holds too little of the question it
         says so in one line and lists nothing. --all turns both off; use it
-        before concluding that no page answers.
+        before concluding that no page answers. (0.4, the two hops and the
+        rest are thresholds: a brain may hold its own in hippocampus/tuning.md.)
 held    both also list ideas held on an episode (named by a source, no page
         yet) that the question names: the idea's one line, its episode and
         how many sources name it. An answer may use the line, citing the
@@ -29,7 +30,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from commands import Refused  # noqa: E402
-from vaultlib import PAGE_TYPES, RECALL_FLOOR, SPREAD_HOPS, Vault  # noqa: E402
+from vaultlib import PAGE_TYPES, Vault  # noqa: E402
 
 
 def search_rows(vault, query, types=None, dormant=False, limit=10):
@@ -37,9 +38,9 @@ def search_rows(vault, query, types=None, dormant=False, limit=10):
             for p, s in vault.search(query, types=types, dormant=dormant, limit=limit)]
 
 
-def recall_rows(vault, query, project=None, limit=10, hops=SPREAD_HOPS, dormant=False, everything=False):
+def recall_rows(vault, query, project=None, limit=10, hops=None, dormant=False, everything=False):
     rows = vault.recall(query, project=project, limit=limit, hops=hops, dormant=dormant,
-                        floor=0.0 if everything else RECALL_FLOOR, abstain=not everything)
+                        floor=0.0 if everything else vault.tuning.recall_floor, abstain=not everything)
     return [{"page": r["page"].rel, "title": r["page"].title, "type": r["page"].type, "score": r["score"],
              "summary": r["page"].summary,
              "hop": r["hop"], "from": r["from"].rel, "confidence": r["confidence"], "flags": r["flags"]}
@@ -64,7 +65,7 @@ def arguments(ap):
     ap.add_argument("--type", action="append", choices=PAGE_TYPES, dest="types")
     ap.add_argument("--dormant", action="store_true")
     ap.add_argument("--project")
-    ap.add_argument("--hops", type=int, default=SPREAD_HOPS)
+    ap.add_argument("--hops", type=int, help="links followed from each hit; the brain's spread_hops when not given")
     ap.add_argument("--limit", type=int, default=10)
     ap.add_argument("--all", action="store_true", dest="everything",
                     help="recall: every row, however weak, and no abstaining")

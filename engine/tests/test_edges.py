@@ -77,7 +77,7 @@ class TextReports(TempBrain):
         import introspect
         asked = json.loads(run_brain(self.root, "introspect", "--due", "--json").stdout)
         self.assertEqual(list(asked), [*introspect.SUMMARY[:13], "goals", "projects", "calibration", "most_recalled",
-                                       "due", "risk"])  # the summary and the flag's own views, in the report's order
+                                       "due", "risk", "tuning"])  # the summary and the flag's views, in the report's order
         whole = json.loads(run_brain(self.root, "introspect", "--json").stdout)
         self.assertEqual(list(whole), list(introspect.EVERYTHING))
         self.assertEqual({k: whole[k] for k in asked}, asked)  # a view is the same however it was asked for
@@ -88,7 +88,7 @@ class TextReports(TempBrain):
         due, pairs = vault.due_for_rehearsal, vault.candidate_pairs
         vault.due_for_rehearsal = lambda: calls.append("due") or due()
         vault.candidate_pairs = lambda: calls.append("pairs") or pairs()
-        self.assertEqual(list(introspect.report(vault, ["due"]))[-2:], ["due", "risk"])
+        self.assertEqual(list(introspect.report(vault, ["due"]))[-3:], ["due", "risk", "tuning"])
         self.assertEqual(calls, ["due"])  # once for its three views, and the costly view of --queue not at all
         public = {name for name in introspect.VIEWS if not name.startswith("_")}
         self.assertEqual(public, set(introspect.ORDER))
@@ -137,8 +137,8 @@ class TextReports(TempBrain):
         sys.path.insert(0, SCRIPTS)
         import introspect
         b = {"n": 12, "score": 0.18, "enough": True, "buckets": {"70%": {"n": 12, "held": 9}}}
-        self.assertEqual(introspect.brier_line(b), "probabilities: Brier 0.18 over 12 (0 perfect, 0.25 = always "
-                                                   "50%); 70% said: 9/12 held")
+        self.assertEqual(introspect.brier_line(b, 10), "probabilities: Brier 0.18 over 12 (0 perfect, 0.25 = always "
+                                                       "50%); 70% said: 9/12 held")
         self.assertEqual(introspect.snapshots(os.path.join(self.root, "nowhere")), [])
 
     def test_check_shortens_long_lists(self):

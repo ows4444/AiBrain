@@ -9,8 +9,8 @@ and removes the folder. Three groups:
     commands  each `brain` command as a skill runs it: a new process, the
               page load included. Recall is timed with the search cache empty,
               then filled
-    hooks     a process each: the wake-up briefing, the hooks one Write or Edit
-              starts, and their sum
+    hooks     a process each: the wake-up briefing, the two one Write or Edit
+              starts (every wall before it, every check after it), and their sum
     vault     inside one process: loading the pages, and the views that grow
               fastest with the brain
 With --repeat R each row is the fastest of R runs. A row shows `(exit N)` when
@@ -50,9 +50,8 @@ COMMANDS = (
     ("introspect --graph", ("introspect", "--graph"), None),
     ("since, this month", ("since", "MONTH"), None),
 )
-# What one Write or Edit starts, in the order of hooks.json.
-WRITE_HOOKS = (("protect_senses.py",), ("protect_log.py",), ("protect_expected.py",), ("validate_page.py", "--pre"),
-               ("validate_page.py",), ("scan_secrets.py",))
+# What one Write or Edit starts, in the order of hooks.json: the walls before it, the checks after it.
+WRITE_HOOKS = (("gate.py", "pre"), ("gate.py", "post"))
 EDITED = os.path.join("cortex", "concepts", "concept-1.md")  # a page every brain of MIN_PAGES or more holds
 MIN_PAGES = 10
 CONCEPTS = 200

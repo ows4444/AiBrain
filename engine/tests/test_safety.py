@@ -197,7 +197,7 @@ class Templates(unittest.TestCase):
             self.assertEqual((code, report["schema"], report["secrets"]), (0, [], []))
             v = vaultlib.Vault(brain)
             self.assertEqual(sorted(p.type for p in v.pages),
-                             ["fingerprints", "index", "intentions", "log", "metrics"])
+                             ["fingerprints", "index", "intentions", "log", "metrics", "tuning"])
 
 
 if __name__ == "__main__":

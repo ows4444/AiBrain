@@ -15,7 +15,8 @@ inbox/           quick notes from anywhere; /ingest moves them into senses/
 senses/          input as it arrived; never edited after it lands (assets/: images)
 hippocampus/     index.md (every page; read first), log.md (every operation and
                  recall), metrics.md, fingerprints.md (a hash of every input),
-                 intentions.md (remind me when ...)
+                 intentions.md (remind me when ...), tuning.md (thresholds
+                 this brain holds at its own value)
 cortex/          long-term memory
   episodes/      one page per input: what that one item said
   concepts/      one idea per page, built only from repeated evidence
@@ -67,8 +68,8 @@ entity says what it is and why it is here. A concept explains one idea for
 someone who never saw the episodes. An insight says what no single episode
 did. A decision's fields, its frozen `## Expected` and its line tags are in
 `.claude/rules/decisions.md`, which loads when a decision page is read.
-System types (`index`, `log`, `metrics`, `fingerprints`, `intentions`) belong
-to their one file in `hippocampus/`, never to a memory page.
+System types (`index`, `log`, `metrics`, `fingerprints`, `intentions`,
+`tuning`) belong to their one file in `hippocampus/`, never to a memory page.
 
 ## Rules
 

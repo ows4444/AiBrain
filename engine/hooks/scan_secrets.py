@@ -7,45 +7,35 @@ passwords in connection strings): personal data is too common in real input
 to stop for, and `brain check --guard` lists it. The file is already written;
 the message tells Claude to name the file and kind to the owner, never the
 value. Copies made by shell commands are not seen; `brain check --guard` is.
+
+The patterns are the engine's library (secret_scan), loaded only once the call
+is known to name a watched file. Runs on its own, or as one of gate.py's walls.
 """
-import json
 import os
 import sys
 
-START = os.environ.get("CLAUDE_PROJECT_DIR", os.getcwd())
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
-from errlog import note  # noqa: E402
-from secret_scan import scan_file  # noqa: E402
-from vaultlib import find_brain, fold_case, is_brain  # noqa: E402
-
-# The brain may be above the folder the session started in (prefrontal/<name>/).
-ROOT = find_brain(START) or START
+import shared
 
 WATCHED = ("senses", "inbox", "cortex", "prefrontal", "hippocampus")
 
 
-def main():
-    if not is_brain(ROOT):
-        sys.exit(0)
-    try:
-        data = json.load(sys.stdin)
-    except ValueError:
-        sys.exit(0)
+def check(data):
+    """The wall: a Verdict when the file just written holds what looks like a credential."""
     path = (data.get("tool_input", {}) or {}).get("file_path", "")
-    full = os.path.realpath(path if os.path.isabs(path) else os.path.join(START, path))
-    rel = os.path.relpath(full, os.path.realpath(ROOT))
-    if fold_case(rel.split(os.sep)[0]) not in WATCHED or not os.path.isfile(full):
-        sys.exit(0)
+    full, rel = shared.full_path(path), shared.from_root(path)
+    if shared.fold(rel.split(os.sep)[0]) not in WATCHED or not os.path.isfile(full):
+        return None
+    sys.path.insert(0, shared.LIB)
+    from secret_scan import scan_file
     found = scan_file(full, personal=False)
-    if found:
-        where = ", ".join(f"{kind} on line {n}" for kind, _, n in found[:5])
-        print(f"{rel}: possible credential ({where}). Do not quote it anywhere. Tell the owner the file and "
-              "the kind, so they remove it at the source and rotate it; run /guard for the full scan.",
-              file=sys.stderr)
-        note("scan_secrets", "secret", f"{rel}: {where}")
-        sys.exit(2)
-    sys.exit(0)
+    if not found:
+        return None
+    where = ", ".join(f"{kind} on line {n}" for kind, _, n in found[:5])
+    return shared.block("scan_secrets", "secret",
+                        f"{rel}: possible credential ({where}). Do not quote it anywhere. Tell the owner the file and "
+                        "the kind, so they remove it at the source and rotate it; run /guard for the full scan.",
+                        detail=f"{rel}: {where}")
 
 
 if __name__ == "__main__":
-    main()
+    shared.main(("scan_secrets", check))

@@ -5,6 +5,7 @@ One place decides what counts as a page, how frontmatter is read, how a
 so every script reports the same numbers. The parts live in their own modules:
 
     vault_model      constants, the field registry, parsing, Page
+    vault_tuning     the thresholds, and a brain's own values for them (hippocampus/tuning.md)
     vault_events     the log, parsed once into typed events
     vault_graph      links, orphans, components, hubs, bridges, clusters, near-duplicates
     vault_memory     recall strength, the sleep queue, evidence, confidence, decay, calibration
@@ -27,12 +28,15 @@ from vault_model import (DORMANT_DIR, MEMORY_DIRS, PROJECTS_DIR, Page, as_list, 
                          parse_frontmatter, schema_problems, summary_problems, tag_vocabulary)
 from vault_purpose import PurposeMixin  # noqa: E402
 from vault_retrieval import RetrievalMixin  # noqa: E402
+from vault_tuning import THRESHOLDS, TUNING_PATH, Tuning, plain, setting, shown, tuning_of  # noqa: E402,F401
 
 
 class Vault(GraphMixin, MemoryMixin, PurposeMixin, RetrievalMixin):
-    def __init__(self, root, today=None):
+    def __init__(self, root, today=None, tuning=None):
+        """`tuning` ({name: value}) is laid over the brain's own thresholds for this Vault only: a value being tried."""
         self.root = os.path.abspath(root)
         self.today = today or datetime.date.today()
+        self.tuning = tuning_of(self.root, tuning)
         self.pages = list(self._load())
         self.names = self._build_names()
         self.dormant_names = self._dormant_names()

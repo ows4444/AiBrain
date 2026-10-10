@@ -42,8 +42,14 @@ word count are never health signals; both rise whether things improve or not.
    `git status`; `git config core.hooksPath` is `engine/githooks` (the
    pre-commit gate; offer to set it if not).
    At the calibration checkpoint, `brain introspect --usage` lists every
-   threshold beside the usage numbers; change one only with `brain eval`
-   run before and after.
+   threshold beside the usage numbers: its value here, its range and what
+   it does. Change one only on evidence: `brain eval --set name=value` runs
+   the question set with the value and writes nothing; compare it with the
+   run without `--set`. Show the owner both; on their yes, keep the value
+   as a line under `## Overrides` in `hippocampus/tuning.md`,
+   `- name = value (why, date)` (a brain without that page takes it from
+   `${CLAUDE_PLUGIN_ROOT}/templates/brain/hippocampus/tuning.md`).
+   Removing the line restores the default.
    **Own question set** (when asked, or once the brain holds about 50
    pages): `brain eval --root . --questions motor/eval-questions.json
    --draft 10` prints ten pages no question expects yet, each with its

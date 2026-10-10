@@ -12,7 +12,9 @@ most recalled pages. Only what is asked for is computed: that summary, and
 each flag's own views. `--json` with no flag gives the whole report, apart
 from the graph views and the link suggestions, which cost more; with flags it
 gives the summary and those flags' views. `links` is always the number of
-links; `--links` adds `link_suggestions`.
+links; `--links` adds `link_suggestions`. `tuning` is the thresholds this
+brain overrides (hippocampus/tuning.md), {} for most: the numbers named below
+are the defaults, and the text prints the brain's own.
   --queue    episodes and reviewed decisions awaiting consolidation, and
              candidate ideas by how many distinct sources name them (two or
              more is the bar for a concept page; episodes sharing a url or an
@@ -58,7 +60,8 @@ links; `--links` adds `link_suggestions`.
              the operations, typed-link relations and tags never used, and
              progress to the calibration checkpoint (20 inputs, 4 sleeps):
              the evidence for deciding which features stay; and every
-             tunable threshold, for that review
+             threshold with its range, what it does and this brain's value
+             (its default too, where the brain overrides it), for that review
   --context  the context budget: the size of what loads every session (the
              root CLAUDE.md, the description of each skill and agent the
              model can see, the wake-up briefing) and of what loads on use
@@ -79,7 +82,7 @@ import sys
 from collections import Counter
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from vaultlib import BRIDGES_SAMPLE, BRIER_MIN, DORMANT_DAYS, RISK_MIN_ATTEMPTS, STALE_DAYS, Vault, verdicts  # noqa: E402
+from vaultlib import TUNING_PATH, Tuning, Vault, shown, verdicts  # noqa: E402
 
 TOP = 10
 METRICS = os.path.join("hippocampus", "metrics.md")
@@ -213,7 +216,7 @@ def pct(part, whole):
 
 def _risk(r):
     return {p.rel: {"miss_rate": round(risk, 2), "attempts": n}
-            for p in r["_due"] for risk, n in [r.vault.miss_risk(p)] if n >= RISK_MIN_ATTEMPTS}
+            for p in r["_due"] for risk, n in [r.vault.miss_risk(p)] if n >= r.vault.tuning.risk_min_attempts}
 
 
 def _decisions(r):
@@ -253,7 +256,9 @@ VIEWS = {
     "orphan_rate": lambda r: pct(len(r.vault.orphans()), len(r.vault.linked_to())),  # records are never orphans
     "components": lambda r: len(r["_components"]),
     "main_component_share": lambda r: pct(len(r["_components"][0]), r["pages"]) if r["_components"] else 0.0,
-    "verdicts": lambda r: verdicts(r["orphan_rate"], r["avg_degree"], r["main_component_share"], r["pages"]),
+    "verdicts": lambda r: verdicts(r["orphan_rate"], r["avg_degree"], r["main_component_share"], r["pages"],
+                                   r.vault.tuning),
+    "tuning": lambda r: r.vault.tuning.changed(),
     "stale_concept_rate": lambda r: pct(len(r["_stale"][1]), len(r["_stale"][0])),
     "broken_links": lambda r: len(r.vault.broken),
     "awaiting_consolidation": lambda r: len(r["_queue"]),
@@ -298,7 +303,7 @@ VIEWS = {
 # What the default output prints, and so what every run computes.
 SUMMARY = ("pages", "by_type", "links", "avg_degree", "orphan_rate", "components", "main_component_share", "verdicts",
            "stale_concept_rate", "broken_links", "awaiting_consolidation", "due_for_rehearsal", "decisions_due",
-           "goals", "projects", "calibration", "most_recalled")
+           "goals", "projects", "calibration", "most_recalled", "tuning")
 # What each flag adds to the summary. --goals and --projects print views the summary already holds.
 FLAG_VIEWS = {
     "queue": ("queue", "candidates", "candidate_pairs", "contradictions"),
@@ -322,7 +327,7 @@ EVERYTHING = ("pages", "by_type", "links", "avg_degree", "orphan_rate", "compone
               "verdicts", "stale_concept_rate", "broken_links", "awaiting_consolidation", "due_for_rehearsal",
               "decisions_due", "goals", "projects", "relations", "calibration", "usage", "most_recalled", "stale",
               "queue", "candidates", "candidate_pairs", "contradictions", "due", "risk", "decisions", "intentions",
-              "dormant", "open")
+              "dormant", "open", "tuning")
 ORDER = EVERYTHING + ("hubs", "bridges", "bridges_estimated", "cut_points", "clusters", "schema_candidates", "tags",
                       "link_suggestions")
 GRAPH = ("hubs", "bridges", "clusters", "tags")  # the flags `--graph` stands for
@@ -351,12 +356,12 @@ def report(vault, flags=(), everything=False):
     return Report(vault).only(names)
 
 
-def brier_line(b):
-    """The calibration score with its count; no score until there are enough to mean anything."""
+def brier_line(b, needed):
+    """The calibration score with its count; no score until there are enough (`needed`) to mean anything."""
     if not b["n"]:
         return "probabilities: none scored yet (write guesses as [hypothesis 70%], review them held/failed)"
     if not b["enough"]:
-        return f"probabilities: {b['n']} scored, too few to judge (needs {BRIER_MIN})"
+        return f"probabilities: {b['n']} scored, too few to judge (needs {needed})"
     buckets = ", ".join(f"{k} said: {v['held']}/{v['n']} held" for k, v in b["buckets"].items())
     return f"probabilities: Brier {b['score']} over {b['n']} (0 perfect, 0.25 = always 50%); {buckets}"
 
@@ -401,16 +406,23 @@ def run(root, args):
     return r
 
 
+def threshold_line(name, row):
+    """One threshold as tuning.md takes it, then its default where the brain overrides it, its range and what it does."""
+    was = f"default {shown(row['default'])}; " if row["value"] != row["default"] else ""
+    return f"{name} = {shown(row['value'])}  ({was}{row['low']} to {row['high']}): {row['what']}"
+
+
 def render(r, args):
     show = asked(args)
+    t = Tuning(r["tuning"])  # the text names the brain's own thresholds
     v = r["verdicts"]
     reviewed = sum(r["calibration"].values())
     out = [f"pages           {r['pages']}  " + " ".join(f"{t}:{c}" for t, c in r["by_type"].items()),
            f"links           {r['links']}   broken {r['broken_links']}",
            f"avg degree      {r['avg_degree']:.2f}   {v.get('avg_degree', '')}",
-           f"orphan rate     {r['orphan_rate']}%   {v.get('orphan_rate', '(healthy under 5)')}",
+           f"orphan rate     {r['orphan_rate']}%   {v.get('orphan_rate', f'(healthy under {t.orphan_healthy})')}",
            f"components      {r['components']}   (main holds {r['main_component_share']}%) {v.get('components', '')}",
-           f"stale concepts  {r['stale_concept_rate']}%   (untouched {STALE_DAYS}+ days)",
+           f"stale concepts  {r['stale_concept_rate']}%   (untouched {t.stale_days}+ days)",
            f"to consolidate  {r['awaiting_consolidation']} pages   due to rehearse {r['due_for_rehearsal']}",
            f"decisions       {r['decisions_due']} due for review   {reviewed} reviewed"
            + (" (" + ", ".join(f"{k} {n}" for k, n in r["calibration"].items() if n) + ")" if reviewed else "")]
@@ -441,10 +453,10 @@ def render(r, args):
         for tag, n in r["decisions"]["claim_results"].items():
             if sum(n.values()):
                 out.append(f"{tag} lines in reviewed decisions: " + ", ".join(f"{k} {v}" for k, v in n.items()))
-        out.append(brier_line(r["decisions"]["brier"]))
+        out.append(brier_line(r["decisions"]["brier"], t.brier_min))
         out += listed("reference classes (reviewed decisions by tag: outcomes; probabilities)",
                       [f"{tag}: {c['n']} reviewed, " + (", ".join(f"{o} {n}" for o, n in c["outcomes"].items()) or
-                                                        "no outcomes") + "; " + brier_line(c["brier"])
+                                                        "no outcomes") + "; " + brier_line(c["brier"], t.brier_min)
                        for tag, c in r["decisions"]["reference_class"].items()])
     if r["goals"] or r["projects"]:
         bare = sum(not g["pages"] for g in r["goals"])
@@ -472,20 +484,20 @@ def render(r, args):
         out += listed("contradictions (typed links)", r["open"]["contradicts"])
         out += listed("tagged to-revisit", r["open"]["revisit"])
     if "dormant" in show:
-        out += listed(f"dormant candidates (unlinked, unrecalled, {DORMANT_DAYS}+ days)", r["dormant"])
+        out += listed(f"dormant candidates (unlinked, unrecalled, {t.dormant_days}+ days)", r["dormant"])
     if "stale" in show:
         out += listed("stale concepts, oldest first", [f"{x['updated']}  {x['page']}" for x in r["stale"]])
     if "hubs" in show:
-        out += listed("hubs (inbound >= 5 and 3x average): split candidates",
+        out += listed(f"hubs (inbound >= {t.hub_min} and {t.hub_factor}x average): split candidates",
                       [f"{x['inbound']:>4}  {x['page']}" for x in r["hubs"]])
     if "bridges" in show:
-        out += listed("bridges (highest betweenness" + (f", estimated from {BRIDGES_SAMPLE} starting pages"
+        out += listed("bridges (highest betweenness" + (f", estimated from {t.bridges_sample} starting pages"
                                                         if r["bridges_estimated"] else "") + ")",
                       [f"{x['betweenness']:.3f}  {x['page']}" for x in r["bridges"]])
         out += listed("cut points (removing one disconnects the graph)", r["cut_points"])
     if "clusters" in show:
         out += listed("clusters (size: core pages)", [f"{c['size']:>4}  {', '.join(c['core'])}" for c in r["clusters"]])
-        out += listed("schema candidates (4+ concepts no insight frames; sleep proposes one tagged schema)",
+        out += listed(f"schema candidates ({t.schema_min}+ concepts no insight frames; sleep proposes one tagged schema)",
                       [", ".join(c) for c in r["schema_candidates"]])
     if "tags" in show:
         out += listed("tags in use", [f"{n:>4}  {t}" for t, n in r["tags"].items()])
@@ -500,8 +512,9 @@ def render(r, args):
         state = "done" if c["reviewed"] else "due now" if c["reached"] else "not yet"
         out.append(f"calibration checkpoint: {c['inputs']}/{c['inputs_needed']} inputs, "
                    f"{c['sleeps']}/{c['sleeps_needed']} sleeps: {state}")
-        out += listed("thresholds (vault_model.py; tune at the checkpoint against brain eval)",
-                      [f"{k} = {v}" for k, v in u["thresholds"].items()])
+        out += listed(f"thresholds (a line under `## Overrides` in {TUNING_PATH} changes one, written as below; "
+                      "`brain eval --set name=value` measures one first)",
+                      [threshold_line(name, row) for name, row in u["thresholds"].items()])
     if "context" in show:
         c = r["context"]
         row = lambda x: f"{x['bytes']:>7} {x['lines']:>6} {x['tokens_est']:>7}  {x['what']}"  # noqa: E731

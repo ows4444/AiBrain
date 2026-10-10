@@ -21,13 +21,13 @@ ROW = ["page", "score", "summary", "title", "type"]
 STATS = ["bytes", "enabled", "open", "pages", "path", "version"]
 SUMMARY = ["avg_degree", "awaiting_consolidation", "broken_links", "by_type", "calibration", "components",
            "decisions_due", "due_for_rehearsal", "goals", "links", "main_component_share", "most_recalled",
-           "orphan_rate", "pages", "projects", "stale_concept_rate", "verdicts"]
+           "orphan_rate", "pages", "projects", "stale_concept_rate", "tuning", "verdicts"]
 # label -> (command, its arguments, the keys of what it returns). {root} is the brain, {tmp} a folder beside it.
 KEYS = {
     "check": ("check", [], [
         "ambiguous", "avg_degree", "broken", "claims", "gaps", "history", "links", "log", "log_unread", "log_unresolved",
         "near_duplicates", "no_summary", "not_in_index", "orphans", "pages", "personal", "relations", "schema",
-        "secrets", "shared_names", "stubs", "to_dormant", "undated", "untagged"]),
+        "secrets", "shared_names", "stubs", "to_dormant", "tuning", "undated", "untagged"]),
     "introspect": ("introspect", [], SUMMARY),
     "introspect --json": ("introspect", ["--json"], SUMMARY + [
         "candidate_pairs", "candidates", "contradictions", "decisions", "dormant", "due", "intentions", "open", "queue",
@@ -67,6 +67,7 @@ KEYS = {
     "eval": ("eval", [], ["problems", "retrieval"]),
     "eval --answers": ("eval", ["--answers", "{tmp}/answers.json"], ["answers", "problems", "retrieval"]),
     "eval --draft": ("eval", ["--draft", "2"], ["questions"]),
+    "eval --set": ("eval", ["--set", "recall_floor=0.3"], ["problems", "retrieval", "set"]),
     "synth": ("synth", ["{tmp}/made", "--pages", "12"], ["links", "log_lines", "out", "pages"]),
     "bench": ("bench", ["--pages", "10"], ["commands", "hooks", "links", "log_lines", "pages", "repeat", "seed", "vault"]),
 }

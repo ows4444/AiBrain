@@ -17,90 +17,82 @@ sections are being filled. Pages from before the field existed stay editable;
 `brain check` lists them.
 
 Pages written another way are caught by `brain check`, which /commit runs.
+
+The contract itself is the engine's library (vaultlib), loaded only once the
+call is known to name a page. If the library cannot be loaded, this wall has
+raised: shared.py logs it, blocks the write when it goes into cortex/decisions/
+and lets it through anywhere else, where `brain check` still catches the page.
+Runs on its own (`--pre` for the first pass), or as two of gate.py's walls.
 """
-import json
 import os
 import sys
 
-START = os.environ.get("CLAUDE_PROJECT_DIR", os.getcwd())
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
-from errlog import note  # noqa: E402
-from vaultlib import (MEMORY_DIRS, PROJECTS_DIR, find_brain, fold_case, is_brain, schema_problems,  # noqa: E402
-                      summary_problems, tag_vocabulary)
-
-# The brain may be above the folder the session started in (prefrontal/<name>/).
-ROOT = find_brain(START) or START
+import shared
+from shared import MEMORY_DIRS, PROJECTS_DIR, ROOT, fold
 
 
-def text_after(tool, args, before):
-    """The page text the tool would leave behind (as protect_expected works it out)."""
-    if tool == "Write":
-        return args.get("content", "")
-    edits = args.get("edits") if tool == "MultiEdit" else [args]
-    text = before
-    for e in edits or []:
-        old, new = e.get("old_string", ""), e.get("new_string", "")
-        text = text.replace(old, new) if e.get("replace_all") else text.replace(old, new, 1)
-    return text
+def library():
+    """The engine's library, where the page contract is written down once."""
+    sys.path.insert(0, shared.LIB)
+    import vaultlib
+    return vaultlib
 
 
 def target(path):
     """(full path, rel, project?) when the path is a page this hook checks, else None."""
-    full = os.path.realpath(path if os.path.isabs(path) else os.path.join(START, path))
-    parts = os.path.relpath(full, os.path.realpath(ROOT)).split(os.sep)
+    full = shared.full_path(path)
+    parts = os.path.relpath(full, ROOT).split(os.sep)
     # Cortex/ is cortex/ where the file system ignores case; the page is checked either way.
-    parts[0] = fold_case(parts[0])
+    parts[0] = fold(parts[0])
     rel = os.sep.join(parts)
     # A folder's README is documentation, not a page: Vault skips it too.
-    in_memory = parts[0] in MEMORY_DIRS and fold_case(rel).endswith(".md") and parts[-1] != "README.md"
+    in_memory = parts[0] in MEMORY_DIRS and fold(rel).endswith(".md") and parts[-1] != "README.md"
     is_project = len(parts) == 3 and parts[0] == PROJECTS_DIR and parts[2] == "CLAUDE.md"
     return (full, rel, is_project) if in_memory or is_project else None
 
 
-def problems_in(text, rel, is_project):
+def problems_in(lib, text, rel, is_project):
     parts = rel.split(os.sep)
-    return schema_problems(text, tag_vocabulary(ROOT), page_type="project" if is_project else None,
-                           stem=parts[1] if is_project else os.path.splitext(parts[-1])[0], rel=rel)
+    return lib.schema_problems(text, lib.tag_vocabulary(ROOT), page_type="project" if is_project else None,
+                               stem=parts[1] if is_project else os.path.splitext(parts[-1])[0], rel=rel)
 
 
-def main():
-    if not is_brain(ROOT):
-        sys.exit(0)
-    try:
-        data = json.load(sys.stdin)
-    except ValueError:
-        sys.exit(0)
-    args = data.get("tool_input", {}) or {}
+def verdict(rel, problems, lead):
+    if not problems:
+        return None
+    return shared.block("validate_page", "schema", f"{lead}: " + "; ".join(problems) + ". See CLAUDE.md > Page contracts.",
+                        detail=f"{rel}: " + "; ".join(problems))
+
+
+def before(data):
+    """The first pass (PreToolUse): a Verdict when the write would leave a problem the page did not have."""
+    tool, args = data.get("tool_name", ""), data.get("tool_input", {}) or {}
     found = target(args.get("file_path", ""))
-    if not found:
-        sys.exit(0)
+    if not found or tool not in shared.WRITES:
+        return None
     full, rel, is_project = found
-    pre = "--pre" in sys.argv[1:]
-    if pre:
-        tool = data.get("tool_name", "")
-        if tool not in ("Write", "Edit", "MultiEdit"):
-            sys.exit(0)
-        before = ""
-        if os.path.exists(full):
-            with open(full, encoding="utf-8", errors="replace") as fh:
-                before = fh.read()
-        was = set(problems_in(before, rel, is_project)) if before else set()
-        after = text_after(tool, args, before)
-        problems = [p for p in problems_in(after, rel, is_project) if p not in was]
-        if not is_project and not (before and summary_problems(before)):
-            problems += summary_problems(after)
-    else:
-        if not os.path.exists(full):
-            sys.exit(0)
+    lib = library()
+    was_text = ""
+    if os.path.exists(full):
         with open(full, encoding="utf-8", errors="replace") as fh:
-            problems = problems_in(fh.read(), rel, is_project)
-    if problems:
-        lead = f"Blocked before writing {rel}" if pre else rel
-        print(f"{lead}: " + "; ".join(problems) + ". See CLAUDE.md > Page contracts.", file=sys.stderr)
-        note("validate_page", "schema", f"{rel}: " + "; ".join(problems))
-        sys.exit(2)
-    sys.exit(0)
+            was_text = fh.read()
+    was = set(problems_in(lib, was_text, rel, is_project)) if was_text else set()
+    after = shared.text_after(tool, args, was_text)
+    problems = [p for p in problems_in(lib, after, rel, is_project) if p not in was]
+    if not is_project and not (was_text and lib.summary_problems(was_text)):
+        problems += lib.summary_problems(after)
+    return verdict(rel, problems, f"Blocked before writing {rel}")
+
+
+def written(data):
+    """The second pass (PostToolUse): a Verdict when the file as written breaks the contract."""
+    found = target((data.get("tool_input", {}) or {}).get("file_path", ""))
+    if not found or not os.path.exists(found[0]):
+        return None
+    full, rel, is_project = found
+    with open(full, encoding="utf-8", errors="replace") as fh:
+        return verdict(rel, problems_in(library(), fh.read(), rel, is_project), rel)
 
 
 if __name__ == "__main__":
-    main()
+    shared.main(("validate_page", before if "--pre" in sys.argv[1:] else written))

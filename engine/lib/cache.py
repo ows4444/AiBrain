@@ -15,7 +15,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import vault_cache  # noqa: E402
 from commands import Refused  # noqa: E402
-from vaultlib import Vault  # noqa: E402
+from vaultlib import Vault, tuning_of  # noqa: E402
 
 
 def arguments(ap):
@@ -39,7 +39,8 @@ def run(root, args):
         vault._term_frequencies_many(pool)
         vault._term_cache.close()
         note = f"rebuilt from {len(pool)} pages"
-    cache = vault_cache.TermCache(root) if vault_cache.enabled() else None
+    # Opened under the brain's own key: under another, the rows would read as stale and be emptied.
+    cache = vault_cache.TermCache(root, tuning_of(root).cache_key) if vault_cache.enabled() else None
     stats = cache.stats() if cache else {"path": vault_cache.cache_path(root), "enabled": False}
     if cache:
         cache.close()

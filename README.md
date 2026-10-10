@@ -122,12 +122,30 @@ runs without it and gives the same results. Git ignores it.
 On a 5,000-page brain, a recall takes about 0.45 s with the cache and 1.2 s
 without. Set `BRAIN_CACHE=0` to turn it off.
 
+### Thresholds
+
+Every number the brain judges by (how long before a concept is stale, where
+recall stops, how fast rehearsals space out) has a default in the engine, and a
+brain may hold its own. `brain introspect --usage` lists them all, each with
+its range and what it does. To try one, `brain eval --set recall_floor=0.35`
+runs the question set with it and writes nothing. To keep one, add a line under
+`## Overrides` in `hippocampus/tuning.md`:
+
+```
+- recall_floor = 0.35 (2026-11-02: hit@5 0.81 to 0.88 on my own questions)
+```
+
+Every command reads it from then on; remove the line to go back to the default.
+`brain check` fails on a name that is not a threshold or a value outside its
+range. A brain from before this page has none and needs none: copy it from
+`engine/templates/brain/hippocampus/tuning.md` when the first value is kept.
+
 ## Layout
 
 ```
 inbox/         quick notes; /ingest sweeps them into senses/
 senses/        input as it arrived, never edited
-hippocampus/   index, log, metrics, fingerprints, reminders
+hippocampus/   index, log, metrics, fingerprints, reminders, tuning
 cortex/        long-term memory: episodes, concepts, entities, insights, decisions
 prefrontal/    projects
 dormant/       faded pages, still searchable

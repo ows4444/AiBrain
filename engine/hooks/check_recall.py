@@ -17,30 +17,14 @@ today's line with exactly that text. A command that only reads the log, or
 `brain log --dry-run`, proves nothing. Fails open on any error, and never
 fires twice in a row.
 """
-import contextlib
 import datetime
 import json
 import os
 import re
 import sys
 
-START = os.path.realpath(os.environ.get("CLAUDE_PROJECT_DIR", os.getcwd()))
+from shared import ROOT, is_brain, note  # the brain may be above the folder the session started in
 
-
-def brain_root(start):
-    """The nearest folder at or above `start` holding cortex/ and hippocampus/, else `start`."""
-    here = start
-    while True:
-        if all(os.path.isdir(os.path.join(here, d)) for d in ("cortex", "hippocampus")):
-            return here
-        parent = os.path.dirname(here)
-        if parent == here:
-            return start
-        here = parent
-
-
-# The brain may be above the folder the session started in (prefrontal/<name>/).
-ROOT = brain_root(START)
 # Skills that read pages to produce something; matched with or without the plugin prefix (aibrain:ask).
 RECALL_SKILLS = {"ask", "rehearse", "explore", "decide", "write", "focus"}
 RECALL_COMMAND = re.compile(r"<command-name>/(?:[\w-]+:)?(?:%s)</command-name>" % "|".join(sorted(RECALL_SKILLS)))
@@ -151,7 +135,7 @@ def check(entries):
 
 
 def main():
-    if not all(os.path.isdir(os.path.join(ROOT, d)) for d in ("cortex", "hippocampus")):
+    if not is_brain(ROOT):
         sys.exit(0)
     try:
         data = json.load(sys.stdin)
@@ -159,19 +143,13 @@ def main():
             sys.exit(0)
         recalled, logged = check(turn_entries(data["transcript_path"]))
     except Exception:
-        with contextlib.suppress(Exception):  # the log must not add a way to fail
-            sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
-            from errlog import note
-            note("check_recall", "error")
+        note("check_recall", "error")
         sys.exit(0)
     if recalled and not logged:
         print("This turn recalled from the brain but logged no recall line. Run "
               "`brain log recall \"<the question as asked>\" --pages <page> ...` "
               "(CLAUDE.md > Log), naming the pages that contributed, then finish.", file=sys.stderr)
-        with contextlib.suppress(Exception):  # the log must not add a way to fail
-            sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
-            from errlog import note
-            note("check_recall", "recall", "recalled from the brain, no recall line in the log")
+        note("check_recall", "recall", "recalled from the brain, no recall line in the log")
         sys.exit(2)
     sys.exit(0)
 

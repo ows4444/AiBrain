@@ -5,36 +5,18 @@ One door out: `brain forget SOURCE --yes` removes an input and its episodes.
 That command is never run on the model's say-so: this hook answers "ask", so
 Claude Code puts it to the owner even where `brain` commands are allowed.
 
-Deliberately dependency-free: a wall must not fail open because an import broke.
+Needs nothing but the standard library and shared.py beside it: a wall must not
+fail open because an import broke. Runs on its own, or as one of gate.py's walls.
 The Bash check is best-effort; it catches the common ways a shell edits, removes
 or overwrites a file (rm, mv, sed -i, >, tee, and cp/rsync onto an existing file).
 """
-import contextlib
-import json
 import os
 import re
 import shlex
-import sys
 
-START = os.path.realpath(os.environ.get("CLAUDE_PROJECT_DIR", os.getcwd()))
+import shared
+from shared import ROOT, START
 
-
-def brain_root(start):
-    """The nearest folder at or above `start` holding cortex/ and hippocampus/, else `start`.
-
-    A session opened in prefrontal/<name>/ is still inside its brain (vaultlib.find_brain, kept import-free here).
-    """
-    here = start
-    while True:
-        if all(os.path.isdir(os.path.join(here, d)) for d in ("cortex", "hippocampus")):
-            return here
-        parent = os.path.dirname(here)
-        if parent == here:
-            return start
-        here = parent
-
-
-ROOT = brain_root(START)
 SENSES = os.path.join(ROOT, "senses")
 MESSAGE = "Blocked: {} is in senses/, which is never edited after it lands. Write what you learned to cortex/ instead."
 
@@ -54,10 +36,9 @@ BASH_MUTATIONS = [
 
 
 def in_senses(path):
-    full = os.path.realpath(path if os.path.isabs(path) else os.path.join(START, path))
     # macOS and Windows file systems are case-insensitive: Senses/ is senses/.
-    fold = str.lower if sys.platform == "darwin" else os.path.normcase
-    a, b, readme = fold(full), fold(SENSES), fold(os.path.join(SENSES, "README.md"))
+    fold = shared.fold
+    a, b, readme = fold(shared.full_path(path)), fold(SENSES), fold(os.path.join(SENSES, "README.md"))
     # The folder's own README is documentation, not input.
     return (a == b or a.startswith(b + os.sep)) and a != readme
 
@@ -105,48 +86,32 @@ def copy_overwrites(command):
 FORGET = re.compile(r"(?:^|[\s;&|(/])(?:brain\s+forget|forget\.py)\b[^|;&\n]*\s--yes\b")
 
 
-def ask(reason):
-    print(json.dumps({"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "ask",
-                                             "permissionDecisionReason": reason}}))
-    sys.exit(0)
-
-
 def block(message):
-    print(message, file=sys.stderr)
-    with contextlib.suppress(Exception):  # the log must not add a way to fail
-        sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
-        from errlog import note
-        note("protect_senses", "senses", message)
-    sys.exit(2)
+    return shared.block("protect_senses", "senses", message)
 
 
-def main():
-    if not all(os.path.isdir(os.path.join(ROOT, d)) for d in ("cortex", "hippocampus")):
-        sys.exit(0)  # not a brain: the plugin may be enabled in other projects
-    try:
-        data = json.load(sys.stdin)
-    except ValueError:
-        sys.exit(0)
+def check(data):
+    """The wall: a Verdict when the call would change an input, or runs the one command that removes one."""
     tool = data.get("tool_name", "")
     args = data.get("tool_input", {}) or {}
 
     if tool == "Bash":
         command = args.get("command", "")
         if FORGET.search(command):
-            ask("brain forget --yes removes an input from senses/ and the episodes written from it. "
-                "Only the owner can approve that.")
+            return shared.ask("protect_senses", "brain forget --yes removes an input from senses/ and the episodes "
+                                                "written from it. Only the owner can approve that.")
         mutates = any(re.search(p, command, re.I | re.M) for p in BASH_MUTATIONS)
         if mutates or copy_overwrites(command):
-            block("Blocked: this command would change or remove a file in senses/, which is never "
-                  "edited after it lands. Copying a new file in is fine; write what you learned to cortex/.")
-        sys.exit(0)
+            return block("Blocked: this command would change or remove a file in senses/, which is never "
+                         "edited after it lands. Copying a new file in is fine; write what you learned to cortex/.")
+        return None
 
     path = args.get("file_path") or args.get("notebook_path") or ""
     full = path if os.path.isabs(path) else os.path.join(START, path)
     if path and in_senses(path) and (tool != "Write" or os.path.exists(full)):
-        block(MESSAGE.format(os.path.relpath(os.path.realpath(full), ROOT)))
-    sys.exit(0)
+        return block(MESSAGE.format(os.path.relpath(os.path.realpath(full), ROOT)))
+    return None
 
 
 if __name__ == "__main__":
-    main()
+    shared.main(("protect_senses", check))

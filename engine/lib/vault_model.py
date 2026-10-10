@@ -2,11 +2,14 @@
 
 Nothing here walks the brain: owner_goals and tag_vocabulary read its
 CLAUDE.md and is_brain looks for two folders. vaultlib re-exports it all.
+The numbers a brain may tune are not here: vault_tuning holds them.
 """
 import datetime
 import os
 import re
 import sys
+
+from vault_tuning import Tuning, tuning_problems
 
 LINK =re.compile(r"\[\[([^\]|#]+)(?:#[^\]|]*)?(?:\|[^\]]*)?\]\]")
 FRONTMATTER = re.compile(r"\A---\r?\n(.*?)\r?\n---\r?\n?", re.S)
@@ -40,7 +43,7 @@ PROJECTS_DIR = "prefrontal"
 # Faded pages: out of the index and the graph, but an episode that named one
 # still does, so a link to a dormant page is a known state, not a broken link.
 DORMANT_DIR = "dormant"
-SYSTEM_TYPES = ("index", "log", "metrics", "fingerprints", "intentions", "project")
+SYSTEM_TYPES = ("index", "log", "metrics", "fingerprints", "intentions", "tuning", "project")
 # A system type names one fixed file. Declared anywhere else it would exempt a
 # memory page from every check, so there it is a schema problem, and the page
 # is treated as an ordinary (untyped) page. Projects get theirs from their folder.
@@ -50,6 +53,7 @@ SYSTEM_PATHS = {
     "metrics": "hippocampus/metrics.md",
     "fingerprints": "hippocampus/fingerprints.md",
     "intentions": "hippocampus/intentions.md",
+    "tuning": "hippocampus/tuning.md",
 }
 STATUSES = ("emerging", "established")
 # A decision is weighed (open), made with a date to check how it went
@@ -68,8 +72,6 @@ CLAIM_SECTIONS = ("Options", "Expected", "Decision", "Lessons")
 CLAIM_RESULTS = ("held", "failed", "unknown")
 # Only a guess carries a probability; an observation is seen, not forecast.
 PROBABILITY_TAGS = ("hypothesis", "assumption")
-# Below this many scored guesses, a Brier score is shown with its count and no verdict.
-BRIER_MIN = 10
 MAX_TAGS = 3
 # `summary:` is one sentence a reader can decide on: open the page or not.
 # Recall and search print it, so an answer reads five summaries and then only
@@ -128,24 +130,20 @@ PRIVATE_FIELDS = frozenset(k for k, f in FIELDS.items() if f.get("private"))
 OPS = ("ingest", "recall", "sleep", "explore", "decide", "review", "write", "focus",
        "maintain", "health", "guard", "rehearse", "rollback", "owner", "engine", "remind", "forget")
 
-STALE_DAYS = 90
-STUB_WORDS = 40
-DORMANT_DAYS = 180
 # Graded salience: `salience: 1-5` (`high` is 5). From SALIENT up, a page never
 # fades and one episode is enough for a concept, as `high` always was; below it,
-# each level only stretches the time a page takes to fade by SALIENCE_STRETCH.
+# each level only stretches the time a page takes to fade (salience_stretch).
+# A rule the documents state (CLAUDE.md > How memory forms), so no brain tunes it.
 SALIENT = 4
-SALIENCE_STRETCH = 0.5
 # Owner goals: `- <goal> by YYYY-MM-DD -> [[page]], [[project]]` under
 # `## Goals` in OWNER.md; the date and links are optional. A brain from before
 # OWNER.md keeps them under `### Goals` in the Owner section of CLAUDE.md.
 OWNER_FILE = "OWNER.md"
 GOAL_LINE = re.compile(r"^[-*]\s+(.+?)(?:\s+by\s+(\d{4}-\d{2}-\d{2}))?\s*(?:->\s*(.*))?$")
 # A goal ends when its line says `(done)` or `(dropped)`. One more than
-# GOAL_STALE_DAYS past its date stops protecting its pages until it is closed
+# goal_stale_days past its date stops protecting its pages until it is closed
 # or re-dated, so purpose cannot silently grow forever.
 GOAL_END = re.compile(r"\s*\((done|dropped)\)", re.I)
-GOAL_STALE_DAYS = 30
 REHEARSED_TYPES = ("concept", "insight")
 # Pages something should link *to*. Decisions and /explore episodes are
 # records: they link out to what they used, and nothing is expected to link
@@ -157,93 +155,25 @@ LINKED_TO_TYPES = ("concept", "entity", "insight", "episode")
 # does not keep a page from fading.
 FADE_IGNORES_LINKS_FROM = ("episode",)
 STUB_TYPES = ("concept", "entity", "insight")
-
-# Spaced retrieval: days until the next rehearsal, by how many spaced
-# rehearsals the owner has passed on a page (its strength). A pass raises
-# strength only once the current interval has passed, so ten questions in one
-# afternoon count once; a miss sets it back to the start. Only /rehearse moves
-# this: a page the model read to answer a question was not recalled by the owner.
-REHEARSAL_DAYS = (1, 3, 7, 14, 30, 60, 120)
-HUB_MIN, HUB_FACTOR = 5, 3
-# Exact betweenness costs pages x links; past this many pages it is estimated
-# from a fixed, evenly spaced sample of starting pages, so results stay stable.
-BRIDGES_EXACT_UP_TO, BRIDGES_SAMPLE = 500, 200
-# Every threshold above is a guess until real use tests it. Once the brain has
-# this many inputs and sleeps, the briefing asks for a calibration review from
-# `brain introspect --usage` and the metrics; a `health calibration ...` log
-# line records that it was done.
-CHECKPOINT_INPUTS, CHECKPOINT_SLEEPS = 20, 4
-
-# Healthy ranges
-ORPHAN_HEALTHY, ORPHAN_BROKEN = 5, 15        # % of pages
-DEGREE_WEAK, DEGREE_RANGE, DEGREE_DECORATIVE = 2, (3, 8), 10
-MAIN_COMPONENT_MIN = 80                      # % of pages
-
-# Retrieval (vault_retrieval). Guesses like every threshold above, tuned against
-# the answer test set (`brain eval`), never by feel.
-HEBBIAN_HALF_LIFE = 90       # days for a co-recall to lose half its weight
-SPREAD_HOPS, SPREAD_DECAY = 2, 0.5
-SEED_LIMIT = 5               # search hits that start the spread
-# `brain recall` stops where the match stops. Rows scoring under this share of
-# the best row are cut: on the eval's fixture no expected page in the top five
-# scores under 0.47 of the first. And when the best page holds under
-# MIN_COVERAGE of the question's words, weighted by how rare each is, nothing
-# is returned: the words reached a page, the question did not. This catches
-# only a gross mismatch (a retriever cannot know a question is uncovered).
-RECALL_FLOOR = 0.4
-MIN_COVERAGE = 0.15
-# Recall on every prompt (the prompt_recall hook, off unless BRAIN_PROMPT_RECALL=1)
-# adds text to a prompt that did not ask for it, so its bar is higher than
-# `brain recall`'s: the prompt reads as a question, holds PROMPT_MIN_WORDS or
-# more, and the best page holds PROMPT_COVERAGE of its words. At most
-# PROMPT_ROWS summaries, PROMPT_CHARS in all.
-PROMPT_COVERAGE = 0.5
-PROMPT_MIN_WORDS = 4
-PROMPT_ROWS = 4
-PROMPT_CHARS = 900
+# What reads as a question, for recall on every prompt (the prompt_recall hook).
 QUESTION = re.compile(r"\?\s*$|^\s*(?:what|why|how|which|who|whom|whose|when|where|does|do|did|is|are|was|were|can|"
                       r"could|should|would|will|has|have|explain|tell me|remind me)\b", re.I)
-# An idea held on an episode (a candidate with no page yet) is listed with a
-# recall when the question names it: half or more of the words of its name,
-# and at least this share of the question in its name and one-line note.
-HELD_COVERAGE = 0.5
-HELD_LIMIT = 3
-# Two held candidates, or a candidate and a page, are put to sleep as possibly
-# one idea when their names share half their words, or their names and notes
-# share this many words and half of the shorter one's.
-PAIR_OVERLAP = 0.5
-PAIR_MIN_WORDS = 3
-PROJECT_BOOST = 1.5          # --project: its pages' seeds count this much more
-NEAR_DUPLICATE = 0.6         # name or neighbour overlap that suggests a merge
-SCHEMA_MIN = 4               # concepts in a cluster before it wants a framework page
-GOAL_SLIP_DAYS = 30          # a goal this close with no activity in ACTIVITY_DAYS is at risk
-ACTIVITY_DAYS = 28
-RISK_MIN_ATTEMPTS = 3        # rehearsals before a page's miss rate is shown
 
 
-def thresholds():
-    """Every tunable number, for `brain introspect --usage` and the calibration review."""
-    return {"stale_days": STALE_DAYS, "dormant_days": DORMANT_DAYS, "salient": SALIENT,
-            "rehearsal_days": list(REHEARSAL_DAYS), "orphan_healthy_pct": ORPHAN_HEALTHY,
-            "orphan_broken_pct": ORPHAN_BROKEN, "degree_range": list(DEGREE_RANGE),
-            "main_component_min_pct": MAIN_COMPONENT_MIN, "hebbian_half_life": HEBBIAN_HALF_LIFE,
-            "spread": [SPREAD_HOPS, SPREAD_DECAY], "near_duplicate": NEAR_DUPLICATE,
-            "schema_min": SCHEMA_MIN, "brier_min": BRIER_MIN, "goal_slip_days": GOAL_SLIP_DAYS,
-            "checkpoint": [CHECKPOINT_INPUTS, CHECKPOINT_SLEEPS],
-            "recall_floor": RECALL_FLOOR, "min_coverage": MIN_COVERAGE,
-            "prompt_recall": [PROMPT_COVERAGE, PROMPT_MIN_WORDS, PROMPT_ROWS, PROMPT_CHARS]}
+def verdicts(orphan_rate, avg_degree, main_share, pages, tuning=None):
+    """One plain verdict per health metric; quiet until there is enough graph to judge.
 
-
-def verdicts(orphan_rate, avg_degree, main_share, pages):
-    """One plain verdict per health metric; quiet until there is enough graph to judge."""
+    `tuning` is the brain's thresholds (Vault.tuning); without it, the defaults.
+    """
+    t = tuning or Tuning()
     if pages < 10:
         return {"overall": f"too small to judge ({pages} pages; read the numbers after about 10)"}
-    orphan = ("healthy" if orphan_rate < ORPHAN_HEALTHY else
-              "ingest is not linking: check the ingest skill" if orphan_rate > ORPHAN_BROKEN else "watch")
-    degree = ("barely connected: retrieval cannot beat search" if avg_degree < DEGREE_WEAK else
-              "check for decorative links" if avg_degree > DEGREE_DECORATIVE else
-              "working range" if DEGREE_RANGE[0] <= avg_degree <= DEGREE_RANGE[1] else "acceptable")
-    main = ("one main component" if main_share >= MAIN_COMPONENT_MIN else
+    orphan = ("healthy" if orphan_rate < t.orphan_healthy else
+              "ingest is not linking: check the ingest skill" if orphan_rate > t.orphan_broken else "watch")
+    degree = ("barely connected: retrieval cannot beat search" if avg_degree < t.degree_weak else
+              "check for decorative links" if avg_degree > t.degree_decorative else
+              "working range" if t.degree_low <= avg_degree <= t.degree_high else "acceptable")
+    main = ("one main component" if main_share >= t.main_component_min else
             "fragmented: answers will be silently incomplete")
     return {"orphan_rate": orphan, "avg_degree": degree, "components": main}
 
@@ -390,7 +320,7 @@ def schema_problems(text, vocabulary=None, page_type=None, stem=None, rel=None):
         return ["missing frontmatter block"]
     kind = fields.get("type", "")
     if system_type_at(kind, rel):
-        return []
+        return tuning_problems(body) if kind == "tuning" else []  # the one system page with a contract of its own
     if kind in SYSTEM_TYPES:
         where = SYSTEM_PATHS.get(kind, "prefrontal/<name>/CLAUDE.md, where the folder sets it")
         return [f"type '{kind}' belongs only to {where}; a memory page here is one of {', '.join(PAGE_TYPES)}"]

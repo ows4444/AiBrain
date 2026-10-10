@@ -1,6 +1,6 @@
 """Memory over time: the log, recall strength, the sleep queue, evidence, decay.
 
-Mixed into vaultlib.Vault; relies on its pages, edges and resolve().
+Mixed into vaultlib.Vault; relies on its pages, edges, tuning and resolve().
 """
 import os
 import re
@@ -8,12 +8,9 @@ from collections import Counter
 from itertools import chain
 
 from vault_events import is_rehearsal_pass, is_rehearsal_miss
-from vault_model import (BRIER_MIN, CHECKPOINT_INPUTS, CHECKPOINT_SLEEPS, CLAIM_RESULTS, CLAIM_SECTIONS, CLAIM_TAGS,
-                         DORMANT_DAYS, FADE_IGNORES_LINKS_FROM, LINK, OPS, OUTCOMES, PAIR_MIN_WORDS, PAIR_OVERLAP,
-                         PROBABILITY_TAGS, RELATIONS,
-                         REHEARSAL_DAYS, REHEARSED_TYPES, SALIENCE_STRETCH, SALIENT, STALE_DAYS, STUB_TYPES,
-                         STUB_WORDS, FENCE, as_list, claim_problems, parse_date, tag_vocabulary, thresholds,
-                         tokens)
+from vault_model import (CLAIM_RESULTS, CLAIM_SECTIONS, CLAIM_TAGS, FADE_IGNORES_LINKS_FROM, LINK, OPS, OUTCOMES,
+                         PROBABILITY_TAGS, RELATIONS, REHEARSED_TYPES, SALIENT, STUB_TYPES, FENCE, as_list,
+                         claim_problems, parse_date, tag_vocabulary, tokens)
 
 # Query parameters that say how a reader arrived, not which page it is.
 TRACKING = re.compile(r"^(utm_\w+|fbclid|gclid|igshid|mc_[ce]id|ref|ref_src)$")
@@ -60,8 +57,10 @@ class MemoryMixin:
         """What has actually been used, from the log and the pages, to decide what stays.
 
         Operations by count and by month; the operations, typed-link relations
-        and vocabulary tags never used; and progress to the calibration checkpoint.
+        and vocabulary tags never used; progress to the calibration checkpoint;
+        and every threshold with its default, its range and this brain's value.
         """
+        t = self.tuning
         lines = self.log_lines()
         ops = Counter(op for _, op, _ in lines)
         months = {}
@@ -76,12 +75,12 @@ class MemoryMixin:
             "unused": {"operations": [op for op in OPS if not ops[op]],
                        "relations": [r for r in RELATIONS if r not in relations],
                        "tags": sorted((tag_vocabulary(self.root) or set()) - tags)},
-            "checkpoint": {"inputs": inputs, "inputs_needed": CHECKPOINT_INPUTS,
-                           "sleeps": ops["sleep"], "sleeps_needed": CHECKPOINT_SLEEPS,
-                           "reached": inputs >= CHECKPOINT_INPUTS and ops["sleep"] >= CHECKPOINT_SLEEPS,
+            "checkpoint": {"inputs": inputs, "inputs_needed": t.checkpoint_inputs,
+                           "sleeps": ops["sleep"], "sleeps_needed": t.checkpoint_sleeps,
+                           "reached": inputs >= t.checkpoint_inputs and ops["sleep"] >= t.checkpoint_sleeps,
                            "reviewed": any(op == "health" and rest.startswith("calibration")
                                            for _, op, rest in lines)},
-            "thresholds": thresholds(),
+            "thresholds": t.rows(),
         }
 
     def _recalls(self):
@@ -116,11 +115,11 @@ class MemoryMixin:
 
     def strength(self, page):
         """Spaced rehearsals passed: one counts only once the interval earned so far has passed; a miss starts over."""
-        level, anchor = 0, None
+        level, anchor, ladder = 0, None, self.tuning.rehearsal_days
         for day, passed in self.rehearsals.get(page, []):
             if not passed:
                 level, anchor = 0, day
-            elif anchor is None or (day - anchor).days >= REHEARSAL_DAYS[min(level, len(REHEARSAL_DAYS) - 1)]:
+            elif anchor is None or (day - anchor).days >= ladder[min(level, len(ladder) - 1)]:
                 level, anchor = level + 1, day
         return level
 
@@ -129,7 +128,9 @@ class MemoryMixin:
         listed = set().union(*(self.out_links[i] for i in self.of_type("index")))
         return sorted((p for p in self.knowledge if p not in listed), key=lambda p: p.rel)
 
-    def stale_concepts(self, days=STALE_DAYS):
+    def stale_concepts(self, days=None):
+        """(every concept, those not edited in `days`: the brain's stale_days unless given), oldest first."""
+        days = self.tuning.stale_days if days is None else days
         concepts = self.of_type("concept")
         stale = [p for p in concepts if p.updated and (self.today - p.updated).days > days]
         return concepts, sorted(stale, key=lambda p: p.updated)
@@ -164,7 +165,8 @@ class MemoryMixin:
         return out
 
     def stubs(self):
-        return [p for p in self.knowledge if p.type in STUB_TYPES and p.words < STUB_WORDS and not p.targets]
+        return [p for p in self.knowledge
+                if p.type in STUB_TYPES and p.words < self.tuning.stub_words and not p.targets]
 
     def unencoded(self):
         """Files in senses/ no episode has encoded yet, as paths from the brain's root.
@@ -256,14 +258,15 @@ class MemoryMixin:
                          {self.source_of(p) for p in row["episodes"]}))
 
         nothing = frozenset()
+        min_words, overlap = self.tuning.pair_min_words, self.tuning.pair_overlap
 
         def shared(words, other):
             common = words & other
-            return common if len(common) >= PAIR_MIN_WORDS and len(common) >= PAIR_OVERLAP * min(len(words), len(other)) \
+            return common if len(common) >= min_words and len(common) >= overlap * min(len(words), len(other)) \
                 else nothing
 
         # Nothing is compared with everything. A pair can be listed only when its names share a
-        # word, or its names and notes share PAIR_MIN_WORDS words; both are found from the words:
+        # word, or its names and notes share pair_min_words words; both are found from the words:
         # each word remembers the candidates and the pages holding it.
         by_name, by_word, holding = {}, {}, {}
         for at, (_, named, words, _) in enumerate(held):
@@ -278,9 +281,9 @@ class MemoryMixin:
                 holding.setdefault(word, []).append(at)
 
         def sharing(words, index):
-            """Positions in `index` that hold PAIR_MIN_WORDS or more of these words."""
+            """Positions in `index` that hold pair_min_words or more of these words."""
             counts = Counter(chain.from_iterable(index.get(word, ()) for word in words))
-            return {at for at, count in counts.items() if count >= PAIR_MIN_WORDS}
+            return {at for at, count in counts.items() if count >= min_words}
 
         pairs = []
         for i, (name, named, words, sources) in enumerate(held):
@@ -375,7 +378,7 @@ class MemoryMixin:
 
         (misses + 1) / (attempts + 2), so an unrehearsed page sits at 0.5 and a
         single result moves it only part of the way. Shown only from
-        RISK_MIN_ATTEMPTS attempts; used for ordering at any count.
+        risk_min_attempts attempts; used for ordering at any count.
         """
         events = self.rehearsals.get(page, [])
         misses = sum(not passed for _, passed in events)
@@ -388,24 +391,28 @@ class MemoryMixin:
         then those the owner most often misses, then the most overdue.
         """
         due = []
-        purpose = self.purpose()
+        purpose, ladder = self.purpose(), self.tuning.rehearsal_days
         for p in (p for p in self.pages if p.type in REHEARSED_TYPES):
             last = self.last_rehearsed(p)
             if not last:
                 continue
-            interval = REHEARSAL_DAYS[min(self.strength(p), len(REHEARSAL_DAYS) - 1)]
+            interval = ladder[min(self.strength(p), len(ladder) - 1)]
             overdue = (self.today - last).days - interval
             if overdue >= 0:
                 due.append((p, overdue))
         return [p for p, _ in sorted(due, key=lambda t: (t[0] not in purpose, -t[0].salience,
                                                          -self.miss_risk(t[0])[0], -t[1], t[0].rel))]
 
-    def fade_days(self, page, days=DORMANT_DAYS):
-        """How long this page may go untouched before it is proposed for dormant/: longer the more salient."""
-        return days * (1 + SALIENCE_STRETCH * min(page.salience, SALIENT - 1))
+    def fade_days(self, page, days=None):
+        """How long this page may go untouched before it is proposed for dormant/: longer the more salient.
 
-    def dormant_candidates(self, days=DORMANT_DAYS):
-        """Unlinked, unrecalled, untouched for `days`: what sleep would scale down.
+        `days` is the brain's dormant_days unless given.
+        """
+        days = self.tuning.dormant_days if days is None else days
+        return days * (1 + self.tuning.salience_stretch * min(page.salience, SALIENT - 1))
+
+    def dormant_candidates(self, days=None):
+        """Unlinked, unrecalled, untouched for `days` (the brain's dormant_days): what sleep would scale down.
 
         Episodes and decisions are records of what happened, so they never fade;
         nor does anything a goal or a live project depends on. A link from an
@@ -494,8 +501,7 @@ class MemoryMixin:
                         out.append((p, c["result"] == "held"))
         return out
 
-    @staticmethod
-    def _brier(pairs):
+    def _brier(self, pairs):
         n = len(pairs)
         buckets = {}
         for p, held in pairs:
@@ -503,14 +509,15 @@ class MemoryMixin:
             row["n"] += 1
             row["held"] += held
         return {"n": n, "score": round(sum((p - held) ** 2 for p, held in pairs) / n, 3) if n else None,
-                "enough": n >= BRIER_MIN, "buckets": dict(sorted(buckets.items(), key=lambda kv: int(kv[0][:-1])))}
+                "enough": n >= self.tuning.brier_min,
+                "buckets": dict(sorted(buckets.items(), key=lambda kv: int(kv[0][:-1])))}
 
     def brier(self):
         """Calibration of the owner's stated probabilities on reviewed decisions.
 
         Brier score: the mean of (probability - outcome)^2, 0 is perfect, 0.25 is
         always saying 50%. Buckets show, of everything called 70%, how much held.
-        `enough` is False below BRIER_MIN scored guesses: show the count, no verdict.
+        `enough` is False below brier_min scored guesses: show the count, no verdict.
         """
         return self._brier(self._scored_guesses(self.of_type("decision")))
 

@@ -1,11 +1,10 @@
 """The link graph: edges, orphans, components, hubs, bridges, clusters, typed links.
 
-Mixed into vaultlib.Vault; relies on its pages, edges and resolve().
+Mixed into vaultlib.Vault; relies on its pages, edges, tuning and resolve().
 """
 from itertools import combinations
 
-from vault_model import (BRIDGES_EXACT_UP_TO, BRIDGES_SAMPLE, HUB_FACTOR, HUB_MIN, LINKED_TO_TYPES, NEAR_DUPLICATE,
-                         RELATIONS, SCHEMA_MIN, as_list, tokens)
+from vault_model import LINKED_TO_TYPES, RELATIONS, as_list, tokens
 
 # Pages that can be the same idea twice. Episodes are records of separate inputs,
 # decisions separate choices: two of those that look alike are not a merge.
@@ -58,22 +57,25 @@ class GraphMixin:
         return adj
 
     def hubs(self):
-        """Pages whose inbound degree is at least 5 and three times the average: split candidates."""
+        """Pages whose inbound degree is at least hub_min (5) and hub_factor (3) times the average: split candidates."""
         inbound = self.inbound()
         if not inbound:
             return []
-        bar = max(HUB_MIN, HUB_FACTOR * sum(inbound.values()) / len(inbound))
+        bar = max(self.tuning.hub_min, self.tuning.hub_factor * sum(inbound.values()) / len(inbound))
         return sorted((p for p, n in inbound.items() if n >= bar), key=lambda p: -inbound[p])
 
-    def betweenness_estimated(self, exact_up_to=BRIDGES_EXACT_UP_TO):
-        return len(self.knowledge) > exact_up_to
+    def betweenness_estimated(self, exact_up_to=None):
+        return len(self.knowledge) > (self.tuning.bridges_exact_up_to if exact_up_to is None else exact_up_to)
 
-    def betweenness(self, exact_up_to=BRIDGES_EXACT_UP_TO, sample=BRIDGES_SAMPLE):
+    def betweenness(self, exact_up_to=None, sample=None):
         """Brandes betweenness on the undirected graph, normalised to 0..1.
 
         Exact up to `exact_up_to` pages; above that, estimated from `sample`
         evenly spaced starting pages and scaled up (see betweenness_estimated).
+        Both are the brain's (bridges_exact_up_to, bridges_sample) unless given.
         """
+        exact_up_to = self.tuning.bridges_exact_up_to if exact_up_to is None else exact_up_to
+        sample = self.tuning.bridges_sample if sample is None else sample
         adj = self.neighbours()
         score = dict.fromkeys(adj, 0.0)
         nodes = list(adj)
@@ -190,14 +192,16 @@ class GraphMixin:
         self.typed_edges()
         return self._contradicted.get(page, frozenset())
 
-    def near_duplicates(self, threshold=NEAR_DUPLICATE):
+    def near_duplicates(self, threshold=None):
         """(a, b, score, why) for same-type pages that may be one idea twice: merge candidates.
 
         Name overlap: Jaccard of the words in title and aliases. Neighbour
         overlap: Jaccard of the pages each links with, counted only when they
         share three or more. Only pairs sharing a name word or a neighbour are
         compared, so this stays fast on a large brain. Report only: /maintain merges.
+        `threshold` is the brain's near_duplicate unless given.
         """
+        threshold = self.tuning.near_duplicate if threshold is None else threshold
         pages = [p for p in self.knowledge if p.type in MERGEABLE_TYPES]
         names = {p: set(tokens(" ".join([p.title, *p.aliases]))) for p in pages}
         adj = self.neighbours()
@@ -222,12 +226,14 @@ class GraphMixin:
                 out.append((a, b, round(max(name, nbr), 2), why))
         return sorted(out, key=lambda t: (-t[2], t[0].rel, t[1].rel))
 
-    def schema_candidates(self, min_size=SCHEMA_MIN):
+    def schema_candidates(self, min_size=None):
         """Clusters with at least `min_size` concepts that no insight yet frames: each wants a schema page.
 
         An insight frames a cluster when it links to half or more of its concepts.
         Sleep proposes an insight tagged `schema` for each; nothing is written here.
+        `min_size` is the brain's schema_min unless given.
         """
+        min_size = self.tuning.schema_min if min_size is None else min_size
         insights = [self.out_links[i] for i in self.of_type("insight")]
         out = []
         for cluster in self.clusters():

@@ -1,12 +1,12 @@
 """Purpose: the owner's goals and the projects in prefrontal/, and what they keep in use.
 
-Mixed into vaultlib.Vault; relies on its pages, edges, goals and resolve().
+Mixed into vaultlib.Vault; relies on its pages, edges, goals, tuning and resolve().
 """
 import datetime
 import os
 import re
 
-from vault_model import ACTIVITY_DAYS, GOAL_END, GOAL_SLIP_DAYS, GOAL_STALE_DAYS, parse_date
+from vault_model import GOAL_END, parse_date
 
 # An intention in hippocampus/intentions.md: `- <what to do> when <YYYY-MM-DD or an event>`,
 # closed by `(done)` or `(dropped)` at the end of the line, as goals are.
@@ -48,10 +48,10 @@ class PurposeMixin:
         return [p for p in self.of_type("project") if p.fields.get("status", "active") != "done"]
 
     def goal_state(self, goal):
-        """done | dropped | stale (past its date by more than GOAL_STALE_DAYS) | past-due | open."""
+        """done | dropped | stale (past its date by more than goal_stale_days) | past-due | open."""
         if goal["ended"]:
             return goal["ended"]
-        if goal["due"] and (self.today - goal["due"]).days > GOAL_STALE_DAYS:
+        if goal["due"] and (self.today - goal["due"]).days > self.tuning.goal_stale_days:
             return "stale"
         if goal["due"] and goal["due"] < self.today:
             return "past-due"
@@ -76,8 +76,10 @@ class PurposeMixin:
             pages |= {r} | (self.links_from(r) if r.type == "project" else set())
         return {p for p in pages if not p.is_system}
 
-    def activity(self, pages, days=ACTIVITY_DAYS):
-        """How much happened to these pages in the last `days`: edits (by `updated:`) plus recalls naming them."""
+    def activity(self, pages, days=None):
+        """How much happened to these pages in the last `days` (the brain's activity_days): edits (by `updated:`)
+        plus recalls naming them."""
+        days = self.tuning.activity_days if days is None else days
         since = self.today - datetime.timedelta(days=days)
         edits = sum(1 for p in pages if p.updated and since < p.updated <= self.today)
         recalls = sum(1 for p in pages for d in self.recall_dates.get(p, []) if since < d <= self.today)
@@ -86,8 +88,8 @@ class PurposeMixin:
     def goal_report(self):
         """Each goal with its date, the pages behind it, what is missing, and whether it is slipping.
 
-        `at_risk`: open, due within GOAL_SLIP_DAYS, and nothing behind it was
-        edited or recalled in the last ACTIVITY_DAYS. A prediction from the log,
+        `at_risk`: open, due within goal_slip_days, and nothing behind it was
+        edited or recalled in the last activity_days. A prediction from the log,
         not from the world: it says the brain shows no work toward the goal.
         """
         out = []
@@ -108,7 +110,8 @@ class PurposeMixin:
                         "pages": [p.rel for p in pages],
                         "missing": [t for t, p in zip(goal["links"], linked) if p is None],
                         "activity": recent,
-                        "at_risk": state == "open" and days_left is not None and days_left <= GOAL_SLIP_DAYS
+                        "at_risk": state == "open" and days_left is not None
+                        and days_left <= self.tuning.goal_slip_days
                         and recent == 0})
         return out
 
