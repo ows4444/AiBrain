@@ -37,6 +37,20 @@ matters. P1 gives the measure that decides item F1.
 | F10 | 4 | Backup and sync | S | none | Document a git remote; the shipped permissions deny `git push` on purpose |
 | F12 | 3 | MCP server over `brain` | M | F1 | Read-only tools only (`search`, `recall`, `since`); no write path |
 | F13 | 4 | Windows support | M | none | Paths, `python3` name, the `brain` symlink `install.sh` makes |
+| F14 | 6 | Reminders with a time and a repeat | S | F9 | A repeat is never closed by `(done)`: when it was last done is read from the log, or a second record of state appears beside it |
+| F15 | 7 | Event reminders found by `brain fit` | S to M | none | It lists what to check, the model still judges: an event is prose, and words alone will list some that are not it |
+| F16 | 5 | A reminder closes with its date and what happened | S | none | `(done)` is shared with goals (`GOAL_END`); a bare one must still read |
+| F17 | 7 | A schedule that needs no session, with a notification | M | F2 step 1 | It installs a job on the machine, so it asks. A machine asleep runs it late: report the lateness, never promise the time |
+| F18 | 4 | What waits, as a fifth MCP tool | S | F12 | Read-only, as the other four. This is how a program that acts learns what the brain is waiting on |
+
+### What the brain does not become (decided 2026-10-10)
+
+F14 to F18 are what was taken from a design for a "synthetic brain" that acts by itself (`thoughts.md`): an operational
+database, a background worker that executes tasks, approvals, a planner, model adapters. None of that is built
+here. The brain stays a memory: its record is Markdown and the log, it changes nothing outside itself, and an
+unattended run only reads. A database of intentions in `.cache/` would be a second record, one that git does
+not carry to another machine. A program that acts (a task runner with its own approvals and audit trail) reads
+the brain through `brain mcp` and keeps its own state.
 
 ### F2 in detail (the one most likely to be chosen)
 1. `brain tend --check` (new, read-only): prints queues, due rehearsals, due reminders, decisions to review. No writes.
@@ -91,6 +105,7 @@ fewest tools that do the job; only writers get `Write` and `Edit`.
 | Better recall | P1, F3, F1, S3, F12 | Measure first, then add meaning-based search |
 | Hygiene | S8, S9, A2, A5 | Small, independent, low risk |
 | Reach | F6, S5, F5 | Voice and documents without the model doing all the extraction |
+| Remembering to do | F14, F15, F16, F17, F18 | A reminder that says when, is found when its event comes, shows without a session, and records how it ended |
 
 Smallest useful first step: P0 and P1, then Upkeep. Bundles can run in any order after that.
 

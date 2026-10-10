@@ -17,7 +17,7 @@ Done, for every item that touches the engine:
 
 ## Decisions (yours; each blocks the item named)
 
-D1 to D7 were answered by the owner on 2026-10-09, each as recommended; D8 to D16 on 2026-10-10, each put as a choice with a recommendation.
+D1 to D7 were answered by the owner on 2026-10-09, each as recommended; D8 to D19 on 2026-10-10, each put as a choice with a recommendation.
 
 - [x] **D1. May `brain log` run without asking?** Decided: yes, it can only append one checked line. Unblocks 6.
 - [x] **D2. A new optional field `answers:` on memory pages?** Decided: yes, and private, so `brain export` drops it. Unblocks 22.
@@ -35,6 +35,8 @@ D1 to D7 were answered by the owner on 2026-10-09, each as recommended; D8 to D1
 - [x] **D15. What a read-only view for another person is (54)?** Decided 2026-10-10: nothing new. `/export` and `brain mcp` are the ways out. Closes 54.
 - [x] **D16. Encryption at rest (55)?** Decided 2026-10-10: no. The disk and a private remote cover it, outside the engine. Closes 55.
 - [x] **D17. Items 22 and 23 together: every recall number on every set is the same or better, except the `first` set's mrr, 0.854 to 0.844 (one question, one rank). Accept it?** Decided 2026-10-10: accept it. Closes 22 and 23; the table is under 23.
+- [x] **D18. Should the brain grow the acting runtime of the "synthetic brain" notes (an operational database, a background worker that executes, approvals, a planner), or stay a memory that other programs read?** Decided 2026-10-10: stay a memory. Five things are taken from the notes, all about remembering to do: items 57 to 61. The rest is not built here; a program that acts reads the brain through `brain mcp`. ROADMAP > What the brain does not become
+- [x] **D19. Where do the notes themselves go (`engine/thoughts.md`, 104 KB, staged in the folder the plugin ships from)?** Decided 2026-10-10: it stays in this repository, at `engine/thoughts.md`, as it was pasted. It was first moved to the real brain's `inbox/` on the answer to this question, and brought back the same hour on your word, the same bytes; nothing of it is left in the other folder. It is in the folder and left out of the commits for now, also on your word. Items 57 to 61 are what was taken from it
 - [x] **D7. Should engine work write `engine` lines into this brain's log now?** Found and decided on 2026-10-09: no, hold them until 4 puts the brain in use; git history records engine changes until then. The roadmap asks for one line per finished item, but the first dated line marks this brain as in use: `test_an_unused_brain_matches_the_template` then skips, and a clone no longer starts with an empty log.
 
 ## Phase 0. Baseline
@@ -368,3 +370,34 @@ Not ordered: pick any whose tags are met. Each is smaller once 12 is done.
   - [x] Decided no, and F11 is off the roadmap: the pages stay plain Markdown, which search needs. The disk's own encryption covers this machine and a private remote covers the pushed copy
 - [x] **56. Run the OpenCode plugin in OpenCode** (ROADMAP P2, S, closed by D5)
   - [x] Closed, not built: D5 removed OpenCode from both documents on 2026-10-09, and P2 from the roadmap. Other hosts are 29
+
+### Remembering to do
+
+Taken from the "synthetic brain" notes (`thoughts.md`) by D18. Today a reminder is one line, `- <what> when <date or event>`:
+a date is shown in the briefing once it has come, an event is compared with each new input by the model.
+Each item keeps the rules: the line in `hippocampus/intentions.md` and the log are the record, nothing else is stored.
+
+- [ ] **57. Reminders with a time and a repeat** (ROADMAP F14, score 6, S, after 50)
+  - [ ] `when` takes a time after the date (`2026-10-11 10:00`): due from that minute. A date alone is due from the start of its day, as now
+  - [ ] `when` takes a repeat (`every day`, `every monday`, `every month`). A repeat is not closed by `(done)`: each time it is done the `remind` log line says so, and it is due again at the next one after that line. `(dropped)` ends it
+  - [ ] Every reader takes both: the briefing, `brain introspect --remind`, `brain tend --check`, the status line; the `/remind` skill and the template of `intentions.md` say how to write them
+  - [ ] Done when: a timed reminder is not due a minute before its time, a weekly one is due again a week after it was done, and the lines written before read as they did
+- [ ] **58. `brain fit` names the reminders and decisions an input bears on** (ROADMAP F15, score 7, S to M)
+  - [ ] With the pages and held ideas it lists now: each open reminder that waits on an event, and each open decision's `revisit if`, whose event the input's words reach. How much of the event the input must hold is a threshold like the others
+  - [ ] `/ingest` reads that list in place of comparing each input with `brain introspect --remind` by eye; `Triggers:` in its report starts from it, and the model still says what the input reports
+  - [ ] Its limit, said in its own text: an event is prose, so the list is what to check, never a verdict
+  - [ ] Done when: of two inputs, one reporting a reminder's event and one not, only the first lists it
+- [ ] **59. A reminder closes with its date and what happened** (ROADMAP F16, score 5, S)
+  - [ ] `(done 2026-10-12: the setup was confirmed)` and `(dropped 2026-10-12: no longer needed)`; a bare `(done)` still closes a line
+  - [ ] `brain introspect --remind` says, of the reminders closed: how many were done and how many dropped, and how many days after their date (the middle one and the latest)
+  - [ ] `/remind` asks for the one line when it closes a reminder
+  - [ ] Done when: a reminder closed three days late shows as three days late, and one closed bare is counted with no lateness
+- [ ] **60. A schedule that needs no session** (ROADMAP F17, score 7, M, after 28; closes 28's open step)
+  - [ ] One command sets it and one removes it: a launchd job on macOS, the cron line printed elsewhere, running `brain tend --check` at the time of day you give
+  - [ ] When something waits it shows a notification naming what and how many; when nothing does it shows none. `mail` is not needed
+  - [ ] Not on the allow-list: it installs a job on this machine, so it asks. It writes nothing in the brain
+  - [ ] Its limit, said in its own text: a machine that is asleep runs it on waking, so a reminder for 10:00 can be shown later. With 59 the lateness is on record
+  - [ ] Done when: with no session open, a reminder whose time has come is shown on the screen, and a week left alone changes no page
+- [ ] **61. What waits, as a fifth MCP tool** (ROADMAP F18, score 4, S, after 29)
+  - [ ] `waiting`: what `brain tend --check --json` gives, read-only as the other four
+  - [ ] Done when: a client lists five tools, `waiting` returns that digest, and the test that calling every tool changes no file holds for it too
