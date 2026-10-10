@@ -103,7 +103,7 @@ the dict with `--json`, which every command takes. Another program makes the sam
 | Record | `log` (the one writer of log lines: it checks the operation and every page name), `index` (rewrites the index's listing from the pages) |
 | Output | `export` (clean copies of chosen pages; it stops on a credential), `graph` (the links as CSV or GraphML, or with `--format html` one page that opens from the disk and asks the network for nothing) |
 | Remove and continue | `forget` (remove an input), `restore` (a faded page back from `dormant/`), `resume` (write where the work stands) |
-| Operate | `statusline`, `tend --check` (everything that needs the owner, read-only: what a scheduled run sends), `mcp` (the read-only server for other hosts), `cache`, `errors`, `synth`, `bench`, `test` |
+| Operate | `statusline`, `tend --check` (everything that needs the owner, read-only: what a scheduled run sends; `--notify` puts it on the screen, each thing once a day), `schedule` (a launchd job that runs it every few minutes with no session open), `mcp` (the read-only server for other hosts), `cache`, `errors`, `synth`, `bench`, `test` |
 
 ### 4.3 The hooks: `engine/hooks/` (six events, one command each)
 

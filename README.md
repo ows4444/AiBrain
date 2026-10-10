@@ -108,6 +108,7 @@ brain import obsidian VAULT   # every note of a vault into senses/, once; --dry-
 brain restore PAGE    # bring a faded page back from dormant/; the move is logged
 brain ground FILE     # a draft: links, numbers and quotations with no page behind them
 brain tend --check    # everything that needs you, in one read-only digest
+brain schedule        # have this machine run that every few minutes, with no session open
 brain mcp             # a read-only MCP server for other programs: search, recall, since, gaps
 brain log recall "a question" --pages a-page   # one checked line in the log; skills run it
 brain index           # rewrite the index's listing from the pages and their summaries
@@ -148,10 +149,20 @@ without. Set `BRAIN_CACHE=0` to turn it off.
 `brain tend --check` prints everything the brain is waiting on: input not
 encoded, pages awaiting sleep, rehearsals and reminders due, decisions to
 review, goals slipping, questions asked and not answered. It reads and never
-writes, so it can run on a schedule. Two ways:
+writes, so it can run on a schedule. Three ways:
 
-- **cron or launchd, no model.** Once a week, from the brain's folder, with
-  the output sent wherever you read it. For cron, Mondays at nine, mailed:
+- **`brain schedule --set`, no model.** On macOS it installs a launchd job of
+  your own user that runs `brain tend --check --notify` every 15 minutes
+  (`--minutes N` for another interval) and at login. The day's first run puts
+  everything that waits in one notification; a later one shows only a
+  reminder that has come due since, so `when 2026-10-11 10:00` is on your
+  screen within minutes of ten. `brain schedule` says what is set and
+  `brain schedule --remove` takes it out. A machine that is asleep runs it on
+  waking, so a reminder can be late. Elsewhere it installs nothing and prints
+  the cron line that does the same.
+
+- **cron, by hand.** Once a week, from the brain's folder, with the output
+  sent wherever you read it. Mondays at nine, mailed:
 
   ```
   0 9 * * 1  cd /path/to/brain && brain tend --check | mail -s "brain" you@example.com

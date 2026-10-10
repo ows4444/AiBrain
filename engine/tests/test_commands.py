@@ -80,7 +80,8 @@ KEYS = {
     "forget --yes": ("forget", ["cepeda-2006", "--yes"], [
         "asset", "candidates", "citing", "episodes", "input", "other_inputs", "removed"]),
     "tend --check": ("tend", ["--check"], ["at_risk", "contradictions", "date", "gaps", "inbox", "late", "needs",
-                                           "rehearse", "reminders", "review", "revisit", "senses", "sleep"]),
+                                           "notified", "rehearse", "reminders", "review", "revisit", "senses", "sleep"]),
+    "schedule": ("schedule", [], ["brain", "cron", "did", "minutes", "plist", "runs", "set"]),
     "eval": ("eval", [], ["problems", "retrieval"]),
     "eval --answers": ("eval", ["--answers", "{tmp}/answers.json"], ["answers", "problems", "retrieval"]),
     "eval --draft": ("eval", ["--draft", "2"], ["questions"]),

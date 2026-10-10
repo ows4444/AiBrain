@@ -63,6 +63,7 @@ COMMANDS = {
     "chats": ("chat_export_to_md", False, {}),
     "resume": ("save_resume", True, {}),
     "restore": ("restore", True, {}),
+    "schedule": ("schedule", True, {}),
     "session": ("session", True, {}),
     "forget": ("forget", True, {}),
     "statusline": ("statusline", True, {}),
