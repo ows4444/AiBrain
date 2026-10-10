@@ -9,12 +9,11 @@ import sys
 import tempfile
 import unittest
 
-from support import DECIDED, ENGINE, SCRIPTS, TempBrain, page, vaultlib
+from support import DECIDED, ENGINE, SCRIPTS, TempBrain, page, run_brain, vaultlib
 
 
 def check(root, *args):
-    r = subprocess.run([sys.executable, os.path.join(SCRIPTS, "link_check.py"), root, "--json", *args],
-                       capture_output=True, text=True)
+    r = run_brain(root, "check", "--json", *args)
     return r.returncode, json.loads(r.stdout)
 
 
@@ -131,8 +130,7 @@ class FrozenExpectation(TempBrain):
 
 class Fingerprints(TempBrain):
     def fingerprint(self):
-        return subprocess.run([sys.executable, os.path.join(SCRIPTS, "fingerprint.py"), self.root, "--json"],
-                              capture_output=True, text=True)
+        return run_brain(self.root, "fingerprint", "--json")
 
     def test_an_edited_input_fails_without_git(self):
         kept = self.write("senses/a.md", "as it arrived")

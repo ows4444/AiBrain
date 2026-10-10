@@ -51,7 +51,7 @@ class MemoryCycle(unittest.TestCase):
         self.tmp.cleanup()
 
     def run_py(self, rel, *args, stdin=None):
-        env = dict(os.environ, CLAUDE_PROJECT_DIR=self.dir)
+        env = dict(os.environ, CLAUDE_PROJECT_DIR=self.dir, BRAIN_ROOT=self.dir)
         return subprocess.run([sys.executable, os.path.join(ENGINE, rel), *args], input=stdin,
                               capture_output=True, text=True, env=env, cwd=self.dir)
 
@@ -70,7 +70,7 @@ class MemoryCycle(unittest.TestCase):
         return self.write(rel, text.replace(old, new))
 
     def stats(self):
-        return json.loads(self.run_py("lib/introspect.py", self.dir, "--json").stdout)
+        return json.loads(self.run_py("bin/brain", "introspect", "--json").stdout)
 
     def briefing(self):
         return self.run_py("hooks/wake_up.py").stdout
@@ -119,21 +119,28 @@ class MemoryCycle(unittest.TestCase):
         self.assertEqual(s["awaiting_consolidation"], 0)
         self.assertIn("cortex/concepts/llm-wiki.md", [c["page"] for c in s["candidates"]])
 
-        # the index lists every page and the one gap; link check still passes, so /commit can run
-        self.edit("hippocampus/index.md", "## Concepts\n\n_Nothing yet._", "## Concepts\n\n- [[llm-wiki]]")
-        self.edit("hippocampus/index.md", "## Entities\n\n_Nothing yet._", "## Entities\n\n- [[obsidian]]")
-        self.edit("hippocampus/index.md", "## Episodes\n\n_Nothing yet._", "## Episodes\n\n- [[a1]]\n- [[a2]]")
+        # the index lists every page (written by `brain index`) and the one gap (written by hand);
+        # link check still passes, so /commit can run
+        listed = self.run_py("bin/brain", "index")
+        self.assertEqual(listed.stdout, "index: 4 pages listed; added a1, a2, llm-wiki, obsidian\n")
         self.edit("hippocampus/index.md", "Pages that are linked but do not exist yet.\n\n_Nothing yet._",
                   "Pages that are linked but do not exist yet.\n\n- [[Karpathy]]")
-        check = self.run_py("lib/link_check.py", self.dir, "--json")
+        self.assertEqual(self.run_py("bin/brain", "index").stdout, "index: up to date (4 pages listed)\n")
+        check = self.run_py("bin/brain", "check", "--json")
         report = json.loads(check.stdout)
         self.assertEqual((check.returncode, report["broken"], report["schema"], report["not_in_index"]),
                          (0, [], [], []))
         self.assertEqual(report["gaps"], ["Karpathy"])
 
-        # recall leaves a trace that strengthens the page
-        with open(os.path.join(self.dir, "hippocampus", "log.md"), "a") as fh:
-            fh.write(f"{TODAY} recall what is an llm wiki -> [[llm-wiki]], [[obsidian]]\n")
+        # recall leaves a trace that strengthens the page; the line is the command's, never typed into the file
+        typed = json.dumps({"tool_name": "Edit", "tool_input": {
+            "file_path": "hippocampus/log.md", "new_string": f"{TODAY} recall what is an llm wiki -> [[llm-wiki]]\n"}})
+        self.assertEqual(self.run_py("hooks/protect_log.py", stdin=typed).returncode, 2)
+        refused = self.run_py("bin/brain", "log", "recall", "what is an llm wiki", "--pages", "llm-wikis")
+        self.assertIn("no page named 'llm-wikis' (closest: llm-wiki)", refused.stderr)
+        logged = self.run_py("bin/brain", "log", "recall", "what is an llm wiki", "--pages", "LLM wiki", "obsidian")
+        self.assertRegex(logged.stdout, r"^logged: \d{4}-\d\d-\d\d recall what is an llm wiki -> "
+                                        r"\[\[llm-wiki\]\], \[\[obsidian\]\]\n$")
         s = self.stats()
         self.assertIn({"page": "cortex/concepts/llm-wiki.md", "recalls": 1}, s["most_recalled"])
         self.assertEqual((s["orphan_rate"], s["components"]), (0.0, 1))
@@ -251,7 +258,7 @@ class MemoryCycle(unittest.TestCase):
             fh.write(text.replace(f"by {on(60)}", f"by {on(240)}"))  # re-dated: protected again
         self.assertEqual(brain(200).dormant_candidates(), [])
 
-        check = self.run_py("lib/link_check.py", self.dir, "--json")
+        check = self.run_py("bin/brain", "check", "--json")
         self.assertEqual(check.returncode, 0, check.stdout)
 
 

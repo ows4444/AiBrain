@@ -1,11 +1,8 @@
 """The link graph and the health signals read from it. Run: brain test"""
 import json
-import os
-import subprocess
-import sys
 import unittest
 
-from support import DECIDED, SCRIPTS, TempBrain, VALID, page, project, vaultlib
+from support import DECIDED, TempBrain, VALID, page, project, run_brain, vaultlib
 
 
 class GraphViews(TempBrain):
@@ -54,14 +51,11 @@ class GraphViews(TempBrain):
         self.assertEqual(self.stems(v.missing_from_index()), ["a2", "a3", "b1", "b2", "b3"])
 
     def test_graph_flags_and_verdicts(self):
-        out = subprocess.run([sys.executable, os.path.join(SCRIPTS, "introspect.py"), self.root, "--json",
-                              "--graph"], capture_output=True, text=True, check=True)
+        out = run_brain(self.root, "introspect", "--json", "--graph", check=True)
         r = json.loads(out.stdout)
         self.assertEqual(r["cut_points"], ["cortex/concepts/a1.md", "cortex/concepts/b1.md", "cortex/concepts/x.md"])
         self.assertIn("too small", r["verdicts"]["overall"])
-        self.assertNotIn("cut_points", json.loads(subprocess.run(
-            [sys.executable, os.path.join(SCRIPTS, "introspect.py"), self.root, "--json"],
-            capture_output=True, text=True).stdout))  # expensive views only on request
+        self.assertNotIn("cut_points", json.loads(run_brain(self.root, "introspect", "--json").stdout))  # expensive views only on request
 
     def test_verdict_thresholds(self):
         self.assertEqual(vaultlib.verdicts(3, 4, 90, 50),
@@ -77,8 +71,7 @@ class Signals(TempBrain):
     """S1: what the brain reports about itself stays true when its features are used."""
 
     def check(self):
-        r = subprocess.run([sys.executable, os.path.join(SCRIPTS, "link_check.py"), self.root, "--json"],
-                           capture_output=True, text=True)
+        r = run_brain(self.root, "check", "--json")
         return r.returncode, json.loads(r.stdout)
 
     def ring(self, n=10):
@@ -94,8 +87,7 @@ class Signals(TempBrain):
         v = self.brain()
         self.assertEqual([p.stem for p in v.orphans()], ["slept"])  # sleep should have linked it back
         self.assertEqual(len(v.linked_to()), 11)
-        r = json.loads(subprocess.run([sys.executable, os.path.join(SCRIPTS, "introspect.py"), self.root, "--json"],
-                                      capture_output=True, text=True, check=True).stdout)
+        r = json.loads(run_brain(self.root, "introspect", "--json", check=True).stdout)
         self.assertEqual(r["orphan_rate"], 9.1)  # 1 of 11, not 4 of 14
 
     def test_stubs_are_knowledge_pages_only(self):

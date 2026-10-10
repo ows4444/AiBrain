@@ -28,14 +28,15 @@ frontmatter included (`goal:`, `due:`, `status: active`). Link the concept
 pages it depends on as wikilinks: that keeps them from fading. Under Goals
 in `OWNER.md`, link it from the goal it serves
 (`- <goal> by <date> -> [[<name>]]`), adding the goal if it is new, and log
-`DATE focus <project> -> created prefrontal/<name>/`.
+`brain log focus <project> --result "created prefrontal/<name>/"`.
 
 **Scope.** Find the concept pages relevant to the project, save a briefing
 (cited, with gaps named) to its `inputs/`, so work can continue inside the
 project folder alone.
 
-In every mode, log `DATE recall focus <project> -> [[page]], ...` for the
-concept pages read, even if none (`-> none`); the recall hook checks for it.
+In every mode, log `brain log recall "focus <project>" --pages <page> ...` for
+the concept pages read, even if none (leave `--pages` out: it writes `-> none`);
+the recall hook checks for it.
 
 **Status.** `brain introspect --projects` for its pages, decisions and
 feedback files. Report goal, done, in progress, blocked, stale; compare

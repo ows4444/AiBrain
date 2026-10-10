@@ -102,11 +102,14 @@ dates; never overwrite. Tag the page `disputed` until `/maintain settle`.
 One line per operation in `hippocampus/log.md`, newest last:
 `DATE <operation> <what> -> <result>`. Operations: `ingest`, `recall`,
 `sleep`, `explore`, `decide`, `review`, `write`, `focus`, `maintain`,
-`health`, `guard`, `rehearse`, `rollback`, `owner`, `engine`, `remind`, `forget`. Every skill that
-answers or writes from pages (ask, rehearse, explore, decide, write, focus)
-also writes a `recall` line naming them; a missed rehearsal is
-`DATE rehearse missed -> [[page]]`. The log is append-only. Keep `index.md`
-current in the same run. Example lines are in `engine/templates/README.md`.
+`health`, `guard`, `rehearse`, `rollback`, `owner`, `engine`, `remind`, `forget`.
+Write each line with `brain log <operation> <what> --pages <page> ... --result <text>`:
+it checks the operation and every page name and sets the date. Never write the
+file by hand. Every skill that answers or writes from pages (ask, rehearse,
+explore, decide, write, focus) also writes a `recall` line naming them; a missed
+rehearsal is `DATE rehearse missed -> [[page]]`. The log is append-only. Run
+`brain index` in the same run: it rewrites the listing of `index.md` from the
+pages; `## Gaps` there is written by hand. Example lines are in `engine/templates/README.md`.
 
 ## Compact Instructions
 

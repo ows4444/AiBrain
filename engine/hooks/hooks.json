@@ -24,6 +24,7 @@
       {
         "matcher": "Write|Edit|MultiEdit",
         "hooks": [
+          { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}\"/hooks/protect_log.py" },
           { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}\"/hooks/protect_expected.py" },
           { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}\"/hooks/validate_page.py --pre" }
         ]

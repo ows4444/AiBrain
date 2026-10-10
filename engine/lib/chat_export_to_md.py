@@ -1,8 +1,7 @@
-#!/usr/bin/env python3
 """Convert an exported chat history JSON into one markdown file per conversation.
 
 Usage:
-    brain chats conversations.json senses/chats --min-words 150
+    brain chats conversations.json senses/chats [--min-words 150] [--json]
 
 Understands both common export shapes:
   Claude   a list of conversations with `name`, `created_at` and `chat_messages`
@@ -15,12 +14,14 @@ Existing files are never overwritten; a numeric suffix is added instead.
 Run the privacy pass (/guard) before this on a real export. Chat history
 is the single most sensitive thing most people keep.
 """
-import argparse
 import datetime
 import json
 import os
 import re
 import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from commands import Refused  # noqa: E402
 
 
 def slug(text, limit=60):
@@ -94,23 +95,22 @@ def unique_path(outdir, stem):
     return path
 
 
-def main():
-    ap = argparse.ArgumentParser()
+def arguments(ap):
     ap.add_argument("export")
     ap.add_argument("outdir")
-    ap.add_argument("--min-words", type=int, default=150,
-                    help="skip conversations shorter than this")
-    args = ap.parse_args()
+    ap.add_argument("--min-words", type=int, default=150, help="skip conversations shorter than this")
 
+
+def run(root, args):
     with open(args.export, encoding="utf-8") as fh:
         data = json.load(fh)
     if isinstance(data, dict):
         data = data.get("conversations", [])
     if not isinstance(data, list):
-        sys.exit("unrecognised export shape: expected a list of conversations")
+        raise Refused("unrecognised export shape: expected a list of conversations")
 
     os.makedirs(args.outdir, exist_ok=True)
-    written = short = unknown = 0
+    files, short, unknown = [], 0, 0
 
     for conv in data:
         messages = messages_of(conv) if isinstance(conv, dict) else None
@@ -128,13 +128,14 @@ def main():
         front = (f"---\ntitle: {yaml_str(title)}\nsource: chat export\n"
                  f"created: {created}\n---\n\n# {title}\n\n")
         stem = f"{created}-{slug(title)}" if created else slug(title)
-        with open(unique_path(args.outdir, stem), "w", encoding="utf-8") as fh:
+        path = unique_path(args.outdir, stem)
+        with open(path, "w", encoding="utf-8") as fh:
             fh.write(front + joined)
-        written += 1
+        files.append(path)
 
-    print(f"wrote {written} files to {args.outdir}; skipped {short} short"
-          + (f", {unknown} in an unrecognised shape" if unknown else ""))
+    return {"out": args.outdir, "written": files, "short": short, "unknown": unknown}
 
 
-if __name__ == "__main__":
-    main()
+def render(result, args):
+    return (f"wrote {len(result['written'])} files to {result['out']}; skipped {result['short']} short"
+            + (f", {result['unknown']} in an unrecognised shape" if result["unknown"] else ""))

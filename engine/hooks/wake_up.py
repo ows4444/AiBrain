@@ -83,7 +83,7 @@ def checkpoint_line(vault):
     if not c["reached"] or c["reviewed"]:
         return ""
     return (f"Checkpoint: {c['inputs']} inputs and {c['sleeps']} sleeps: time for the calibration review "
-            "(brain introspect --usage and the metrics; log `health calibration -> ...` when done)")
+            "(brain introspect --usage and the metrics; `brain log health calibration --result ...` when done)")
 
 
 def owner_lines():

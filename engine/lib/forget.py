@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Forget one source: what rests on an input, and, on the owner's yes, its removal.
 
 Usage:
@@ -15,7 +14,7 @@ nothing and lists what rests on that input:
 With --yes (the owner's, never the model's: the senses guard asks them before
 this runs) it does the part that needs no judgement, in this order: the log
 line, a `forgotten` line in the fingerprints, then the episodes, the input and
-their index lines are removed. What is left is for /forget: the citing pages
+their index lines are removed (and the listing rewritten, as `brain index` does). What is left is for /forget: the citing pages
 now hold a broken link each, which `brain check` lists until each citation,
 and any claim that rested only on it, is taken out by hand.
 
@@ -23,15 +22,16 @@ This is the only way an input leaves senses/. The fingerprint line of the
 input stays, so the brain knows it once held it and that it was removed on
 purpose. Git history still holds the file until the owner removes it there.
 """
-import argparse
+import contextlib
 import datetime
-import json
 import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from commands import Refused  # noqa: E402
 from fingerprint import FINGERPRINTS  # noqa: E402
-from vaultlib import LINK, LOG_PATH, SALIENT, Vault, as_list, is_brain, parse_frontmatter  # noqa: E402
+from index import NoMarkers, rebuild  # noqa: E402
+from vaultlib import LINK, LOG_PATH, SALIENT, Vault, as_list, parse_frontmatter  # noqa: E402
 
 INDEX = os.path.join("hippocampus", "index.md")
 JUDGED = ("concept", "entity", "insight")
@@ -136,52 +136,48 @@ def apply(vault, found, today):
                 fh.write("".join(kept))
     for f in removed:
         os.remove(os.path.join(root, f))
+    if os.path.isfile(index):
+        with contextlib.suppress(NoMarkers):  # an index kept wholly by hand has lost its lines above already
+            rebuild(root)
     return removed
 
 
-def main():
-    ap = argparse.ArgumentParser(prog="brain forget")
-    ap.add_argument("--root", default=".")
+def arguments(ap):
     ap.add_argument("source")
     ap.add_argument("--yes", action="store_true")
-    ap.add_argument("--json", action="store_true")
-    args = ap.parse_args()
-    if not is_brain(args.root):
-        sys.exit(f"not a brain: {args.root}")
-    vault = Vault(args.root)
+
+
+def run(root, args):
+    vault = Vault(root)
     found = report(vault, args.source)
     if found is None:
-        sys.exit(f"forget: {args.source} is neither a file in senses/ nor an episode")
+        raise Refused(f"forget: {args.source} is neither a file in senses/ nor an episode")
     if args.yes:
         found["removed"] = apply(vault, found, datetime.date.today().isoformat())
-    if args.json:
-        print(json.dumps(found, indent=2, ensure_ascii=False))
-        return
+    return found
+
+
+def render(found, args):
     done = "removed" in found
-    print(("forgotten" if done else "would forget") + f": {found['input'] or '(no input file)'}")
+    out = [("forgotten" if done else "would forget") + f": {found['input'] or '(no input file)'}"]
     if found["asset"]:
-        print(f"  and the image it was transcribed from: {found['asset']}")
-    print(f"episodes written from it: {len(found['episodes'])}")
-    for e in found["episodes"]:
-        print(f"  {e}")
+        out.append(f"  and the image it was transcribed from: {found['asset']}")
+    out.append(f"episodes written from it: {len(found['episodes'])}")
+    out += [f"  {e}" for e in found["episodes"]]
     if found["candidates"]:
-        print(f"ideas held only as candidates there, which go with it: {', '.join(found['candidates'])}")
+        out.append(f"ideas held only as candidates there, which go with it: {', '.join(found['candidates'])}")
     if found["other_inputs"]:
-        print("other inputs of those episodes, which stay and count as unencoded again: "
-              + ", ".join(found["other_inputs"]))
-    print(f"pages citing those episodes: {len(found['citing'])}")
+        out.append("other inputs of those episodes, which stay and count as unencoded again: "
+                   + ", ".join(found["other_inputs"]))
+    out.append(f"pages citing those episodes: {len(found['citing'])}")
     for row in found["citing"]:
         tail = f"  sources {row['sources_before']} -> {row['sources_after']}: {row['what']}" if "what" in row else ""
-        print(f"  {row['page']}{tail}")
-        for line in row["lines"]:
-            print(f"      {line if len(line) <= 140 else line[:137] + '...'}")
+        out.append(f"  {row['page']}{tail}")
+        out += [f"      {line if len(line) <= 140 else line[:137] + '...'}" for line in row["lines"]]
     if done:
-        print("left to do by hand: take each citation above out of its page, with any claim that rested only on it; "
-              "`brain check` lists them as broken links until then")
-        print("git history still holds the removed files")
+        out.append("left to do by hand: take each citation above out of its page, with any claim that rested only on it; "
+                   "`brain check` lists them as broken links until then")
+        out.append("git history still holds the removed files")
     else:
-        print("nothing was changed; --yes removes the input and its episodes (the owner is asked first)")
-
-
-if __name__ == "__main__":
-    main()
+        out.append("nothing was changed; --yes removes the input and its episodes (the owner is asked first)")
+    return "\n".join(out)

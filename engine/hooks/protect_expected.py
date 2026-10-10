@@ -10,6 +10,7 @@ reopening the page would unfreeze the section. Shell edits are not seen; `brain
 check` cannot see history either, so this wall is the check. Self-contained,
 like protect_senses: no imports to break.
 """
+import contextlib
 import json
 import os
 import re
@@ -65,6 +66,15 @@ def after(tool, args, before):
     return text
 
 
+def refuse(message):
+    print(message, file=sys.stderr)
+    with contextlib.suppress(Exception):  # the log must not add a way to fail
+        sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
+        from errlog import note
+        note("protect_expected", "expected", message)
+    sys.exit(2)
+
+
 def main():
     if not all(os.path.isdir(os.path.join(ROOT, d)) for d in ("cortex", "hippocampus")):
         sys.exit(0)
@@ -89,15 +99,12 @@ def main():
         sys.exit(0)
     left = after(tool, args, before)
     if status_of(left) not in FROZEN:
-        print(f"Blocked: {rel} is {status}; a decision is never reopened, since that would unfreeze "
-              "its ## Expected. Record a change of mind as a new decision that links this one.", file=sys.stderr)
-        sys.exit(2)
+        refuse(f"Blocked: {rel} is {status}; a decision is never reopened, since that would unfreeze "
+               "its ## Expected. Record a change of mind as a new decision that links this one.")
     was = expected(before)
     if was and expected(left) != was:
-        print(f"Blocked: {rel} is {status}, and its ## Expected was written before the outcome was "
-              "known. It is never rewritten; put what you learned under ## Outcome or ## Lessons.",
-              file=sys.stderr)
-        sys.exit(2)
+        refuse(f"Blocked: {rel} is {status}, and its ## Expected was written before the outcome was "
+               "known. It is never rewritten; put what you learned under ## Outcome or ## Lessons.")
     sys.exit(0)
 
 

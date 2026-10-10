@@ -2,11 +2,9 @@
 import datetime
 import json
 import os
-import subprocess
-import sys
 import unittest
 
-from support import DECIDED, SCRIPTS, TempBrain, VALID, ago, page, vaultlib
+from support import DECIDED, TempBrain, VALID, ago, page, run_brain, vaultlib
 
 
 class Memory(TempBrain):
@@ -39,11 +37,28 @@ class Memory(TempBrain):
         self.assertEqual(sorted(pairs), [("Fluency illusion", "Illusion of fluency"), ("Optimal gap", "Spacing effect")])
         self.assertEqual(pairs["Fluency illusion", "Illusion of fluency"]["why"], "names")
         self.assertEqual(pairs["Optimal gap", "Spacing effect"]["page"].stem, "spacing")
-        out = subprocess.run([sys.executable, os.path.join(SCRIPTS, "introspect.py"), self.root, "--queue"],
-                             capture_output=True, text=True).stdout
+        out = run_brain(self.root, "introspect", "--queue").stdout
         self.assertIn("possibly one idea twice", out)
         self.assertIn("Fluency illusion ~ Illusion of fluency  (shared: fluency, illusion)", out)
         self.assertIn("Optimal gap ~ cortex/concepts/spacing.md", out)
+
+    def test_pairs_come_from_shared_words_and_one_source_naming_two_ideas_is_two_ideas(self):
+        def episode(name, candidate, url):
+            self.write(f"cortex/episodes/{name}.md", page("episode", f"## Candidates\n- {candidate}\n", url=url))
+
+        episode("e1", "Desirable difficulty - effort during learning that improves retention later", "https://a.example")
+        episode("e2", "Desirable difficulties - struggle that helps", "https://a.example")
+        episode("e3", "Retrieval practice - recalling facts from memory strengthens later recall under test conditions "
+                      "with feedback", "https://c.example")
+        self.write("cortex/concepts/exam.md", page("concept", title="Exam technique", summary="Practice tests with "
+                                                   "feedback, timed essays, marking schemes, past papers, revision "
+                                                   "plans and study groups before finals."))
+        # One source naming an idea twice is not a second source; and three words shared with a
+        # page are too few when they are under half of the candidate's own.
+        self.assertEqual(self.brain().candidate_pairs(), [])
+        episode("e2", "Desirable difficulties - struggle that helps", "https://b.example")
+        self.assertEqual([(x["a"], x["b"], x["why"], x["words"]) for x in self.brain().candidate_pairs()],
+                         [("Desirable difficulties", "Desirable difficulty", "names", ["desirabl", "difficulty"])])
 
     def test_a_fact_that_goes_out_of_date_needs_a_date_or_a_pointer(self):
         self.write("cortex/episodes/survey.md", page("episode", "The suite has 240 tests.\n"))
@@ -60,8 +75,7 @@ class Memory(TempBrain):
         self.assertEqual([(p.stem, line) for p, line in v.undated_facts()],
                          [("tool", "The suite has 240 tests and all pass."),
                           ("tool", "It is currently the largest of its kind.")])
-        run = subprocess.run([sys.executable, os.path.join(SCRIPTS, "link_check.py"), self.root],
-                             capture_output=True, text=True)
+        run = run_brain(self.root, "check")
         self.assertIn("with no date or pointer (/maintain: restamp, point or move): 2", run.stdout)
         self.assertIn("cortex/entities/tool.md: The suite has 240 tests and all pass.", run.stdout)
         # A warning: the check reads words, not meaning. A valid page holding such a line still passes.
@@ -71,15 +85,11 @@ class Memory(TempBrain):
                                                    summary="A tool.", kind="tool", created="2026-01-01",
                                                    updated="2026-01-01"))
         self.write("hippocampus/index.md", page("index", "- [[tool]]\n"))
-        run = subprocess.run([sys.executable, os.path.join(SCRIPTS, "link_check.py"), self.root],
-                             capture_output=True, text=True)
+        run = run_brain(self.root, "check")
         self.assertIn("restamp, point or move): 1", run.stdout)
         self.assertEqual(run.returncode, 0, run.stdout)
 
     def test_forgetting_a_source_shows_what_rests_on_it_then_removes_it_whole(self):
-        def run(script, *args):
-            return subprocess.run([sys.executable, os.path.join(SCRIPTS, script), *args], capture_output=True, text=True)
-
         self.write("senses/bad.md", "a bad source")
         self.write("senses/good.md", "a good source")
         self.write("cortex/episodes/bad.md", page("episode", "## Candidates\n- Held idea - only here\n",
@@ -89,19 +99,19 @@ class Memory(TempBrain):
         self.write("cortex/entities/tool.md", page("entity", "Named once ([[bad]]).\n", title="Tool"))
         self.write("hippocampus/index.md", page("index", "- [[bad]] - x\n- [[good]] - y\n- [[idea]]\n- [[tool]]\n"))
         self.log("2026-01-01 ingest senses/bad.md -> 1 episode")
-        run("fingerprint.py", self.root)
+        run_brain(self.root, "fingerprint")
 
-        shown = run("forget.py", "--root", self.root, "senses/bad.md").stdout
+        shown = run_brain(self.root, "forget", "senses/bad.md").stdout
         for fragment in ("would forget: senses/bad.md", "cortex/episodes/bad.md", "go with it: Held idea",
                          "cortex/concepts/idea.md  sources 2 -> 1: falls under the two-source bar: back to a "
                          "candidate on [[good]]", "cortex/entities/tool.md  sources 1 -> 0: no source left",
                          "Seen twice ([[bad]], [[good]]).", "nothing was changed"):
             self.assertIn(fragment, shown)
         self.assertTrue(os.path.exists(os.path.join(self.root, "senses", "bad.md")))  # showing writes nothing
-        self.assertEqual(run("forget.py", "--root", self.root, "bad").stdout, shown)   # by episode name too
-        self.assertIn("neither a file in senses/ nor an episode", run("forget.py", "--root", self.root, "idea").stderr)
+        self.assertEqual(run_brain(self.root, "forget", "bad").stdout, shown)   # by episode name too
+        self.assertIn("neither a file in senses/ nor an episode", run_brain(self.root, "forget", "idea").stderr)
 
-        done = run("forget.py", "--root", self.root, "senses/bad.md", "--yes").stdout
+        done = run_brain(self.root, "forget", "senses/bad.md", "--yes").stdout
         self.assertIn("forgotten: senses/bad.md", done)
         for gone in ("senses/bad.md", "cortex/episodes/bad.md"):
             self.assertFalse(os.path.exists(os.path.join(self.root, gone)), gone)
@@ -117,7 +127,7 @@ class Memory(TempBrain):
             index = fh.read()
         self.assertNotIn("[[bad]]", index)
         self.assertIn("[[good]]", index)
-        check = json.loads(run("link_check.py", self.root, "--json").stdout)
+        check = json.loads(run_brain(self.root, "check", "--json").stdout)
         self.assertEqual(check["history"], [])  # removed on purpose: not a tampered input
         self.assertEqual(sorted(b["page"] for b in check["broken"]),  # the work left for /forget
                          ["cortex/concepts/idea.md", "cortex/entities/tool.md"])
@@ -263,13 +273,11 @@ class Decisions(TempBrain):
                                              "hypothesis": {"held": 1, "failed": 0, "unknown": 0}})
         self.assertEqual([(p.stem, c) for p, c in v.claim_link_problems()], [("guess", "It would work. [[imagined]]")])
         self.assertEqual([p.stem for p in v.untagged_open()], ["framing"])
-        check = subprocess.run([sys.executable, os.path.join(SCRIPTS, "link_check.py"), self.root, "--json"],
-                               capture_output=True, text=True)
+        check = run_brain(self.root, "check", "--json")
         report = json.loads(check.stdout)
         self.assertEqual((check.returncode, [c["page"] for c in report["claims"]], report["untagged"]),
                          (1, ["cortex/decisions/guess.md"], ["cortex/decisions/framing.md"]))
-        out = subprocess.run([sys.executable, os.path.join(SCRIPTS, "introspect.py"), self.root, "--decisions"],
-                             capture_output=True, text=True, check=True).stdout
+        out = run_brain(self.root, "introspect", "--decisions", check=True).stdout
         for line in ("guess.md  TO REVISIT", "revisit if: a rival cuts prices", "(rests mostly on guesses)",
                      "hypothesis lines in reviewed decisions: held 1, failed 0, unknown 0"):
             self.assertIn(line, out)
@@ -315,8 +323,7 @@ class Decisions(TempBrain):
         out = self.run_hook("wake_up.py", {}).stdout
         self.assertIn("Awaiting /sleep: 0 episodes, 1 decisions", out)
         self.assertIn("decisions to review: 1 (pick-a-host)", out)
-        r = json.loads(subprocess.run([sys.executable, os.path.join(SCRIPTS, "introspect.py"), self.root, "--json"],
-                                      capture_output=True, text=True, check=True).stdout)
+        r = json.loads(run_brain(self.root, "introspect", "--json", check=True).stdout)
         self.assertEqual((r["decisions_due"], r["calibration"]["better"]), (1, 1))
         self.assertEqual(r["decisions"]["due"], [{"page": "cortex/decisions/pick-a-host.md", "review": "2020-01-01"}])
 
@@ -392,8 +399,7 @@ class OverTime(TempBrain):
         self.assertEqual((row["sources"], row["page"].stem), (2, "llm-wiki"))
 
     def snap(self, *extra):
-        r = subprocess.run([sys.executable, os.path.join(SCRIPTS, "introspect.py"), self.root, "--snapshot",
-                            "--json", *extra], capture_output=True, text=True, check=True)
+        r = run_brain(self.root, "introspect", "--snapshot", "--json", *extra, check=True)
         return json.loads(r.stdout)["snapshot"]
 
     def metrics(self):

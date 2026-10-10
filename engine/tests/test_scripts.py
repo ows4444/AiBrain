@@ -7,7 +7,7 @@ import sys
 import tempfile
 import unittest
 
-from support import ENGINE, SCRIPTS, TempBrain, VALID, ago, page, vaultlib
+from support import ENGINE, TempBrain, VALID, ago, page, run_brain, vaultlib
 
 
 class BrainCommand(TempBrain):
@@ -81,10 +81,6 @@ class BrainCommand(TempBrain):
 
 
 class Scripts(TempBrain):
-    def script(self, name, *args):
-        return subprocess.run([sys.executable, os.path.join(SCRIPTS, name), self.root, *args],
-                              capture_output=True, text=True)
-
     def test_session_prints_only_what_the_owner_typed(self):
         def entry(text, **more):
             return json.dumps(dict({"type": "user", "timestamp": "2026-10-07T11:05:09.000Z",
@@ -121,25 +117,25 @@ class Scripts(TempBrain):
 
     def test_introspect_and_link_check_run(self):
         self.write("cortex/concepts/a.md", page("concept", "[[nowhere]]", updated=ago(1)))
-        stats = self.script("introspect.py", "--json")
+        stats = run_brain(self.root, "introspect", "--json")
         self.assertEqual(json.loads(stats.stdout)["broken_links"], 1)
-        self.assertEqual(self.script("link_check.py").returncode, 1)
+        self.assertEqual(run_brain(self.root, "check").returncode, 1)
 
     def test_listed_gap_is_not_broken(self):
         self.write("hippocampus/index.md", page("index", "## Concepts\n\n[[a]]\n\n## Gaps\n\n- [[Karpathy]]\n"))
         self.write("cortex/concepts/a.md", page("concept", "Mentions [[karpathy]]. " + "word " * 40, **VALID))
-        result = self.script("link_check.py", "--json")
+        result = run_brain(self.root, "check", "--json")
         report = json.loads(result.stdout)
         self.assertEqual((result.returncode, report["broken"], report["gaps"]), (0, [], ["Karpathy"]))
 
     def test_gaps_only_count_inside_the_gaps_section(self):
         self.write("hippocampus/index.md", page("index", "## Concepts\n\n[[ghost]]\n\n## Gaps\n\n_none_\n"))
-        self.assertEqual(self.script("link_check.py").returncode, 1)
+        self.assertEqual(run_brain(self.root, "check").returncode, 1)
 
     def test_schema_problem_fails_link_check(self):
         self.write("cortex/concepts/a.md", page("concept", "word " * 50, title="A", created="2026-01-01",
                                                 updated="2026-01-01"))  # no status: written past the hook
-        result = self.script("link_check.py", "--json")
+        result = run_brain(self.root, "check", "--json")
         self.assertEqual(result.returncode, 1)
         self.assertIn("status", json.dumps(json.loads(result.stdout)["schema"]))
 
@@ -147,7 +143,7 @@ class Scripts(TempBrain):
         self.write("cortex/concepts/thin.md", page("concept", "too short", **VALID))
         self.write("cortex/concepts/short-but-linked.md", page("concept", "see [[thin]]", **VALID))
         self.write("cortex/concepts/full.md", page("concept", "word " * 50, **VALID))
-        stubs = json.loads(self.script("link_check.py", "--json").stdout)["stubs"]
+        stubs = json.loads(run_brain(self.root, "check", "--json").stdout)["stubs"]
         self.assertEqual(stubs, ["cortex/concepts/thin.md"])
 
     def test_inputs_and_the_log_are_append_only(self):
@@ -156,7 +152,7 @@ class Scripts(TempBrain):
                            capture_output=True, check=True)
 
         def history():
-            r = self.script("link_check.py", "--json")
+            r = run_brain(self.root, "check", "--json")
             return r.returncode, json.loads(r.stdout)["history"]
 
         self.assertEqual(history(), (0, []))  # not a repository: nothing to compare with
@@ -186,8 +182,7 @@ class Scripts(TempBrain):
         self.write("cortex/episodes/x.md", page("episode", origin="generated"))
         self.log("2026-09-30 ingest senses/e.md -> 1 episode", "2026-10-01 sleep 1 episode -> 1 concept",
                  "2026-10-01 recall q -> [[a]]", "2026-10-02 recall q -> [[b]]")
-        r = subprocess.run([sys.executable, os.path.join(SCRIPTS, "introspect.py"), self.root, "--json"],
-                           capture_output=True, text=True, check=True)
+        r = run_brain(self.root, "introspect", "--json", check=True)
         u = json.loads(r.stdout)["usage"]
         self.assertEqual(u["operations"], {"recall": 2, "ingest": 1, "sleep": 1})
         self.assertEqual(u["by_month"], {"2026-09": {"ingest": 1}, "2026-10": {"recall": 2, "sleep": 1}})
@@ -197,8 +192,7 @@ class Scripts(TempBrain):
         self.assertEqual(u["unused"]["tags"], ["unverified"])
         self.assertEqual((u["checkpoint"]["inputs"], u["checkpoint"]["sleeps"], u["checkpoint"]["reached"]),
                          (1, 1, False))  # the /explore episode is not an input
-        text = subprocess.run([sys.executable, os.path.join(SCRIPTS, "introspect.py"), self.root, "--usage"],
-                              capture_output=True, text=True, check=True).stdout
+        text = run_brain(self.root, "introspect", "--usage", check=True).stdout
         self.assertIn("calibration checkpoint: 1/20 inputs, 1/4 sleeps: not yet", text)
 
     def test_graph_export_writes_valid_files(self):
@@ -207,10 +201,10 @@ class Scripts(TempBrain):
         self.write('cortex/concepts/a"b.md', page("concept", "(supports:: [[c]])", **VALID))
         self.write("cortex/concepts/c.md", page("concept", **VALID))
         out = os.path.join(self.root, "g.graphml")
-        self.assertEqual(self.script("graph_export.py", out, "--format", "graphml").returncode, 0)
+        self.assertEqual(run_brain(self.root, "graph", out, "--format", "graphml").returncode, 0)
         doc = xml.dom.minidom.parse(out)
         self.assertEqual((len(doc.getElementsByTagName("node")), len(doc.getElementsByTagName("edge"))), (2, 1))
-        self.assertEqual(self.script("graph_export.py").returncode, 0)
+        self.assertEqual(run_brain(self.root, "graph").returncode, 0)
         with open(os.path.join(self.root, "motor", "graph", "edges.csv"), encoding="utf-8") as fh:
             self.assertEqual(list(csv.reader(fh))[1], ['cortex/concepts/a"b.md', "cortex/concepts/c.md", "supports"])
         with open(out, encoding="utf-8") as fh:
@@ -225,8 +219,7 @@ class Export(TempBrain):
         self.write("cortex/concepts/shared.md", page("concept", "back to [[public]]", title="Shared", publish="true"))
         self.write("cortex/concepts/secret.md", page("concept", "private", title="Secret"))
         out = os.path.join(self.root, "exp")
-        r = subprocess.run([sys.executable, os.path.join(SCRIPTS, "export.py"), "--published", "--root", self.root,
-                            "--out", out], capture_output=True, text=True, check=True)
+        r = run_brain(self.root, "export", "--published", "--out", out, check=True)
         self.assertIn("exported 2 pages", r.stdout)
         with open(os.path.join(out, "cortex/concepts/public.md"), encoding="utf-8") as fh:
             text = fh.read()
@@ -243,13 +236,12 @@ class Export(TempBrain):
                                                      title="Public", publish="true"))
         self.write("cortex/concepts/secret-deal.md", page("concept", "private", title="Secret Deal"))
         out = os.path.join(self.root, "exp")
-        cmd = [sys.executable, os.path.join(SCRIPTS, "export.py"), "--published", "--root", self.root, "--out", out]
-        r = subprocess.run(cmd, capture_output=True, text=True)
+        r = run_brain(self.root, "export", "--published", "--out", out)
         self.assertEqual(r.returncode, 1)
         self.assertIn("Secret Deal", r.stderr)
         self.assertNotIn("Not A Page", r.stderr)  # no such page: nothing private to name
         self.assertFalse(os.path.exists(out))  # nothing was written
-        self.assertEqual(subprocess.run(cmd + ["--keep-titles"], capture_output=True).returncode, 0)
+        self.assertEqual(run_brain(self.root, "export", "--published", "--out", out, "--keep-titles").returncode, 0)
 
     def test_export_drops_decision_and_exploration_fields(self):
         self.write("cortex/decisions/pub.md", page("decision", "body", title="Pub", status="reviewed", publish="true",
@@ -257,8 +249,7 @@ class Export(TempBrain):
         self.write("cortex/episodes/idea.md", page("episode", "body", title="Idea", origin="generated",
                                                    publish="true"))
         out = os.path.join(self.root, "exp")
-        subprocess.run([sys.executable, os.path.join(SCRIPTS, "export.py"), "--published", "--root", self.root,
-                        "--out", out], capture_output=True, check=True)
+        run_brain(self.root, "export", "--published", "--out", out, check=True)
         for rel in ("cortex/decisions/pub.md", "cortex/episodes/idea.md"):
             with open(os.path.join(out, rel), encoding="utf-8") as fh:
                 text = fh.read()
@@ -266,8 +257,7 @@ class Export(TempBrain):
                 self.assertNotIn(field, text, rel)
 
     def test_unknown_page_is_an_error(self):
-        r = subprocess.run([sys.executable, os.path.join(SCRIPTS, "export.py"), "nope", "--root", self.root],
-                           capture_output=True, text=True)
+        r = run_brain(self.root, "export", "nope")
         self.assertEqual(r.returncode, 1)
         self.assertIn("no page named: nope", r.stderr)
 
@@ -276,8 +266,7 @@ class ChatExport(TempBrain):
     def convert(self, data):
         src = self.write("export.json", json.dumps(data))
         out = os.path.join(self.root, "out")
-        subprocess.run([sys.executable, os.path.join(SCRIPTS, "chat_export_to_md.py"), src, out,
-                        "--min-words", "2"], check=True, capture_output=True)
+        run_brain(None, "chats", src, out, "--min-words", "2", check=True)
         files = {}
         for name in os.listdir(out):
             with open(os.path.join(out, name), encoding="utf-8") as fh:
@@ -323,8 +312,7 @@ interval = interval * 2.5</code></pre>
 class Fetch(TempBrain):
     def fetch(self, html, *args):
         path = self.write("page.html", html)
-        return subprocess.run([sys.executable, os.path.join(SCRIPTS, "fetch.py"), "https://blog.example/posts/spacing",
-                               "--root", self.root, "--file", path, *args], capture_output=True, text=True)
+        return run_brain(self.root, "fetch", "https://blog.example/posts/spacing", "--file", path, *args)
 
     def test_page_is_cut_to_its_article_and_saved_once(self):
         r = self.fetch(PAGE, "--json")
@@ -354,15 +342,13 @@ class Fetch(TempBrain):
         self.assertEqual(r.returncode, 1)
         self.assertIn("a fragment, a paywall, or a page built by JavaScript. Nothing saved", r.stderr)
         self.assertFalse(os.path.isdir(os.path.join(self.root, "senses")) and os.listdir(os.path.join(self.root, "senses")))
-        bad = subprocess.run([sys.executable, os.path.join(SCRIPTS, "fetch.py"), "file:///etc/passwd", "--root", self.root],
-                             capture_output=True, text=True)
+        bad = run_brain(self.root, "fetch", "file:///etc/passwd")
         self.assertEqual((bad.returncode, bad.stderr.strip()), (1, "brain fetch: only http and https addresses"))
 
 
 class NewPage(TempBrain):
     def new(self, *args):
-        return subprocess.run([sys.executable, os.path.join(SCRIPTS, "new_page.py"), *args, "--root", self.root],
-                              capture_output=True, text=True)
+        return run_brain(self.root, "new", *args)
 
     def test_episode_is_scaffolded_from_its_input_and_passes_the_contracts(self):
         self.write("senses/2026-10-01-post.md", '---\nurl: "https://blog.example/a?b=1"\ntitle: "Spacing: why it works"\n'
@@ -396,8 +382,7 @@ class NewPage(TempBrain):
         self.assertIn("'kind' must be one of", self.new("entity", "--title", "Nobody").stderr)
         for kind in ("insight", "decision"):
             self.assertEqual(self.new(kind, "--title", f"A {kind}").returncode, 0)
-        check = subprocess.run([sys.executable, os.path.join(SCRIPTS, "link_check.py"), self.root, "--json"],
-                               capture_output=True, text=True)
+        check = run_brain(self.root, "check", "--json")
         self.assertEqual(json.loads(check.stdout)["schema"], [])
         self.assertIn("created cortex/concepts/spacing-effect.md", self.new("concept", "--title", "Spacing effect").stdout)
         for args, why in ((("episode", "--from", "cortex/episodes/plain.md"), "is not a file in senses/"),

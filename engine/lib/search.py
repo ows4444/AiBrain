@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Find pages: by their words (search), or by words and then association (recall).
 
 Usage:
@@ -25,12 +24,11 @@ held    both also list ideas held on an episode (named by a source, no page
 Reads only, apart from the search cache (.cache/, see `brain cache`). It never writes the log: the skill that answers from these pages
 logs `DATE recall <question> -> [[page]], ...` for the pages that contributed.
 """
-import argparse
-import json
 import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from commands import Refused  # noqa: E402
 from vaultlib import PAGE_TYPES, RECALL_FLOOR, SPREAD_HOPS, Vault  # noqa: E402
 
 
@@ -53,19 +51,16 @@ def held_rows(vault, query):
             for h in vault.held_ideas(query)]
 
 
-def print_held(held):
-    if held:
-        print("held ideas (no page yet; cite the episode and say how many sources):")
+def held_lines(held):
+    lines = ["held ideas (no page yet; cite the episode and say how many sources):"] if held else []
     for h in held:
         note = f" - {h['note']}" if h["note"] else ""
-        print(f"  {h['name']}{note}  [{', '.join(h['episodes'])}; {h['sources']} source{'s' * (h['sources'] != 1)}]")
+        lines.append(f"  {h['name']}{note}  [{', '.join(h['episodes'])}; {h['sources']} source{'s' * (h['sources'] != 1)}]")
+    return lines
 
 
-def main(argv=None):
-    ap = argparse.ArgumentParser(prog="brain search|recall")
-    ap.add_argument("mode", choices=("search", "recall"))
+def arguments(ap):
     ap.add_argument("query", nargs="+")
-    ap.add_argument("--root", default=".")
     ap.add_argument("--type", action="append", choices=PAGE_TYPES, dest="types")
     ap.add_argument("--dormant", action="store_true")
     ap.add_argument("--project")
@@ -73,11 +68,11 @@ def main(argv=None):
     ap.add_argument("--limit", type=int, default=10)
     ap.add_argument("--all", action="store_true", dest="everything",
                     help="recall: every row, however weak, and no abstaining")
-    ap.add_argument("--json", action="store_true")
-    args = ap.parse_args(argv)
-    if not os.path.isdir(args.root):
-        sys.exit(f"not a directory: {args.root}")
-    vault = Vault(args.root)
+
+
+def run(root, args):
+    """`args.mode` is `search` or `recall`: the command's own name, which `brain` sets."""
+    vault = Vault(root)
     query = " ".join(args.query)
     if args.mode == "search":
         rows = search_rows(vault, query, args.types, args.dormant, args.limit)
@@ -85,39 +80,36 @@ def main(argv=None):
         try:
             rows = recall_rows(vault, query, args.project, args.limit, args.hops, args.dormant, args.everything)
         except ValueError as e:
-            sys.exit(str(e))
+            raise Refused(str(e)) from None
     # recall found words but too little of the question: name the pages, list nothing
     weak = ([p.rel for p, _ in vault.search(query, dormant=args.dormant, limit=3)]
             if args.mode == "recall" and not rows and not args.everything else [])
     held = held_rows(vault, query)
-    if args.json:
-        print(json.dumps(dict({"query": query, "mode": args.mode, "results": rows}, **({"weak": weak} if weak else {}),
-                              **({"held": held} if held else {})), indent=2))
-        return
-    if weak:
-        print(f'recall: no confident match for "{query}"; its words barely reach {", ".join(weak)} (--all lists them)')
-        print_held(held)
-        return
+    return dict({"query": query, "mode": args.mode, "results": rows}, **({"weak": weak} if weak else {}),
+                **({"held": held} if held else {}))
+
+
+def render(result, args):
+    query, mode, rows = result["query"], result["mode"], result["results"]
+    held = held_lines(result.get("held", []))
+    if "weak" in result:
+        return "\n".join([f'recall: no confident match for "{query}"; its words barely reach '
+                          f'{", ".join(result["weak"])} (--all lists them)'] + held)
     if not rows:
-        print(f'{args.mode}: nothing matches "{query}"' + ("" if args.dormant else " (try --dormant)"))
-        print_held(held)
-        return
-    print(f'{args.mode}: "{query}"' + (f"  [project {args.project}]" if args.project else ""))
+        return "\n".join([f'{mode}: nothing matches "{query}"' + ("" if args.dormant else " (try --dormant)")] + held)
+    out = [f'{mode}: "{query}"' + (f"  [project {args.project}]" if args.project else "")]
     for r in rows:
         line = f"  {r['score']:>7.3f}  {r['page']}"
         line += f"\n           {r['summary'] or '(no summary: open the page to judge it)'}"
-        if args.mode == "recall":
+        if mode == "recall":
             how = "hit" if r["hop"] == 0 else f"{r['hop']} hop{'s' * (r['hop'] > 1)} from {r['from']}"
             conf = f"{r['confidence']['level']}: {r['confidence']['why']}" if r["confidence"] else "dormant"
             line += f"\n           {how}; {conf}" + (f"; {', '.join(r['flags'])}" if r["flags"] else "")
-        print(line)
-    if args.mode == "recall" and not args.everything and len(rows) < args.limit:
-        print("  weaker matches are cut (--all lists them)")
-    print_held(held)
+        out.append(line)
+    if mode == "recall" and not args.everything and len(rows) < args.limit:
+        out.append("  weaker matches are cut (--all lists them)")
+    out += held
     stale = [r["page"] for r in rows if "stale" in r.get("flags", [])]
     if stale:
-        print("ask the owner whether these still hold: " + ", ".join(stale))
-
-
-if __name__ == "__main__":
-    main()
+        out.append("ask the owner whether these still hold: " + ", ".join(stale))
+    return "\n".join(out)

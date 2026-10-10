@@ -6,9 +6,12 @@
     brain search QUERY [--type ...]       pages by their words (BM25), --dormant too
     brain recall QUERY [--project NAME]   words, then association along links; confidence and flags
     brain since FROM [--until TO]         what was made, changed, asked and rehearsed in a period
+    brain log OP [WHAT] [--pages ...]     write one checked line to the log: the operation, the pages, today's date
+    brain index [--dry-run]               rewrite the listing of hippocampus/index.md from the pages and their summaries
     brain fingerprint                     record a hash of each new input in senses/
     brain graph [out] [--format ...]      the link graph as CSV or GraphML
     brain export PAGE ... | --published   pages for outside use, into motor/export/
+    brain errors [--since D] [--tail N]   what the hooks swallowed or refused (.cache/errors.log), for refactoring
     brain cache [--rebuild|--clear]       the search cache (.cache/search.sqlite): size, rebuild, clear
     brain fetch URL [--name SLUG]         a web page cut down to its readable text, saved in senses/
     brain new TYPE [--from senses/FILE]   a page from its template, frontmatter filled in from the input
@@ -19,82 +22,20 @@
     brain statusline [--bar]              the queues and context fill on one line; --bar is the short form for Claude Code's row
     brain eval [--answers FILE] [--json]  the answer test set: retrieval, or answers given by /ask
     brain synth OUT [--pages N]           a synthetic brain of any size, for testing the engine
+    brain bench [--pages N] [--json]      how long each instrument takes on a synthetic brain: run before and after a change
     brain test [-v] [-k PATTERN]          the engine's own test suite
 
 The brain is the nearest folder at or above the working directory that holds
-both cortex/ and hippocampus/ (or $BRAIN_ROOT). Scripts get it as their root.
-`eval` and `synth` need no brain: they run on the engine's fixture or a new folder.
+both cortex/ and hippocampus/ (or $BRAIN_ROOT). A command works from that folder.
+`eval`, `synth`, `bench` and `chats` need no brain: they run on the engine's fixture or on the paths given.
+Every command takes --json: what it found or did as data, in place of the text.
+Another program calls a command the same way, without a process: see lib/commands.py.
 """
 import os
-import subprocess
 import sys
 
-ENGINE = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
-LIB = os.path.join(ENGINE, "lib")
-
-# subcommand -> (script, how the brain root is passed, arguments put first)
-COMMANDS = {
-    "check": ("link_check.py", "positional", []),
-    "introspect": ("introspect.py", "positional", []),
-    "search": ("search.py", "--root", ["search"]),
-    "recall": ("search.py", "--root", ["recall"]),
-    "since": ("timeline.py", "--root", []),
-    "fingerprint": ("fingerprint.py", "positional", []),
-    "graph": ("graph_export.py", "positional", []),
-    "export": ("export.py", "--root", []),
-    "cache": ("cache.py", "positional", []),
-    "fetch": ("fetch.py", "--root", []),
-    "new": ("new_page.py", "--root", []),
-    "chats": ("chat_export_to_md.py", None, []),
-    "resume": (os.path.join("..", "hooks", "save_resume.py"), "positional", ["--manual"]),
-    "session": ("session.py", "positional", []),
-    "forget": ("forget.py", "--root", []),
-    "statusline": ("statusline.py", "positional", []),
-    "eval": ("eval.py", None, []),
-    "synth": ("synth.py", None, []),
-}
-
-
-def find_root():
-    if os.environ.get("BRAIN_ROOT"):
-        return os.path.abspath(os.environ["BRAIN_ROOT"])
-    here = os.getcwd()
-    while True:
-        if all(os.path.isdir(os.path.join(here, d)) for d in ("cortex", "hippocampus")):
-            return here
-        parent = os.path.dirname(here)
-        if parent == here:
-            sys.exit("brain: no brain here (no folder with cortex/ and hippocampus/ at or above this one)")
-        here = parent
-
-
-def main(argv):
-    if not argv or argv[0] in ("-h", "--help", "help"):
-        print(__doc__.strip())
-        return 0
-    name, args = argv[0], argv[1:]
-    if name == "test":
-        # Only the engine's own tests: an option that points discovery elsewhere (-s, -t, -p)
-        # would run any Python file under a permission that allows `brain`.
-        rest = list(args)
-        while rest:
-            flag = rest.pop(0)
-            if flag == "-k" and rest:
-                rest.pop(0)
-            elif flag not in ("-v", "-q", "-f", "-b"):
-                sys.exit(f"brain test: '{flag}' is not accepted; use -v, -q, -f, -b or -k PATTERN")
-        return subprocess.call([sys.executable, "-m", "unittest", "discover", "-s", os.path.join(ENGINE, "tests"),
-                                *args])
-    if name not in COMMANDS:
-        sys.exit(f"brain: unknown command '{name}'; run `brain help`")
-    script, root_style, lead = COMMANDS[name]
-    cmd = [sys.executable, os.path.join(LIB, script), *lead]
-    if root_style:
-        root = find_root()
-        os.chdir(root)
-        cmd += [root] if root_style == "positional" else ["--root", root]
-    return subprocess.call(cmd + args)
-
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), "lib"))
+import commands  # noqa: E402
 
 if __name__ == "__main__":
-    sys.exit(main(sys.argv[1:]))
+    sys.exit(commands.main(sys.argv[1:], __doc__))

@@ -89,9 +89,26 @@ brain check           # broken links, schema, index drift
 brain search QUERY    # pages by their words
 brain recall QUERY    # words, then associations along links
 brain since 2026-09-01
+brain log recall "a question" --pages a-page   # one checked line in the log; skills run it
+brain index           # rewrite the index's listing from the pages and their summaries
 brain test            # the engine's own tests
 brain cache           # the search cache: size; --rebuild or --clear
+brain errors          # what the hooks swallowed or refused, counted by source
+brain bench           # how long each instrument takes on a synthetic brain (--pages N)
 ```
+
+Every command takes `--json` and then prints what it found or did as data, in
+place of the text.
+
+### Error log
+
+Hooks fail silent on purpose, so a bug in one would go unseen. Each crash a hook
+swallows, and each write it refuses (senses, the log, frozen decision, schema,
+secret, unlogged recall), leaves one line in `.cache/errors.log`. `brain errors` counts
+them by source and kind (`--since DATE`, `--tail N`, `--json`, `--clear`). Read
+it before refactoring: the most frequent line is the rule or hook to look at
+first. The file is capped at 256 KB and git ignores it.
+
 
 ### Search cache
 

@@ -27,8 +27,8 @@ guesses never look alike (tags and what each must carry:
 
 **Frame** (a question with a choice in it):
 1. Create `cortex/decisions/<slug>.md` from
-   `${CLAUDE_PLUGIN_ROOT}/templates/decision.md`, `status: open`, and add it
-   under `## Decisions` in `hippocampus/index.md`.
+   `${CLAUDE_PLUGIN_ROOT}/templates/decision.md`, `status: open`, and run
+   `brain index`, which lists it under Decisions.
 2. Retrieve as `ask` does: `brain recall "<the question>"` (with `--project`
    when it belongs to one). Under `## Options`, list each option with the pages that bear
    on it, cited, one tagged line per claim: `[observation]` only for what a
@@ -46,7 +46,7 @@ guesses never look alike (tags and what each must carry:
    read the tags back for a yes; the words stay theirs. When they give a
    probability, it goes inside the tag: `- [hypothesis 70%] <their words>`.
    Never suggest the number.
-5. Log `DATE decide <short question> -> [[page]]`.
+5. Log: `brain log decide "<short question>" --pages <page>`.
 
 **Record** (`made <decision>`, or the owner says what they chose):
 1. Fill `## Decision`: what, when, why, in the owner's words.
@@ -61,7 +61,7 @@ guesses never look alike (tags and what each must carry:
    "If things change" gets a follow-up question.
 4. Set `status: decided` and `review:` to when the outcome will be visible;
    ask the owner if unsure. Default three months.
-5. Log `DATE decide <decision> -> [[page]], review <date>`.
+5. Log: `brain log decide "<decision>" --pages <page> --result "review <date>"`.
 
 **Review** (`review`, or the briefing lists decisions due or to revisit):
 1. `brain introspect --decisions` lists what is due, and marks the ones tagged
@@ -78,13 +78,13 @@ guesses never look alike (tags and what each must carry:
    the owner agrees it follows. Name each reusable lesson under
    `## Candidates`; sleep weighs it like an episode's candidate.
 5. Remove the `to-revisit` tag if it was set.
-6. Log `DATE review [[page]] -> <outcome>, <n> lessons`.
+6. Log: `brain log review "[[page]]" --result "<outcome>, <n> lessons"`.
 
 A decision is never reopened: the hook blocks taking `status` back. When a
 `reviewed` decision is triggered, or the owner changes their mind, frame a new
 decision that links the old one.
 
-In every mode, also log `DATE recall decide <short question> -> [[page]], ...`
+In every mode, also log `brain log recall "decide <short question>" --pages <page> ...`
 for the pages read, the decision page included; the recall hook checks for it.
 
 ## Output

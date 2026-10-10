@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """What happened in a period: pages made and changed, operations, questions, rehearsals.
 
 Usage:
@@ -9,16 +8,15 @@ or the end of the month when FROM is a month and --until is not given.
 Answers "what did I learn in March" and "what changed since my last
 session" from `created:`, `updated:` and the log. Reads only.
 """
-import argparse
 import calendar
 import datetime
-import json
 import os
 import re
 import sys
 from collections import Counter
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from commands import Refused  # noqa: E402
 from vaultlib import Vault, is_rehearsal_miss, is_rehearsal_pass, parse_date  # noqa: E402
 
 MONTH = re.compile(r"^(\d{4})-(\d{2})$")
@@ -53,42 +51,31 @@ def timeline(vault, start, end):
     }
 
 
-def main():
-    ap = argparse.ArgumentParser(prog="brain since")
+def arguments(ap):
     ap.add_argument("start")
     ap.add_argument("--until")
-    ap.add_argument("--root", default=".")
-    ap.add_argument("--json", action="store_true")
-    args = ap.parse_args()
-    if not os.path.isdir(args.root):
-        sys.exit(f"not a directory: {args.root}")
-    vault = Vault(args.root)
+
+
+def run(root, args):
+    vault = Vault(root)
     try:
         start = bounds(args.start)
         end = bounds(args.until, end=True) if args.until else (
             bounds(args.start, end=True) if MONTH.match(args.start) else vault.today)
     except ValueError as e:
-        sys.exit(str(e))
-    t = timeline(vault, start, end)
-    if args.json:
-        print(json.dumps(t, indent=2))
-        return
-    print(f"{t['from']} .. {t['until']}")
+        raise Refused(str(e)) from None
+    return timeline(vault, start, end)
+
+
+def render(t, args):
     made = sum(len(v) for v in t["created"].values())
-    print(f"created  {made}  " + " ".join(f"{k}:{len(v)}" for k, v in t["created"].items()))
-    for kind, rels in t["created"].items():
-        for rel in rels:
-            print(f"  + {rel}")
-    print(f"updated  {len(t['updated'])}")
-    for rel in t["updated"]:
-        print(f"  ~ {rel}")
-    print("operations  " + (", ".join(f"{op} {n}" for op, n in t["operations"].items()) or "none"))
-    print(f"rehearsals  {t['rehearsals']['passed']} passed, {t['rehearsals']['missed']} missed")
+    out = [f"{t['from']} .. {t['until']}",
+           f"created  {made}  " + " ".join(f"{k}:{len(v)}" for k, v in t["created"].items())]
+    out += [f"  + {rel}" for rels in t["created"].values() for rel in rels]
+    out.append(f"updated  {len(t['updated'])}")
+    out += [f"  ~ {rel}" for rel in t["updated"]]
+    out.append("operations  " + (", ".join(f"{op} {n}" for op, n in t["operations"].items()) or "none"))
+    out.append(f"rehearsals  {t['rehearsals']['passed']} passed, {t['rehearsals']['missed']} missed")
     if t["questions"]:
-        print("questions asked")
-        for q in t["questions"]:
-            print(f"  {q}")
-
-
-if __name__ == "__main__":
-    main()
+        out += ["questions asked"] + [f"  {q}" for q in t["questions"]]
+    return "\n".join(out)

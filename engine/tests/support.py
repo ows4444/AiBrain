@@ -13,7 +13,16 @@ import vaultlib  # noqa: E402
 
 HOOKS = os.path.join(ENGINE, "hooks")
 SCRIPTS = os.path.join(ENGINE, "lib")
+BRAIN = os.path.join(ENGINE, "bin", "brain")
 TODAY = datetime.date(2026, 10, 3)
+
+
+def run_brain(root, *args, env=None, **kw):
+    """`brain ARGS` on the brain at `root` (None: a command that needs none), in a process of its own."""
+    env = {k: v for k, v in (os.environ if env is None else env).items() if k != "BRAIN_ROOT"}
+    if root is not None:
+        env["BRAIN_ROOT"] = root
+    return subprocess.run([sys.executable, BRAIN, *args], capture_output=True, text=True, env=env, **kw)
 
 
 def ago(days):

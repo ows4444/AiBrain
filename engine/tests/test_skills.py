@@ -18,11 +18,18 @@ class SkillWiring(unittest.TestCase):
         sys.path.insert(0, HOOKS)
         import check_recall
         for name in check_recall.RECALL_SKILLS:
-            self.assertRegex(self.skill(name), r"DATE recall ", name)
+            self.assertRegex(self.skill(name), r"brain log recall ", name)
+
+    def test_every_skill_that_records_an_operation_names_the_command(self):
+        # commit, start and tend write no line of their own: the skills and agents they run do.
+        for name in sorted(set(os.listdir(SKILLS)) - {"commit", "start", "tend"}):
+            self.assertIn("`brain log ", self.skill(name), name)
 
     def test_page_creating_skills_index_what_they_create(self):
-        for name in ("ingest", "explore", "decide"):
-            self.assertIn("index.md", self.skill(name), name)
+        for name in ("ingest", "explore", "decide", "sleep"):
+            self.assertIn("`brain index`", self.skill(name), name)
+        for name in os.listdir(SKILLS):  # the listing is the command's: no skill adds a line to it by hand
+            self.assertNotRegex(self.skill(name), r"(add|remove)[^.]*\b(to|from) the index", name)
 
     def everything(self):
         texts = {}
@@ -34,10 +41,11 @@ class SkillWiring(unittest.TestCase):
                             texts[os.path.relpath(os.path.join(root, f), ENGINE)] = fh.read()
         return texts
 
-    def test_log_formats_use_known_operations(self):
+    def test_log_lines_are_written_by_the_command_with_a_known_operation(self):
         for name, text in self.everything().items():
-            for op in re.findall(r"`DATE ([a-z-]+)", text):
-                self.assertIn(op, vaultlib.OPS, f"{name}: DATE {op}")
+            self.assertNotRegex(text, r"`DATE [a-z]", f"{name} writes a log line by hand: the command is `brain log`")
+            for op in re.findall(r"brain log ([a-z-]+)", text):
+                self.assertIn(op, vaultlib.OPS, f"{name}: brain log {op}")
 
     def test_introspect_flags_and_templates_exist(self):
         with open(os.path.join(SCRIPTS, "introspect.py"), encoding="utf-8") as fh:

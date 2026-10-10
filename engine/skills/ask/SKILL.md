@@ -36,7 +36,7 @@ in one sentence and stop.
    summary has to be opened to judge it. `hippocampus/index.md` is
    the map when the ranking misses something you expect. For a question
    spanning many pages, hand it to the `researcher` agent and log the recall
-   line it returns.
+   it returns.
 2. **Follow further** only where a page read points somewhere the ranking did
    not reach; stop when new pages stop adding anything.
 3. **Answer in plain prose** with `[[page]]` citations inline, in the mode
@@ -44,8 +44,9 @@ in one sentence and stop.
    gives it (`low`, `medium`, `high`, with its source count), and say when a
    page is `contradicted` by new input sleep has not weighed yet.
 4. **Log the recall,** always, even for an empty answer:
-   `DATE recall <short question> -> [[page]], [[page]]` (pages that
-   contributed, not every page opened). This is what keeps a page from
+   `brain log recall "<the question as asked>" --pages <page> <page>` (pages
+   that contributed, not every page opened; none: leave `--pages` out). It
+   refuses a page name it does not know. This is what keeps a page from
    fading, and pages named together grow more strongly associated.
 5. **Reconsolidate:** for a cited page flagged `stale`, ask the owner whether
    it still holds. Yes: add `- Rechecked (owner, DATE): still holds.` under
@@ -56,8 +57,8 @@ in one sentence and stop.
    insight worth writing.
 7. **Nothing answers:** `brain recall "<question>" --all --dormant`, and once
    more in other words for the same thing, before saying so; name the
-   queries tried under `Not covered:`. Cite a dormant page as dormant, and offer to restore it (move it back,
-   re-index, log); a recalled page is worth keeping.
+   queries tried under `Not covered:`. Cite a dormant page as dormant, and offer to restore it (log, move it
+   back, `brain index`); a recalled page is worth keeping.
 
 ## Modes
 

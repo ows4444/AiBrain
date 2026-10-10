@@ -22,7 +22,7 @@ tags: [zero to three, from the Tags section of the brain's CLAUDE.md]
 
 The rules for `status` (concepts and decisions) live in the brain's
 `CLAUDE.md` > Page contracts. Every field below is defined once, in
-`engine/lib/vaultlib.py` (`FIELDS`): which pages may carry it, its allowed
+`engine/lib/vault_model.py` (`FIELDS`, which `vaultlib` re-exports): which pages may carry it, its allowed
 values, and whether `brain export` drops it as private. A test keeps this
 table in step with that registry. Lists may be inline, `[a, b]`, or one
 `  - item` per line, the way Obsidian's Properties editor writes them.
@@ -86,7 +86,17 @@ how it turned out: `- [assumption] My calendar stays free. -> failed` (`held`,
 ## Log lines
 
 One line per operation in `hippocampus/log.md`, newest last; the format and
-the operations are in the brain's `CLAUDE.md` > Log.
+the operations are in the brain's `CLAUDE.md` > Log. `brain log` writes them:
+it checks the operation and every page name, sets the date, and refuses a
+name it does not know. These three commands
+
+```
+brain log ingest senses/some-article.md --result "1 episode, 2 candidates, 4 links"
+brain log recall "what is an llm wiki" --pages llm-wiki karpathy
+brain log sleep "3 episodes" --result "1 concept established, 2 updated, 1 insight"
+```
+
+write these three lines:
 
 ```
 2026-09-07 ingest senses/some-article.md -> 1 episode, 2 candidates, 4 links

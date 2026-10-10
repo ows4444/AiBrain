@@ -42,7 +42,7 @@ class PurposeMixin:
 
 
     def links_from(self, page):
-        return {b for a, b in self.edges if a is page}
+        return self.out_links.get(page, frozenset())
 
     def active_projects(self):
         return [p for p in self.of_type("project") if p.fields.get("status", "active") != "done"]
@@ -116,7 +116,7 @@ class PurposeMixin:
         """Each project with its goal, the pages it uses and the decisions that name it."""
         out = []
         for proj in self.of_type("project"):
-            decisions = sorted((a for a, b in self.edges if b is proj and a.type == "decision"), key=lambda p: p.rel)
+            decisions = sorted((a for a in self.in_links[proj] if a.type == "decision"), key=lambda p: p.rel)
             feedback = os.path.join(os.path.dirname(proj.path), "feedback")
             out.append({"project": proj.stem, "status": proj.fields.get("status", "active"),
                         "goal": proj.fields.get("goal", ""), "due": proj.fields.get("due", ""),

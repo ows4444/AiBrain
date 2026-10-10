@@ -39,9 +39,9 @@ knowledge (labelled), or speculation (labelled).
    `## Claims` holds the assumptions and transfers, each labelled;
    `## Candidates` holds the ideas worth testing, each with what evidence
    would confirm it. Link the concept on first mention. Change no other page.
-6. **Log** `DATE explore [[concept]] -> [[episode]], <n> candidates` and
-   `DATE recall explore <concept> -> [[page]], ...` for the pages that
-   contributed, and add the episode to the index under Episodes.
+6. **Log** `brain log explore "[[concept]]" --pages <episode> --result "<n> candidates"`
+   and `brain log recall "explore <concept>" --pages <page> ...` for the pages
+   that contributed, and run `brain index`, which lists the episode.
 
 ## Output
 

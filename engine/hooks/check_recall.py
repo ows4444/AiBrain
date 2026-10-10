@@ -7,13 +7,17 @@ dormant/. This hook turns that rule from a guide into a sensor: when the turn
 used a skill that reads pages (with or without the aibrain: prefix), or read a
 page in cortex/ or dormant/ to answer without any skill and wrote no page,
 and wrote no `DATE recall ... ->` line to hippocampus/log.md, Claude is asked
-to log before stopping. Another log line (`explore`, `decide`) does not count;
-a rehearsal where every page was missed (`DATE rehearse missed ->`) does. A
-shell command may build the date itself (`$(date +%F) recall q -> ...`): then
-the log must hold today's line with exactly that text. A command that only
-reads the log proves nothing. Fails open on any error, and never fires twice
-in a row.
+to log before stopping. The line is written by `brain log recall ...` (or
+`brain log rehearse missed ...`: a rehearsal where every page was missed counts);
+another log line (`explore`, `decide`) does not. A call whose result was an
+error wrote nothing: `brain log` refusing a misspelt page, a hook refusing an
+edit of the log. A line appended by a shell command still counts; when the
+shell builds the date itself (`$(date +%F) recall q -> ...`) the log must hold
+today's line with exactly that text. A command that only reads the log, or
+`brain log --dry-run`, proves nothing. Fails open on any error, and never
+fires twice in a row.
 """
+import contextlib
 import datetime
 import json
 import os
@@ -42,12 +46,15 @@ RECALL_SKILLS = {"ask", "rehearse", "explore", "decide", "write", "focus"}
 RECALL_COMMAND = re.compile(r"<command-name>/(?:[\w-]+:)?(?:%s)</command-name>" % "|".join(sorted(RECALL_SKILLS)))
 ANY_COMMAND = re.compile(r"<command-name>/([\w:-]+)</command-name>")
 RECALL_LINE = re.compile(r"\d{4}-\d{2}-\d{2} (?:recall|rehearse missed) .*->")
+# The engine writes the line and checks it: `brain log recall <question> --pages ...`.
+BRAIN_LOG = re.compile(r"(?:^|[\s;&|(/])brain\s+log\s+(?:recall|rehearse\s+missed)\b")
 # The recall line a shell command writes when it builds the date itself.
 SHELL_RECALL = re.compile(r"((?:recall|rehearse missed) [^\"'\n]*?->[^\"'\n]*)")
 LOG = "hippocampus/log.md"
 # Pages read here are memory; a turn that reads one and answers has recalled.
 MEMORY_READ = re.compile(r"(?:^|/)(?:cortex|dormant)/[^/].*\.md$")
 WRITES = ("Write", "Edit", "MultiEdit", "NotebookEdit")
+TAIL_BYTES = 4_000_000  # of the transcript read, from its end (save_resume.py reads the same)
 
 
 def blocks(entry):
@@ -65,10 +72,20 @@ def is_prompt(entry):
 
 
 def turn_entries(path):
-    with open(path, encoding="utf-8") as fh:
-        entries = [json.loads(line) for line in fh if line.strip()]
+    """The entries of the turn that is ending: from the last prompt the owner typed, read from the transcript's end.
+
+    A long session's transcript is many megabytes and this runs at every stop, so only its last
+    TAIL_BYTES are read. The first line of a tail is cut short and dropped. A tail with no
+    prompt in it means the turn began before it, so all of it belongs to the turn.
+    """
+    size = os.path.getsize(path)
+    cut = size > TAIL_BYTES
+    with open(path, "rb") as fh:
+        fh.seek(max(0, size - TAIL_BYTES))
+        lines = fh.read().decode("utf-8", "replace").splitlines()
+    entries = [json.loads(line) for line in (lines[1:] if cut else lines) if line.strip()]
     starts = [i for i, e in enumerate(entries) if is_prompt(e)]
-    return entries[starts[-1]:] if starts else []
+    return entries[starts[-1]:] if starts else (entries if cut else [])
 
 
 def in_log_today(text):
@@ -82,7 +99,11 @@ def in_log_today(text):
 
 
 def shell_logged(command):
-    """A shell command that writes a recall line: literally dated, or dated by the shell and found in the log."""
+    """A shell command that writes a recall line: `brain log`, or an append to the log, literally dated or found there."""
+    if BRAIN_LOG.search(command):
+        return "--dry-run" not in command
+    if LOG not in command:
+        return False
     if RECALL_LINE.search(command):
         return True
     if not re.search(r">>|\btee\b", command):
@@ -91,9 +112,12 @@ def shell_logged(command):
 
 
 def check(entries):
-    recalled = logged = read_memory = wrote_pages = other_skill = False
+    recalled = read_memory = wrote_pages = other_skill = False
+    wrote_line, failed = [], set()  # the calls that would log a recall; the calls whose result was an error
     for entry in entries:
         for b in blocks(entry):
+            if b.get("type") == "tool_result" and b.get("is_error") and b.get("tool_use_id"):
+                failed.add(b["tool_use_id"])  # refused by a hook, or it failed: nothing was written
             if b.get("type") == "text":
                 text = b.get("text", "")
                 if RECALL_COMMAND.search(text):
@@ -116,13 +140,14 @@ def check(entries):
             if name in ("Write", "Edit", "MultiEdit") and path.endswith(LOG):
                 written = [args.get("content"), args.get("new_string")]
                 written += [e.get("new_string") for e in args.get("edits") or [] if isinstance(e, dict)]
-                logged = logged or any(RECALL_LINE.search(str(w)) for w in written if w)
-            if name == "Bash" and LOG in str(args.get("command", "")):
-                logged = logged or shell_logged(str(args.get("command", "")))
+                if any(RECALL_LINE.search(str(w)) for w in written if w):
+                    wrote_line.append(b.get("id"))
+            if name == "Bash" and shell_logged(str(args.get("command", ""))):
+                wrote_line.append(b.get("id"))
     # Reading memory to answer, with no skill and no page written, is a recall too.
     # A turn that writes pages (/ingest, /sleep, /maintain) or runs another skill reads to change, not to answer.
     recalled = recalled or (read_memory and not wrote_pages and not other_skill)
-    return recalled, logged
+    return recalled, any(call not in failed for call in wrote_line)
 
 
 def main():
@@ -134,11 +159,19 @@ def main():
             sys.exit(0)
         recalled, logged = check(turn_entries(data["transcript_path"]))
     except Exception:
+        with contextlib.suppress(Exception):  # the log must not add a way to fail
+            sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
+            from errlog import note
+            note("check_recall", "error")
         sys.exit(0)
     if recalled and not logged:
-        print("This turn recalled from the brain but logged no recall line. Append "
-              "`DATE recall <short question> -> [[page]], ...` to hippocampus/log.md "
+        print("This turn recalled from the brain but logged no recall line. Run "
+              "`brain log recall \"<the question as asked>\" --pages <page> ...` "
               "(CLAUDE.md > Log), naming the pages that contributed, then finish.", file=sys.stderr)
+        with contextlib.suppress(Exception):  # the log must not add a way to fail
+            sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
+            from errlog import note
+            note("check_recall", "recall", "recalled from the brain, no recall line in the log")
         sys.exit(2)
     sys.exit(0)
 

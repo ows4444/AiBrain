@@ -1,11 +1,9 @@
 """Purpose: projects as pages, owner goals, and the frozen expectation of a decision. Run: brain test"""
 import json
 import os
-import subprocess
-import sys
 import unittest
 
-from support import DECIDED, ENGINE, SCRIPTS, TempBrain, VALID, ago, page, project, vaultlib
+from support import DECIDED, ENGINE, TempBrain, VALID, ago, page, project, run_brain, vaultlib
 
 
 class Purpose(TempBrain):
@@ -16,8 +14,7 @@ class Purpose(TempBrain):
                    + "\n\n## Tags\n\n`disputed`\n")
 
     def check(self):
-        r = subprocess.run([sys.executable, os.path.join(SCRIPTS, "link_check.py"), self.root, "--json"],
-                           capture_output=True, text=True)
+        r = run_brain(self.root, "check", "--json")
         return r.returncode, json.loads(r.stdout)
 
     def test_owner_file_holds_the_goals_and_opens_the_briefing(self):
@@ -29,8 +26,7 @@ class Purpose(TempBrain):
         out = self.run_hook("wake_up.py", {}).stdout
         self.assertTrue(out.startswith("Owner (OWNER.md):\n  - A writer.\n  - Talk to them plainly.\nGoals:\n"
                                        "  - Ship the book by 2030-01-01 -> [[missing-page]]\nToday: "), out)
-        check = subprocess.run([sys.executable, os.path.join(SCRIPTS, "link_check.py"), self.root, "--json"],
-                               capture_output=True, text=True)
+        check = run_brain(self.root, "check", "--json")
         self.assertIn({"page": "OWNER.md > Goals > Ship the book", "target": "missing-page"},
                       json.loads(check.stdout)["broken"])
         os.remove(os.path.join(self.root, "OWNER.md"))  # a brain from before the file: the root file's section
@@ -95,8 +91,7 @@ class Purpose(TempBrain):
     def test_introspect_goals_and_projects(self):
         self.write("prefrontal/launch/CLAUDE.md", project())
         self.owner("- Ship -> [[launch]]")
-        out = subprocess.run([sys.executable, os.path.join(SCRIPTS, "introspect.py"), self.root, "--goals",
-                              "--projects"], capture_output=True, text=True, check=True).stdout
+        out = run_brain(self.root, "introspect", "--goals", "--projects", check=True).stdout
         self.assertIn("1 goals (1 with no pages)", out)
         self.assertIn("launch (active): 0 pages, 0 decisions, 0 feedback", out)
 

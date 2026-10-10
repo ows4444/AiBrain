@@ -15,14 +15,13 @@ MERGEABLE_TYPES = ("concept", "entity", "insight")
 class GraphMixin:
     def knowledge_edges(self):
         # Links from the index would make every listed page look connected,
-        # so system pages are left out of every graph metric.
-        return {(a, b) for a, b in self.edges if not a.is_system and not b.is_system}
+        # so system pages are left out of every graph metric. Computed once per Vault.
+        if "_knowledge_edges" not in self.__dict__:
+            self._knowledge_edges = frozenset((a, b) for a, b in self.edges if not a.is_system and not b.is_system)
+        return self._knowledge_edges
 
     def inbound(self):
-        counts = {p: 0 for p in self.knowledge}
-        for _, b in self.knowledge_edges():
-            counts[b] += 1
-        return counts
+        return {p: sum(not a.is_system for a in self.in_links[p]) for p in self.knowledge}
 
     def linked_to(self):
         """Pages something should link to: the denominator of the orphan rate."""
@@ -175,14 +174,21 @@ class GraphMixin:
     def typed_edges(self):
         """(source, relation, target) for every typed link that resolves. Computed once per Vault."""
         if "_typed_edges" not in self.__dict__:
-            out = set()
+            out, against = set(), {}
             for p in self.knowledge:
                 for rel, target in p.relations:
                     dest = self.resolve(target)
                     if dest is not None and dest is not p:
                         out.add((p, rel, dest))
-            self._typed_edges = out
-        return set(self._typed_edges)
+                        if rel == "contradicts":
+                            against.setdefault(dest, set()).add(p)
+            self._typed_edges, self._contradicted = frozenset(out), against
+        return self._typed_edges
+
+    def contradicted_by(self, page):
+        """The pages whose typed link says they contradict this one: none, for most pages."""
+        self.typed_edges()
+        return self._contradicted.get(page, frozenset())
 
     def near_duplicates(self, threshold=NEAR_DUPLICATE):
         """(a, b, score, why) for same-type pages that may be one idea twice: merge candidates.
@@ -222,7 +228,7 @@ class GraphMixin:
         An insight frames a cluster when it links to half or more of its concepts.
         Sleep proposes an insight tagged `schema` for each; nothing is written here.
         """
-        insights = [set(b for a, b in self.edges if a is i) for i in self.of_type("insight")]
+        insights = [self.out_links[i] for i in self.of_type("insight")]
         out = []
         for cluster in self.clusters():
             concepts = [p for p in cluster if p.type == "concept"]

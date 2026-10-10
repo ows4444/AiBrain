@@ -1,8 +1,7 @@
-#!/usr/bin/env python3
 """Build a synthetic brain of any size, to test the engine before there is real content.
 
 Usage:
-    brain synth OUT [--pages N] [--seed S] [--days D] [--today YYYY-MM-DD]
+    brain synth OUT [--pages N] [--seed S] [--days D] [--today YYYY-MM-DD] [--json]
 
 OUT must not exist yet. The brain is scaffolded from templates/brain/, then
 filled with N pages that pass every contract: about half episodes, the rest
@@ -13,12 +12,15 @@ real brain. The log holds ingests, sleeps, recall lines that name related
 pages together, and rehearsals with passes and misses, spread over D days.
 The same seed gives the same brain. Nothing here is anyone's knowledge.
 """
-import argparse
 import datetime
 import os
 import random
 import shutil
 import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import index  # noqa: E402
+from commands import Refused  # noqa: E402
 
 ENGINE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 WORDS = ("memory recall graph signal pattern evidence source habit focus review schedule interval practice "
@@ -108,12 +110,6 @@ def build(out, pages=200, seed=1, days=365, today=None):
         with open(path, "w", encoding="utf-8") as fh:
             fh.write(frontmatter(**fields) + "\n" + "\n".join(body))
 
-    with open(os.path.join(out, "hippocampus", "index.md"), "w", encoding="utf-8") as fh:
-        fh.write(frontmatter(title="Index", type="index", updated=today.isoformat()) + "\n# Index\n\n")
-        for kind, folder in FOLDER.items():
-            fh.write(f"## {folder.title()}\n\n" + "".join(f"- [[{s}]]\n" for s, k, _ in made if k == kind) + "\n")
-        fh.write("## Gaps\n\n_Nothing yet._\n")
-
     known = [s for s, k, _ in made if k in ("concept", "insight", "entity")]
     rehearsed = [s for s, k, _ in made if k in ("concept", "insight")]
     lines = []
@@ -141,23 +137,25 @@ def build(out, pages=200, seed=1, days=365, today=None):
     with open(os.path.join(out, "hippocampus", "log.md"), "a", encoding="utf-8") as fh:
         for day, text in sorted(lines, key=lambda t: t[0]):
             fh.write(f"{on(day)} {text}\n")
+    index.rebuild(out, today=today)  # the listing, as `brain index` writes it for any brain
     return {"pages": pages, "links": sum(len(v) for v in links.values()), "log_lines": len(lines)}
 
 
-def main():
-    ap = argparse.ArgumentParser(prog="brain synth")
+def arguments(ap):
     ap.add_argument("out")
     ap.add_argument("--pages", type=int, default=200)
     ap.add_argument("--seed", type=int, default=1)
     ap.add_argument("--days", type=int, default=365)
     ap.add_argument("--today")
-    args = ap.parse_args()
+
+
+def run(root, args):
     if os.path.exists(args.out):
-        sys.exit(f"already exists: {args.out} (synth writes only a new folder)")
+        raise Refused(f"already exists: {args.out} (synth writes only a new folder)")
     today = datetime.date.fromisoformat(args.today) if args.today else None
-    made = build(args.out, args.pages, args.seed, args.days, today)
-    print(f"synthetic brain: {made['pages']} pages, {made['links']} links, {made['log_lines']} log lines -> {args.out}")
+    return dict(build(args.out, args.pages, args.seed, args.days, today), out=args.out)
 
 
-if __name__ == "__main__":
-    main()
+def render(made, args):
+    return (f"synthetic brain: {made['pages']} pages, {made['links']} links, {made['log_lines']} log lines "
+            f"-> {made['out']}")

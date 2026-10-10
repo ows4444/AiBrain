@@ -18,7 +18,7 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from vault_events import Event, is_rehearsal_miss, is_rehearsal_pass, read_events  # noqa: E402,F401
+from vault_events import Event, is_rehearsal_miss, is_rehearsal_pass, read_events, unread_lines  # noqa: E402,F401
 from vault_graph import GraphMixin  # noqa: E402
 from vault_memory import MemoryMixin  # noqa: E402
 from vault_model import *  # noqa: E402,F401,F403
@@ -37,6 +37,7 @@ class Vault(GraphMixin, MemoryMixin, PurposeMixin, RetrievalMixin):
         self.names = self._build_names()
         self.dormant_names = self._dormant_names()
         self.edges, self.broken, self.gaps, self.faded = self._resolve()
+        self.out_links, self.in_links = self._adjacency()
         self.goals = owner_goals(self.root)
         self.events = read_events(self.root)
         self.recall_dates = self._recalls()
@@ -126,6 +127,17 @@ class Vault(GraphMixin, MemoryMixin, PurposeMixin, RetrievalMixin):
                 else:
                     broken.append((p, target))
         return edges, broken, gaps, faded
+
+    def _adjacency(self):
+        """({page: the pages it links to}, {page: the pages linking to it}), from the edges, once.
+
+        Asking what one page links, or what links it, is then a lookup, not a pass over every edge.
+        """
+        out, into = {p: set() for p in self.pages}, {p: set() for p in self.pages}
+        for a, b in self.edges:
+            out[a].add(b)
+            into[b].add(a)
+        return {p: frozenset(s) for p, s in out.items()}, {p: frozenset(s) for p, s in into.items()}
 
     def schema_problems(self):
         """(page, problems) for every page breaking the contract, however it was written."""

@@ -16,6 +16,10 @@ import hashlib
 import json
 import os
 import sqlite3
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from errlog import note  # noqa: E402
 
 # Raise when tokens(), stem(), STOP_WORDS or FIELD_WEIGHTS change meaning:
 # every cached row was computed by the old rules.
@@ -47,6 +51,7 @@ class TermCache:
             try:
                 self.db = self._open()
             except (sqlite3.Error, OSError):
+                note("vault_cache", "error", root=self.root)  # search goes on without the cache
                 self.db = None
 
     def _open(self, again=True):

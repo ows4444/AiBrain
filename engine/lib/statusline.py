@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """brain statusline: the queues and the context fill, on one line.
 
 For Claude Code's status line (`statusLine` in the brain's
@@ -27,6 +26,8 @@ empty. The line is pushed to the right edge with spaces, from the `COLUMNS`
 Claude Code sets. Skills and scripts read the plain form, which never changes.
 
 It never fails loudly: a status line that prints a traceback is worse than none.
+A crash leaves one line in the error log (`brain errors`) and prints nothing.
+`--json` gives the six counts, `context` (the fill, or null) and the `line`.
 """
 import json
 import os
@@ -35,7 +36,8 @@ import sys
 import unicodedata
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from vaultlib import Vault, is_brain  # noqa: E402
+from errlog import note  # noqa: E402
+from vaultlib import Vault  # noqa: E402
 
 
 STDIN_WAIT = 0.5  # seconds to wait for Claude Code's JSON before printing without it
@@ -60,11 +62,9 @@ def counts(root):
             "reminders": len(vault.due_intentions()), "decisions": len(vault.decisions_due())}
 
 
-def line(root, payload=None):
-    found = counts(root)
+def line(found, fill=None):
     parts = [f"{label} {found[label]}" for label in ("senses", "sleep", "rehearse")]
     parts += [f"{label} {found[label]}" for label in ("inbox", "reminders", "decisions") if found[label]]
-    fill = context_fill(payload or {})
     if fill is not None:
         parts.append(f"context {fill}%")
     return "brain | " + " | ".join(parts)
@@ -75,11 +75,9 @@ def cells(text):
     return sum(2 if unicodedata.east_asian_width(ch) in ("W", "F") else 1 for ch in text)
 
 
-def bar(root, payload=None, columns=0):
+def bar(found, fill=None, columns=0):
     """The short form: only what needs the owner, at the right edge; "" when nothing does."""
-    found = counts(root)
     parts = [f"{icon} {found[label]}" for label, icon in ICONS.items() if found[label]]
-    fill = context_fill(payload or {})
     if fill is not None and fill >= CONTEXT_SHOWN:
         parts.append(f"🧩 {fill}%")
     if not parts:
@@ -88,30 +86,31 @@ def bar(root, payload=None, columns=0):
     return " " * max(0, columns - MARGIN - cells(text)) + text
 
 
-def main(argv):
-    short = "--bar" in argv
-    argv = [a for a in argv if a != "--bar"]
-    root = argv[0] if argv else os.getcwd()
-    if not is_brain(root):
-        return
-    payload = {}
+def sent():
+    """What Claude Code passed on stdin, or {}: nothing came within STDIN_WAIT, or it was not JSON."""
     if not sys.stdin.isatty() and select.select([sys.stdin], [], [], STDIN_WAIT)[0]:
         try:
-            payload = json.load(sys.stdin)
+            return json.load(sys.stdin)
         except ValueError:
-            payload = {}
-    if not short:
-        print(line(root, payload))
-        return
-    columns = os.environ.get("COLUMNS", "")
-    text = bar(root, payload, int(columns) if columns.isdigit() else 0)
-    if text:
-        print(text)
+            pass
+    return {}
 
 
-if __name__ == "__main__":
+def arguments(ap):
+    ap.add_argument("--bar", action="store_true")
+
+
+def run(root, args):
     try:
-        main(sys.argv[1:])
+        fill = context_fill(sent())
+        found = counts(root)
+        columns = os.environ.get("COLUMNS", "")
+        text = bar(found, fill, int(columns) if columns.isdigit() else 0) if args.bar else line(found, fill)
+        return dict(found, context=fill, line=text)
     except Exception:  # noqa: BLE001  see the docstring
-        pass
-    sys.exit(0)
+        note("statusline", "error", root=root)
+        return {"line": ""}
+
+
+def render(result, args):
+    return result["line"]

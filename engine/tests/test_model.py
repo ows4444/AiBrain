@@ -6,7 +6,7 @@ import subprocess
 import sys
 import unittest
 
-from support import BRAIN_CLAUDE, DECIDED, ENGINE, HOOKS, SCRIPTS, TempBrain, page, vaultlib
+from support import BRAIN_CLAUDE, DECIDED, ENGINE, HOOKS, TempBrain, page, run_brain, vaultlib
 
 OBSIDIAN_NOTE = """---
 title: "LLM wiki: a pattern"
@@ -116,10 +116,9 @@ class ValidatePage(TempBrain):
         long = pre("Write", content=page("concept", text, summary="x" * 201, **common))
         self.assertIn("'summary' is 201 characters; one sentence, at most 200", long.stderr)
         self.write("cortex/concepts/b.md", page("concept", text, summary="Said in one line.", **dict(common, title="B")))
-        out = subprocess.run([sys.executable, os.path.join(SCRIPTS, "link_check.py"), self.root], capture_output=True, text=True)
+        out = run_brain(self.root, "check")
         self.assertIn("pages without a summary (recall cannot say what they hold): 1\n  cortex/concepts/a.md", out.stdout)
-        found = subprocess.run([sys.executable, os.path.join(SCRIPTS, "search.py"), "recall", "spacing", "--root", self.root],
-                               capture_output=True, text=True, env=dict(os.environ, BRAIN_CACHE="0")).stdout
+        found = run_brain(self.root, "recall", "spacing", env=dict(os.environ, BRAIN_CACHE="0")).stdout
         self.assertIn("cortex/concepts/b.md\n           Said in one line.", found)
         self.assertIn("cortex/concepts/a.md\n           (no summary: open the page to judge it)", found)
 
@@ -197,16 +196,14 @@ class Registry(TempBrain):
         items = v.open_items()
         self.assertEqual(([p.stem for p in items["disputed"]], [p.stem for p in items["revisit"]]), (["a"], ["b"]))
         self.assertEqual([(a.stem, b.stem) for a, b in items["contradicts"]], [("a", "b")])
-        r = subprocess.run([sys.executable, os.path.join(SCRIPTS, "link_check.py"), self.root, "--json"],
-                           capture_output=True, text=True)
+        r = run_brain(self.root, "check", "--json")
         self.assertEqual((r.returncode, json.loads(r.stdout)["relations"]), (1, [{"page": "cortex/concepts/b.md",
                                                                                    "relation": "rebuts"}]))
 
     def test_unknown_log_operation_is_reported_not_fatal(self):
         self.log("2026-10-01 ingest senses/a.md -> 1 episode", "2026-10-02 tidy things -> done")
         self.assertEqual(self.brain().log_problems(), ["2026-10-02 tidy things -> done"])
-        r = subprocess.run([sys.executable, os.path.join(SCRIPTS, "link_check.py"), self.root, "--json"],
-                           capture_output=True, text=True)
+        r = run_brain(self.root, "check", "--json")
         self.assertEqual((r.returncode, json.loads(r.stdout)["log"]), (0, ["2026-10-02 tidy things -> done"]))
 
     def test_claude_md_lists_every_op_and_relation(self):

@@ -12,9 +12,10 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 
-from support import DECIDED, ENGINE, HOOKS, SCRIPTS, TODAY, TempBrain, ago, page, vaultlib
+from support import DECIDED, ENGINE, HOOKS, SCRIPTS, TODAY, TempBrain, ago, page, run_brain, vaultlib
 
 FIXTURE = os.path.join(ENGINE, "eval", "fixture")
 
@@ -23,22 +24,16 @@ def concept(body="", **fields):
     return page("concept", body, **dict(dict(status="established", created=ago(10), updated=ago(10)), **fields))
 
 
-def script(name, *args, **kw):
-    return subprocess.run([sys.executable, os.path.join(SCRIPTS, name), *args], capture_output=True, text=True, **kw)
-
-
 class NotADirectory(unittest.TestCase):
     """Every command refuses a root that is not a folder, by name, instead of crashing."""
 
     def test_each_command_names_the_missing_folder(self):
         missing = os.path.join(tempfile.gettempdir(), "no-such-brain-here")
-        for name, args in (("link_check.py", [missing]), ("introspect.py", [missing]),
-                           ("graph_export.py", [missing]), ("fingerprint.py", [missing]),
-                           ("export.py", ["x", "--root", missing]), ("timeline.py", ["2026-01", "--root", missing]),
-                           ("search.py", ["search", "x", "--root", missing])):
-            r = script(name, *args)
-            self.assertEqual(r.returncode, 1, name)
-            self.assertIn(f"not a directory: {missing}", r.stderr, name)
+        for args in (["check"], ["introspect"], ["graph"], ["fingerprint"], ["export", "x"], ["since", "2026-01"],
+                     ["search", "x"], ["statusline"], ["errors"], ["resume"]):
+            r = run_brain(missing, *args)
+            self.assertEqual(r.returncode, 1, args)
+            self.assertEqual(r.stderr, f"not a directory: {missing}\n", args)
 
 
 class TextReports(TempBrain):
@@ -62,8 +57,7 @@ class TextReports(TempBrain):
 
     def test_introspect_prints_every_view(self):
         self.populate()
-        out = script("introspect.py", self.root, "--queue", "--links", "--open", "--dormant", "--stale",
-                     "--graph", "--goals", "--remind").stdout
+        out = run_brain(self.root, "introspect", "--queue", "--links", "--open", "--dormant", "--stale", "--graph", "--goals", "--remind").stdout
         for fragment in ("awaiting consolidation, oldest first: 2", "+1 generated",
                          "prediction errors", "blog.md contradicts cortex/concepts/spacing.md (established)",
                          "links that probably belong", "a.md ~ cortex/concepts/b.md",
@@ -72,16 +66,41 @@ class TextReports(TempBrain):
                          "hubs (inbound", "bridges (highest betweenness", "cut points", "clusters (size",
                          "schema candidates", "tags in use", "reminders due: 0"):
             self.assertIn(fragment, out)
-        data = json.loads(script("introspect.py", self.root, "--links", "--json").stdout)
-        self.assertEqual(data["links"][0]["pages"], ["cortex/concepts/a.md", "cortex/concepts/b.md"])
+        self.assertRegex(out, r"(?m)^links           \d+   broken \d+$")  # --links leaves the count of links alone
+        data = json.loads(run_brain(self.root, "introspect", "--links", "--json").stdout)
+        self.assertEqual(data["link_suggestions"][0]["pages"], ["cortex/concepts/a.md", "cortex/concepts/b.md"])
+        self.assertIsInstance(data["links"], int)
+
+    def test_introspect_computes_only_what_was_asked_for(self):
+        self.populate()
+        sys.path.insert(0, SCRIPTS)
+        import introspect
+        asked = json.loads(run_brain(self.root, "introspect", "--due", "--json").stdout)
+        self.assertEqual(list(asked), [*introspect.SUMMARY[:13], "goals", "projects", "calibration", "most_recalled",
+                                       "due", "risk"])  # the summary and the flag's own views, in the report's order
+        whole = json.loads(run_brain(self.root, "introspect", "--json").stdout)
+        self.assertEqual(list(whole), list(introspect.EVERYTHING))
+        self.assertEqual({k: whole[k] for k in asked}, asked)  # a view is the same however it was asked for
+        graph = json.loads(run_brain(self.root, "introspect", "--hubs", "--json").stdout)
+        self.assertIn("hubs", graph)
+        self.assertNotIn("bridges", graph)  # betweenness is not run for a list of hubs
+        vault, calls = self.brain(), []
+        due, pairs = vault.due_for_rehearsal, vault.candidate_pairs
+        vault.due_for_rehearsal = lambda: calls.append("due") or due()
+        vault.candidate_pairs = lambda: calls.append("pairs") or pairs()
+        self.assertEqual(list(introspect.report(vault, ["due"]))[-2:], ["due", "risk"])
+        self.assertEqual(calls, ["due"])  # once for its three views, and the costly view of --queue not at all
+        public = {name for name in introspect.VIEWS if not name.startswith("_")}
+        self.assertEqual(public, set(introspect.ORDER))
+        self.assertLessEqual(set(introspect.SUMMARY).union(*introspect.FLAG_VIEWS.values()), public)
 
     def test_snapshot_first_then_since_and_damaged_lines(self):
         self.populate()
-        first = script("introspect.py", self.root, "--snapshot").stdout
+        first = run_brain(self.root, "introspect", "--snapshot").stdout
         self.assertIn("snapshot recorded: the first one, nothing to compare yet", first)
         with open(os.path.join(self.root, "hippocampus", "metrics.md"), "w", encoding="utf-8") as fh:
             fh.write("2026-01-01 {not json}\n2026-01-02 " + json.dumps({"pages": 1, "links": 0}) + "\n")
-        later = script("introspect.py", self.root, "--snapshot").stdout
+        later = run_brain(self.root, "introspect", "--snapshot").stdout
         self.assertIn("snapshot recorded; since 2026-01-02: pages +", later)  # the damaged line is skipped
 
     def test_context_budget_is_measured_and_growth_is_flagged(self):
@@ -93,7 +112,7 @@ class TextReports(TempBrain):
         self.assertNotIn("description:", body)
         root_file = "# Brain\n" + "A line of the root file.\n" * 200
         self.write("CLAUDE.md", root_file)
-        data = json.loads(script("introspect.py", self.root, "--context", "--json").stdout)
+        data = json.loads(run_brain(self.root, "introspect", "--context", "--json").stdout)
         c = data["context"]
         first = c["every_session"][0]
         self.assertEqual((first["what"], first["bytes"], first["lines"]), ("CLAUDE.md", len(root_file), 201))
@@ -105,11 +124,11 @@ class TextReports(TempBrain):
         self.assertIsNone(c["since"])
         with open(os.path.join(self.root, "hippocampus", "metrics.md"), "w", encoding="utf-8") as fh:
             fh.write("2026-01-02 " + json.dumps({"pages": 1, "session_bytes": c["session_bytes"] - 10}) + "\n")
-        out = script("introspect.py", self.root, "--context").stdout
+        out = run_brain(self.root, "introspect", "--context").stdout
         for fragment in ("loads every session", "loads on use", "since the snapshot of 2026-01-02: every-session "
                          "bytes +10  GROWN", "WARNING: CLAUDE.md is 201 lines", "not counted: what the harness loads"):
             self.assertIn(fragment, out)
-        snap = script("introspect.py", self.root, "--snapshot").stdout
+        snap = run_brain(self.root, "introspect", "--snapshot").stdout
         self.assertIn("session_bytes +10", snap)
         with open(os.path.join(self.root, "hippocampus", "metrics.md"), encoding="utf-8") as fh:
             self.assertIn(f'"session_bytes": {c["session_bytes"]}', fh.read().splitlines()[-1])
@@ -125,13 +144,13 @@ class TextReports(TempBrain):
     def test_check_shortens_long_lists(self):
         for i in range(45):
             self.write(f"cortex/concepts/s{i}.md", concept("short", title=f"S{i}"))
-        out = script("link_check.py", self.root).stdout
+        out = run_brain(self.root, "check").stdout
         self.assertIn("stubs (<40 words, no links): 45", out)
         self.assertIn("... 5 more (use --json)", out)
 
     def test_search_and_recall_text(self):
         self.populate()
-        cmd = lambda *a: script("search.py", *a, "--root", self.root)  # noqa: E731
+        cmd = lambda *a: run_brain(self.root, *a)  # noqa: E731
         recall = cmd("recall", "spacing").stdout
         self.assertIn("hit; ", recall)
         self.assertIn("ask the owner whether these still hold: cortex/concepts/spacing.md", recall)
@@ -143,25 +162,25 @@ class TextReports(TempBrain):
 
     def test_since_text_and_dates(self):
         self.populate()
-        out = script("timeline.py", "2026-09-01", "--until", "2026-09-30", "--root", self.root).stdout
+        out = run_brain(self.root, "since", "2026-09-01", "--until", "2026-09-30").stdout
         for fragment in ("2026-09-01 .. 2026-09-30", "created  5  concept:4 episode:1", "  + cortex/concepts/spacing.md",
                          "operations  recall 1", "rehearsals  0 passed, 0 missed", "questions asked",
                          "  2026-09-02 what is spacing"):
             self.assertIn(fragment, out)
         self.write("cortex/concepts/old.md", concept("Edited lately.", title="Old", created="2025-01-01",
                                                      updated=ago(5)))
-        changed = script("timeline.py", ago(30), "--root", self.root).stdout
+        changed = run_brain(self.root, "since", ago(30)).stdout
         self.assertIn("  ~ cortex/concepts/old.md", changed)
-        bad = script("timeline.py", "last week", "--root", self.root)
+        bad = run_brain(self.root, "since", "last week")
         self.assertEqual(bad.returncode, 1)
         self.assertIn("not a date or a month: last week", bad.stderr)
 
     def test_fingerprint_text(self):
         self.write("senses/a.md", "x")
         self.write("senses/b.md", "y")
-        self.assertEqual(script("fingerprint.py", self.root).stdout,
+        self.assertEqual(run_brain(self.root, "fingerprint").stdout,
                          "fingerprinted 2 inputs\n  senses/a.md\n  senses/b.md\n")
-        self.assertEqual(script("fingerprint.py", self.root).stdout, "fingerprinted 0 inputs\n")
+        self.assertEqual(run_brain(self.root, "fingerprint").stdout, "fingerprinted 0 inputs\n")
 
 
 class EvalReport(unittest.TestCase):
@@ -170,11 +189,11 @@ class EvalReport(unittest.TestCase):
             answers, base = os.path.join(tmp, "answers.json"), os.path.join(tmp, "base.json")
             with open(answers, "w", encoding="utf-8") as fh:
                 json.dump({"q09": "See [[wozniak-sm2]] and [[anki]].", "u01": "Canberra, I believe."}, fh)
-            saved = script("eval.py", "--save-baseline", "--baseline", base, "--answers", answers).stdout
+            saved = run_brain(None, "eval", "--save-baseline", "--baseline", base, "--answers", answers).stdout
             self.assertIn(f"baseline saved to {base}", saved)
             with open(base, encoding="utf-8") as fh:
                 self.assertEqual(json.load(fh)["k"], 5)
-            out = script("eval.py", "--baseline", base, "--answers", answers).stdout
+            out = run_brain(None, "eval", "--baseline", base, "--answers", answers).stdout
         for fragment in ("retrieval over 13 covered questions, top 5", "(baseline hit", "recall missed q10",
                          "uncovered: u01 (0 pages matched words, recall lists 0)", "answers: 2/35 given",
                          "uncovered questions recall still lists pages for: 2 of 6", "recall  rows returned", "held ideas: 2 of 2 questions list the idea they name;", "set paraphrase: 8 questions", "set first: 8 questions",
@@ -187,23 +206,81 @@ class SynthCommand(unittest.TestCase):
     def test_writes_a_new_folder_only(self):
         with tempfile.TemporaryDirectory() as tmp:
             out = os.path.join(tmp, "s")
-            r = script("synth.py", out, "--pages", "49", "--days", "60", "--today", "2026-10-03")
+            r = run_brain(None, "synth", out, "--pages", "49", "--days", "60", "--today", "2026-10-03")
             self.assertEqual(r.returncode, 0, r.stderr)
             self.assertIn("synthetic brain: 49 pages", r.stdout)  # 49 rounds the mix down: padded with episodes
             self.assertEqual(len(vaultlib.Vault(out, today=TODAY).knowledge), 49)
-            again = script("synth.py", out)
+            again = run_brain(None, "synth", out)
             self.assertEqual(again.returncode, 1)
             self.assertIn("already exists", again.stderr)
+
+
+class BenchCommand(unittest.TestCase):
+    def test_times_every_instrument_on_a_brain_it_builds_and_removes(self):
+        import bench
+        import commands
+        made = []
+        build = bench.synth.build
+        bench.synth.build = lambda root, *a, **kw: made.append(root) or build(root, *a, **kw)
+        try:
+            result = commands.call("bench", ["--pages", "12", "--seed", "3"])
+        finally:
+            bench.synth.build = build
+        self.assertEqual((result["pages"], result["seed"], result["repeat"]), (12, 3, 1))
+        self.assertEqual([r["what"] for r in result["commands"]], [label for label, _, _ in bench.COMMANDS])
+        ran = result["commands"] + result["hooks"]
+        self.assertEqual({r["exit"] for r in ran}, {0}, ran)  # a row that failed timed nothing
+        self.assertEqual(len(result["hooks"]), len(bench.WRITE_HOOKS) + 2)  # the briefing first, the sum last
+        self.assertEqual(result["hooks"][-1]["seconds"],
+                         round(sum(r["seconds"] for r in result["hooks"][1:-1]), 3))
+        self.assertEqual([r["what"] for r in result["vault"]][:2], ["Vault() load", "candidate_pairs"])
+        self.assertTrue(all(r["seconds"] >= 0 for group in ("commands", "hooks", "vault") for r in result[group]))
+        self.assertFalse(os.path.exists(made[0]))  # the brain it timed is gone
+        text = bench.render(result, None)
+        self.assertTrue(text.startswith("bench: 12 synthetic pages, "))
+        self.assertNotIn("fastest of", text)
+        self.assertNotIn("(exit", text)
+        self.assertIn(" s  recall, cache empty\n", text)
+        self.assertIn(f" s  the {len(bench.WRITE_HOOKS)} hooks of one Write or Edit, together\n", text)
+
+    def test_the_hooks_it_times_are_the_ones_a_write_starts(self):
+        import bench
+        with open(os.path.join(HOOKS, "hooks.json"), encoding="utf-8") as fh:
+            events = json.load(fh)["hooks"]
+        started = [tuple(h["command"].split("/hooks/")[1].split())
+                   for event in ("PreToolUse", "PostToolUse") for group in events[event]
+                   if "Write" in group["matcher"] for h in group["hooks"]]
+        self.assertEqual(list(bench.WRITE_HOOKS), started)
+
+    def test_a_failed_row_and_repeated_runs_are_said(self):
+        import bench
+        text = bench.render({"pages": 50, "links": 9, "log_lines": 4, "repeat": 3,
+                             "commands": [{"what": "check", "seconds": 0.5, "exit": 1}], "hooks": [], "vault": []}, None)
+        self.assertIn("log lines; each row is the fastest of 3 runs\n", text)
+        self.assertIn("     0.500 s  check  (exit 1)", text)
+
+    def test_fastest_keeps_the_shortest_run_and_the_last_result(self):
+        import bench
+        waits = iter((0.02, 0.0, 0.01))
+        seconds, out = bench.fastest(3, lambda: time.sleep(next(waits)) or "done")
+        self.assertLess(seconds, 0.01)
+        self.assertEqual(out, "done")
+
+    def test_a_brain_too_small_to_time_is_refused_through_the_brain_command(self):
+        r = subprocess.run([sys.executable, os.path.join(ENGINE, "bin", "brain"), "bench", "--pages", "5"],
+                           capture_output=True, text=True)
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("--pages is at least 10", r.stderr)
 
 
 class ExportEdges(TempBrain):
     def test_by_name_and_nothing_to_export(self):
         self.write("cortex/concepts/one.md", concept("Plain.", title="One"))
         out = os.path.join(self.root, "exp")
-        r = script("export.py", "One", "--root", self.root, "--out", out)
+        r = run_brain(self.root, "export", "One", "--out", out)
         self.assertIn("exported 1 pages", r.stdout)
         self.assertTrue(os.path.exists(os.path.join(out, "cortex/concepts/one.md")))
-        none = script("export.py", "--published", "--root", self.root)
+        none = run_brain(self.root, "export", "--published")
         self.assertEqual(none.returncode, 1)
         self.assertIn("nothing to export", none.stderr)
 
@@ -218,7 +295,7 @@ class ChatShapes(TempBrain):
     def convert(self, data, *extra):
         src = self.write("export.json", json.dumps(data))
         out = os.path.join(self.root, "out")
-        r = script("chat_export_to_md.py", src, out, "--min-words", "2", *extra)
+        r = run_brain(None, "chats", src, out, "--min-words", "2", *extra)
         files = sorted(os.listdir(out)) if os.path.isdir(out) else []
         return r, files
 
@@ -296,8 +373,7 @@ class QuietHooks(TempBrain):
             self.assertEqual(r.returncode, 0, r.stderr)
             self.assertNotIn("Engine", r.stdout)
             env = dict(os.environ, PATH=empty)
-            check = subprocess.run([sys.executable, os.path.join(SCRIPTS, "link_check.py"), self.root, "--json"],
-                                   capture_output=True, text=True, env=env)
+            check = run_brain(self.root, "check", "--json", env=env)
             self.assertEqual(json.loads(check.stdout)["history"], [])
         finally:
             os.rmdir(empty)
@@ -318,7 +394,7 @@ class Decisions(TempBrain):
         self.git("commit", "-qm", "one")
         self.write("cortex/decisions/open.md", page("decision", "## Expected\nchanged\n", **dict(DECIDED, status="open")))
         os.remove(made)
-        r = script("link_check.py", self.root, "--json")
+        r = run_brain(self.root, "check", "--json")
         self.assertEqual(json.loads(r.stdout)["history"],
                          ["cortex/decisions/made.md: a decided decision was removed since the last commit"])
 
@@ -445,7 +521,7 @@ class Branches(TempBrain):
             {"title": "g", "mapping": {"s": {"message": {"author": {"role": "system"}, "content": {"parts": ["rules"]}}},
                                        "u": {"message": {"author": {"role": "user"}, "content": {"parts": ["hi all"]}}}}}]))
         out = os.path.join(self.root, "out")
-        script("chat_export_to_md.py", src, out, "--min-words", "2")
+        run_brain(None, "chats", src, out, "--min-words", "2")
         with open(os.path.join(out, "g.md"), encoding="utf-8") as fh:
             self.assertNotIn("rules", fh.read())
         self.assertEqual(len(os.listdir(out)), 2)
@@ -456,13 +532,13 @@ class Branches(TempBrain):
         self.write("cortex/decisions/d.md", page("decision", "## Expected\n- [hypothesis] Works.\n## Decision\n"
                                                  "- [decision] Go.\n## Outcome\n- [hypothesis] Works. -> held\n",
                                                  **fields))
-        decisions = script("introspect.py", self.root, "--decisions").stdout
+        decisions = run_brain(self.root, "introspect", "--decisions").stdout
         self.assertIn("hypothesis lines in reviewed decisions: held 1", decisions)
         self.assertNotIn("assumption lines", decisions)  # nothing to say about a tag with no results
-        found = script("search.py", "search", "spacing", "--root", self.root).stdout
+        found = run_brain(self.root, "search", "spacing").stdout
         self.assertRegex(found, r'^search: "spacing"\n +\d+\.\d{3}  cortex/concepts/spacing\.md\n'
                                 r' +\(no summary: open the page to judge it\)\n$')  # no recall detail
-        self.assertNotIn("answers:", script("eval.py").stdout)
+        self.assertNotIn("answers:", run_brain(None, "eval").stdout)
 
     def test_on_a_case_sensitive_system_senses_is_spelled_exactly(self):
         sys.path.insert(0, HOOKS)
@@ -524,6 +600,6 @@ class VerdictLine(TempBrain):
     def test_a_brain_big_enough_to_judge_gets_no_size_warning(self):
         for i in range(10):
             self.write(f"cortex/concepts/c{i}.md", concept(f"[[c{(i + 1) % 10}]] " + "word " * 40, title=f"C{i}"))
-        out = script("introspect.py", self.root).stdout
+        out = run_brain(self.root, "introspect").stdout
         self.assertIn("avg degree      2.00   acceptable", out)
         self.assertNotIn("verdict:", out)

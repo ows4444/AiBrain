@@ -13,6 +13,7 @@ What it prints is a pointer, not an answer: the model still reads the pages
 and still logs its recall line. Fails silent on any error: a prompt is never
 blocked or delayed by this.
 """
+import contextlib
 import datetime
 import json
 import os
@@ -52,5 +53,8 @@ if __name__ == "__main__":
     try:
         main()
     except Exception:  # noqa: BLE001  never in the way of a prompt
-        pass
+        with contextlib.suppress(Exception):  # the log must not add a way to fail
+            sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
+            from errlog import note
+            note("prompt_recall", "error")
     sys.exit(0)

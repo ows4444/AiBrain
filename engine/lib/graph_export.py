@@ -1,8 +1,7 @@
-#!/usr/bin/env python3
 """Export the brain's wikilink graph as CSV edges or GraphML.
 
 Usage:
-    brain graph [out] [--format csv|graphml]
+    brain graph [out] [--format csv|graphml] [--json]
 
 Default output is motor/graph/edges.csv (or graph.graphml), which git ignores.
 CSV loads into NetworkX, Kuzu, Neo4j or a spreadsheet. GraphML opens in Gephi.
@@ -10,7 +9,6 @@ Node ids are root-relative paths, so two pages with the same name never merge.
 An edge carries its relation when the link is typed (`(supports:: [[X]])`).
 No dependencies.
 """
-import argparse
 import csv
 import os
 import sys
@@ -53,27 +51,22 @@ def write_graphml(path, pages, edges, relations):
         fh.write("</graph>\n</graphml>\n")
 
 
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("root", nargs="?", default=".")
+def arguments(ap):
     ap.add_argument("out", nargs="?")
     ap.add_argument("--format", choices=["csv", "graphml"], default="csv")
-    args = ap.parse_args()
 
-    if not os.path.isdir(args.root):
-        sys.exit(f"not a directory: {args.root}")
-    out = args.out or os.path.join(
-        args.root, "motor", "graph", "edges.csv" if args.format == "csv" else "graph.graphml")
+
+def run(root, args):
+    out = args.out or os.path.join(root, "motor", "graph", "edges.csv" if args.format == "csv" else "graph.graphml")
     os.makedirs(os.path.dirname(os.path.abspath(out)), exist_ok=True)
-
-    vault = Vault(args.root)
+    vault = Vault(root)
     pages, edges, relations = vault.knowledge, vault.knowledge_edges(), relation_of(vault)
     if args.format == "csv":
         write_csv(out, edges, relations)
     else:
         write_graphml(out, pages, edges, relations)
-    print(f"{len(pages)} nodes, {len(edges)} edges -> {out}")
+    return {"nodes": len(pages), "edges": len(edges), "format": args.format, "out": out}
 
 
-if __name__ == "__main__":
-    main()
+def render(result, args):
+    return f"{result['nodes']} nodes, {result['edges']} edges -> {result['out']}"

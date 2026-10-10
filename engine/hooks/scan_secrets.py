@@ -14,6 +14,7 @@ import sys
 
 START = os.environ.get("CLAUDE_PROJECT_DIR", os.getcwd())
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
+from errlog import note  # noqa: E402
 from secret_scan import scan_file  # noqa: E402
 from vaultlib import find_brain, fold_case, is_brain  # noqa: E402
 
@@ -41,6 +42,7 @@ def main():
         print(f"{rel}: possible credential ({where}). Do not quote it anywhere. Tell the owner the file and "
               "the kind, so they remove it at the source and rotate it; run /guard for the full scan.",
               file=sys.stderr)
+        note("scan_secrets", "secret", f"{rel}: {where}")
         sys.exit(2)
     sys.exit(0)
 

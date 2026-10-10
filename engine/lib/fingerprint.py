@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Record a hash of every input in senses/, so "never edited after it lands" holds without git.
 
 Usage:
@@ -12,13 +11,10 @@ not. A file recorded once is never re-recorded, so a changed input cannot be
 blessed by running this again: the owner restores it, or accepts the change
 by moving the edited copy in as a new input. The only writer of that file.
 """
-import argparse
 import datetime
 import hashlib
-import json
 import os
 import re
-import sys
 
 FINGERPRINTS = os.path.join("hippocampus", "fingerprints.md")
 LINE = re.compile(r"^(\d{4}-\d{2}-\d{2}) ([0-9a-f]{64}) (.+)$")
@@ -117,19 +113,14 @@ def record(root, today=None):
     return new
 
 
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("root", nargs="?", default=".")
-    ap.add_argument("--json", action="store_true")
-    args = ap.parse_args()
-    if not os.path.isdir(args.root):
-        sys.exit(f"not a directory: {args.root}")
-    new = record(args.root)
-    if args.json:
-        print(json.dumps({"recorded": new}, indent=2))
-    else:
-        print(f"fingerprinted {len(new)} input{'s' * (len(new) != 1)}" + "".join(f"\n  {r}" for r in new))
+def arguments(ap):
+    pass  # it takes none: every input with no line yet is recorded
 
 
-if __name__ == "__main__":
-    main()
+def run(root, args):
+    return {"recorded": record(root)}
+
+
+def render(result, args):
+    new = result["recorded"]
+    return f"fingerprinted {len(new)} input{'s' * (len(new) != 1)}" + "".join(f"\n  {r}" for r in new)

@@ -60,8 +60,9 @@ updates earlier pages, never the reverse.
 3. **Scale down.** Run `brain introspect --dormant` (salience 1-3 already
    stretches how long a page may sit unused). Propose, never perform,
    moving those pages to `dormant/`. On approval: log first, move the file,
-   remove it from the index, run `brain check`.
-4. **Record.** Log `DATE sleep <n> episodes -> <counts>`. Metric snapshots
+   run `brain index` and `brain check`.
+4. **Record.** `brain index` (it lists the new pages), then
+   `brain log sleep "<n> episodes" --result "<counts>"`. Metric snapshots
    are `/health snapshot`'s job, monthly; a weekly sleep writing them too
    turns the trend into noise.
 

@@ -24,6 +24,7 @@ import sys
 
 START = os.environ.get("CLAUDE_PROJECT_DIR", os.getcwd())
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
+from errlog import note  # noqa: E402
 from vaultlib import (MEMORY_DIRS, PROJECTS_DIR, find_brain, fold_case, is_brain, schema_problems,  # noqa: E402
                       summary_problems, tag_vocabulary)
 
@@ -96,6 +97,7 @@ def main():
     if problems:
         lead = f"Blocked before writing {rel}" if pre else rel
         print(f"{lead}: " + "; ".join(problems) + ". See CLAUDE.md > Page contracts.", file=sys.stderr)
+        note("validate_page", "schema", f"{rel}: " + "; ".join(problems))
         sys.exit(2)
     sys.exit(0)
 

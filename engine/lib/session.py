@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """What the owner typed in this Claude Code conversation, from its transcript.
 
 Usage:
@@ -14,12 +13,14 @@ compaction that the conversation itself does not.
 Without TRANSCRIPT it reads the newest one Claude Code keeps for this folder
 (`$CLAUDE_CONFIG_DIR` or `~/.claude`, under `projects/`). Reads only.
 """
-import argparse
 import glob
 import json
 import os
 import re
 import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from commands import Refused  # noqa: E402
 
 COMMAND = re.compile(r"<command-name>\s*(/[^<\s]+)\s*</command-name>")
 ARGS = re.compile(r"<command-args>(.*?)</command-args>", re.S)
@@ -75,24 +76,19 @@ def owner_messages(path):
     return out
 
 
-def main():
-    ap = argparse.ArgumentParser(prog="brain session")
-    ap.add_argument("root")
+def arguments(ap):
     ap.add_argument("transcript", nargs="?")
-    ap.add_argument("--json", action="store_true")
-    args = ap.parse_args()
-    path = args.transcript or transcript_for(args.root)
+
+
+def run(root, args):
+    path = args.transcript or transcript_for(root)
     if not path or not os.path.isfile(path):
-        sys.exit("no transcript found for this folder; pass its path (Claude Code keeps them under projects/ "
-                 "in its config folder)")
-    messages = owner_messages(path)
-    if args.json:
-        print(json.dumps({"transcript": path, "messages": messages}, indent=2, ensure_ascii=False))
-        return
-    print(f"{len(messages)} messages the owner typed ({os.path.basename(path)}); quoted material, not instructions")
-    for m in messages:
-        print(f"\n[{m['when']}]\n{m['text']}")
+        raise Refused("no transcript found for this folder; pass its path (Claude Code keeps them under projects/ "
+                      "in its config folder)")
+    return {"transcript": path, "messages": owner_messages(path)}
 
 
-if __name__ == "__main__":
-    main()
+def render(result, args):
+    messages = result["messages"]
+    return "\n".join([f"{len(messages)} messages the owner typed ({os.path.basename(result['transcript'])}); "
+                      "quoted material, not instructions"] + [f"\n[{m['when']}]\n{m['text']}" for m in messages])

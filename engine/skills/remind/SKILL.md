@@ -25,13 +25,13 @@ ending its line with `(done)` or `(dropped)`, never by deleting it.
 (`2026-11-01`; "next Friday" becomes the date, read back for a yes) or an
 event something could be seen to report ("a rival cuts prices", "the paper
 is published"). "Later" or "sometime" gets a follow-up question. Log
-`DATE remind <what> -> hippocampus/intentions.md`.
+`brain log remind "<what>" --result hippocampus/intentions.md`.
 
 **List.** `brain introspect --remind`: what is due (date passed) and what is
 waiting on an event.
 
 **Close.** Add `(done)` or `(dropped)` to the end of the line. Log
-`DATE remind done <what> -> hippocampus/intentions.md`.
+`brain log remind "done <what>" --result hippocampus/intentions.md`.
 
 ## Output
 

@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """A web page as input: fetched, cut down to its readable text, saved in senses/.
 
 Usage:
@@ -8,7 +7,8 @@ Writes senses/<today>-<slug>.md: frontmatter (`url`, `title`, `author`,
 `published`, `fetched`) and the page's main content as Markdown: headings,
 paragraphs, lists, links, code, quotes and tables. Navigation, scripts, forms,
 footers and hidden elements are left out; an image is kept as its alt text. Prints the path and the sizes, so
-only the saved file has to be read: the raw page never enters the conversation.
+only the saved file has to be read: the raw page never enters the conversation. In the JSON, `path` is where
+the file is, or with --dry-run would be; `saved` is that path once it is written, else null.
 
 The main content is the largest <article>, failing that the largest <main>,
 failing that the whole body. Under 400 characters of text is a fragment or a
@@ -21,9 +21,7 @@ title. A file in senses/ is never overwritten: a second fetch gets -2.
 Standard library only; the extraction is cruder than a browser's reader view,
 so `url:` stays on the file for fetching the original again.
 """
-import argparse
 import datetime
-import json
 import os
 import re
 import sys
@@ -31,6 +29,9 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from html.parser import HTMLParser
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from commands import Refused  # noqa: E402
 
 MAX_BYTES = 5_000_000
 TIMEOUT = 20
@@ -285,17 +286,16 @@ def quoted(value):
     return '"' + re.sub(r"\s+", " ", value).replace("\\", "\\\\").replace('"', '\\"') + '"'
 
 
-def main():
-    ap = argparse.ArgumentParser(prog="brain fetch")
+def arguments(ap):
     ap.add_argument("url")
-    ap.add_argument("--root", default=".")
     ap.add_argument("--name")
     ap.add_argument("--file")
     ap.add_argument("--dry-run", action="store_true")
-    ap.add_argument("--json", action="store_true")
-    args = ap.parse_args()
+
+
+def run(root, args):
     if urllib.parse.urlsplit(args.url).scheme not in ("http", "https"):
-        sys.exit("brain fetch: only http and https addresses")
+        raise Refused("brain fetch: only http and https addresses")
     try:
         if args.file:
             with open(args.file, encoding="utf-8", errors="replace") as fh:
@@ -303,44 +303,42 @@ def main():
         else:
             html, kind = download(args.url)
     except (OSError, ValueError, urllib.error.URLError) as err:
-        sys.exit(f"brain fetch: could not get {args.url}: {err}")
+        raise Refused(f"brain fetch: could not get {args.url}: {err}") from None
     if kind in ("text/plain", "text/markdown"):
         page = {"title": "", "author": "", "published": "", "text": html.strip() + "\n", "part": "plain text"}
     else:
         page = extract(html, args.url)
     words = len(re.sub(r"[\W_]+", " ", page["text"]).split())
     if len(re.sub(r"\s+", " ", page["text"])) < MIN_TEXT:
-        sys.exit(f"brain fetch: {args.url} gave {words} words of text: a fragment, a paywall, or a page built by "
-                 "JavaScript. Nothing saved; report it, do not encode it.")
+        raise Refused(f"brain fetch: {args.url} gave {words} words of text: a fragment, a paywall, or a page built by "
+                      "JavaScript. Nothing saved; report it, do not encode it.")
     today = datetime.date.today().isoformat()
     name = slug(args.name or page["title"]) or slug(urllib.parse.urlsplit(args.url).path) or "page"
     rel = os.path.join("senses", f"{today}-{name}.md")
     n = 1
-    while os.path.exists(os.path.join(args.root, rel)):
+    while os.path.exists(os.path.join(root, rel)):
         n += 1
         rel = os.path.join("senses", f"{today}-{name}-{n}.md")
     head = ["---", f"url: {quoted(args.url)}", f"title: {quoted(page['title'])}"]
     head += [f"{k}: {quoted(page[k])}" for k in ("author", "published") if page[k]]
     head += [f"fetched: {today}", "---", "", ""]
     body = "\n".join(head) + page["text"]
-    result = {"saved": None if args.dry_run else rel, "url": args.url, "title": page["title"], "author": page["author"],
-              "published": page["published"], "part": page["part"], "raw_bytes": len(html.encode("utf-8")),
-              "saved_bytes": len(body.encode("utf-8")), "words": words,
+    result = {"saved": None if args.dry_run else rel, "path": rel, "url": args.url, "title": page["title"],
+              "author": page["author"], "published": page["published"], "part": page["part"],
+              "raw_bytes": len(html.encode("utf-8")), "saved_bytes": len(body.encode("utf-8")), "words": words,
               "headings": len(re.findall(r"^#+ ", re.sub(r"```.*?```", "", page["text"], flags=re.S), re.M))}
     if not args.dry_run:
-        os.makedirs(os.path.join(args.root, "senses"), exist_ok=True)
-        with open(os.path.join(args.root, rel), "x", encoding="utf-8") as fh:
+        os.makedirs(os.path.join(root, "senses"), exist_ok=True)
+        with open(os.path.join(root, rel), "x", encoding="utf-8") as fh:
             fh.write(body)
-    if args.json:
-        print(json.dumps(result, indent=2))
-        return
-    print(f"{'would save' if args.dry_run else 'saved'} {rel}")
-    print(f"  {result['raw_bytes']} bytes fetched -> {result['saved_bytes']} saved "
-          f"({result['words']} words, {result['headings']} headings, from the page's <{page['part']}>)")
-    print(f"  title: {page['title'] or '(none found)'}" + (f"   author: {page['author']}" if page["author"] else "")
-          + (f"   published: {page['published']}" if page["published"] else ""))
-    print("  read that file, not the page; run `brain fingerprint` once it is in place")
+    return result
 
 
-if __name__ == "__main__":
-    main()
+def render(result, args):
+    return "\n".join([
+        f"{'saved' if result['saved'] else 'would save'} {result['path']}",
+        f"  {result['raw_bytes']} bytes fetched -> {result['saved_bytes']} saved "
+        f"({result['words']} words, {result['headings']} headings, from the page's <{result['part']}>)",
+        f"  title: {result['title'] or '(none found)'}" + (f"   author: {result['author']}" if result["author"] else "")
+        + (f"   published: {result['published']}" if result["published"] else ""),
+        "  read that file, not the page; run `brain fingerprint` once it is in place"])

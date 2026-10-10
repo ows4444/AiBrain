@@ -1,9 +1,8 @@
-#!/usr/bin/env python3
 """Export pages for use outside the brain, without leaking what was not exported.
 
 Usage:
-    brain export PAGE ... [--out motor/export]
-    brain export --published [--out motor/export]
+    brain export PAGE ... [--out motor/export] [--json]
+    brain export --published [--out motor/export] [--json]
 
 PAGE is a file name, title or alias. --published takes every page marked
 `publish: true` (opt-in only; nothing is exported because it was not excluded).
@@ -15,12 +14,12 @@ describe the brain rather than the content (those marked private in
 `vaultlib.FIELDS`: input, tags, status, review, outcome, ...) are dropped.
 Writes only under --out; never modifies the brain.
 """
-import argparse
 import os
 import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from commands import Refused  # noqa: E402
 from vaultlib import LINK, PRIVATE_FIELDS, Vault  # noqa: E402
 FIELD = re.compile(r"^([\w-]+):")
 
@@ -56,18 +55,15 @@ def rewrite_links(text, vault, exported, leaked=None):
     return LINK.sub(replace, text)
 
 
-def main():
-    ap = argparse.ArgumentParser()
+def arguments(ap):
     ap.add_argument("pages", nargs="*")
-    ap.add_argument("--root", default=".")
     ap.add_argument("--published", action="store_true")
     ap.add_argument("--out")
     ap.add_argument("--keep-titles", action="store_true")
-    args = ap.parse_args()
 
-    if not os.path.isdir(args.root):
-        sys.exit(f"not a directory: {args.root}")
-    vault = Vault(args.root)
+
+def run(root, args):
+    vault = Vault(root)
     if args.published:
         chosen = [p for p in vault.knowledge if p.fields.get("publish") == "true"]
     else:
@@ -79,17 +75,17 @@ def main():
             else:
                 missing.append(name)
         if missing:
-            sys.exit(f"no page named: {', '.join(missing)}")
+            raise Refused(f"no page named: {', '.join(missing)}")
     if not chosen:
-        sys.exit("nothing to export (pass page names, or --published with pages marked publish: true)")
+        raise Refused("nothing to export (pass page names, or --published with pages marked publish: true)")
 
     out = args.out or os.path.join(vault.root, "motor", "export")
     exported, unlinked, leaked = set(chosen), 0, set()
     texts = {page: rewrite_links(strip_frontmatter(page.text), vault, exported, leaked) for page in chosen}
     if leaked and not args.keep_titles:
-        sys.exit("not exported: these pages are not in the export, and their titles would leave as plain text: "
-                 + ", ".join(sorted(p.title for p in leaked))
-                 + ". Export them too, write the links as [[page|label]], or pass --keep-titles.")
+        raise Refused("not exported: these pages are not in the export, and their titles would leave as plain text: "
+                      + ", ".join(sorted(p.title for p in leaked))
+                      + ". Export them too, write the links as [[page|label]], or pass --keep-titles.")
     for page, text in texts.items():
         before = len(LINK.findall(page.text))
         unlinked += before - len(LINK.findall(text))
@@ -97,8 +93,9 @@ def main():
         os.makedirs(os.path.dirname(dest), exist_ok=True)
         with open(dest, "w", encoding="utf-8") as fh:
             fh.write(text)
-    print(f"exported {len(chosen)} pages to {out}; {unlinked} links to unexported pages made plain text")
+    return {"exported": [page.rel for page in chosen], "out": out, "unlinked": unlinked}
 
 
-if __name__ == "__main__":
-    main()
+def render(result, args):
+    return (f"exported {len(result['exported'])} pages to {result['out']}; "
+            f"{result['unlinked']} links to unexported pages made plain text")

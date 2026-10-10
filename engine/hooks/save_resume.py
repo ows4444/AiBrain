@@ -7,9 +7,10 @@ changed and not committed, the last command that failed in this session with
 its error, and the last log lines. The briefing (wake_up.py) points at it
 while it is newer than the log, which is the case right after a compaction.
 
-Also `brain resume`: the same note written on request, for example at a
-commit, the natural place to compact or stop. It never blocks a compaction:
-any failure ends silently with exit 0.
+Also `brain resume [--json]`: the same note written on request, for example
+at a commit, the natural place to compact or stop; it prints where the note is
+and the note. The hook never blocks a compaction: any failure leaves one line
+in the error log (`brain errors`) and ends with exit 0.
 
 The active project is the live one (status not `done`) named by the newest
 log line that names any; failing that, the one whose page changed last.
@@ -21,6 +22,7 @@ import subprocess
 import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
+import errlog  # noqa: E402
 from vaultlib import LOG_LINE, LOG_PATH, Vault, find_brain, is_brain  # noqa: E402
 
 NOTE = "resume.md"
@@ -167,29 +169,35 @@ def note(root, transcript=None, trigger="manual"):
     return os.path.relpath(target, root)
 
 
-def main(argv):
-    manual = "--manual" in argv
-    args = [a for a in argv if a != "--manual"]
-    payload = {}
-    if not manual:
+def arguments(ap):
+    pass  # `brain resume` takes none
+
+
+def run(root, args):
+    rel = note(root)
+    with open(os.path.join(root, rel), encoding="utf-8") as fh:
+        return {"note": rel, "text": fh.read()}
+
+
+def render(result, args):
+    return f"written to {result['note']}\n\n{result['text']}"
+
+
+def main():
+    """The PreCompact hook: Claude Code passes the session on stdin."""
+    try:
         try:
             payload = json.load(sys.stdin)
         except ValueError:
             payload = {}
-    root = args[0] if args else os.environ.get("CLAUDE_PROJECT_DIR") or payload.get("cwd") or os.getcwd()
-    root = find_brain(root) or root  # the brain may be above the folder the session started in
-    if not is_brain(root):
-        return
-    rel = note(root, payload.get("transcript_path"), "manual" if manual else f"compaction, {payload.get('trigger', 'auto')}")
-    if manual:
-        with open(os.path.join(root, rel), encoding="utf-8") as fh:
-            print(f"written to {rel}\n\n{fh.read()}")
+        root = os.environ.get("CLAUDE_PROJECT_DIR") or payload.get("cwd") or os.getcwd()
+        root = find_brain(root) or root  # the brain may be above the folder the session started in
+        if is_brain(root):
+            note(root, payload.get("transcript_path"), f"compaction, {payload.get('trigger', 'auto')}")
+    except Exception:  # noqa: BLE001  a note that cannot be written must not stop a compaction
+        errlog.note("save_resume", "error")
 
 
 if __name__ == "__main__":
-    try:
-        main(sys.argv[1:])
-    except Exception:  # noqa: BLE001  a note that cannot be written must not stop a compaction
-        if "--manual" in sys.argv:
-            raise
+    main()
     sys.exit(0)

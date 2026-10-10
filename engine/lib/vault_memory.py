@@ -5,6 +5,7 @@ Mixed into vaultlib.Vault; relies on its pages, edges and resolve().
 import os
 import re
 from collections import Counter
+from itertools import chain
 
 from vault_events import is_rehearsal_pass, is_rehearsal_miss
 from vault_model import (BRIER_MIN, CHECKPOINT_INPUTS, CHECKPOINT_SLEEPS, CLAIM_RESULTS, CLAIM_SECTIONS, CLAIM_TAGS,
@@ -38,6 +39,22 @@ class MemoryMixin:
     def log_problems(self):
         """Log lines whose operation is not in the vocabulary (CLAUDE.md > Log)."""
         return [f"{day} {op} {rest}" for day, op, rest in self.log_lines() if op not in OPS]
+
+    def log_unresolved(self):
+        """(line, names) for recall and rehearse lines naming a page that is neither here nor in dormant/.
+
+        Such a name strengthens nothing and pairs with nothing: a misspelling, or a page
+        renamed without an alias, merged or removed since. `brain log` refuses one when
+        the line is written; this lists the ones written before it, or around it.
+        """
+        out = []
+        for e in self.events:
+            if e.op not in ("recall", "rehearse") or not e.arrow:
+                continue
+            lost = [t for t in e.targets if self.resolve(t) is None and t.lower() not in self.dormant_names]
+            if lost:
+                out.append((f"{e.date} {e.op} {e.rest}", lost))
+        return out
 
     def usage(self):
         """What has actually been used, from the log and the pages, to decide what stays.
@@ -109,7 +126,7 @@ class MemoryMixin:
 
     def missing_from_index(self):
         """Memory pages no index page links to: index drift."""
-        listed = {b for a, b in self.edges if a.type == "index"}
+        listed = set().union(*(self.out_links[i] for i in self.of_type("index")))
         return sorted((p for p in self.knowledge if p not in listed), key=lambda p: p.rel)
 
     def stale_concepts(self, days=STALE_DAYS):
@@ -238,25 +255,49 @@ class MemoryMixin:
             held.append((row["name"], set(tokens(row["name"])), set(tokens(" ".join([row["name"], *notes]))),
                          {self.source_of(p) for p in row["episodes"]}))
 
+        nothing = frozenset()
+
         def shared(words, other):
             common = words & other
             return common if len(common) >= PAIR_MIN_WORDS and len(common) >= PAIR_OVERLAP * min(len(words), len(other)) \
-                else set()
+                else nothing
+
+        # Nothing is compared with everything. A pair can be listed only when its names share a
+        # word, or its names and notes share PAIR_MIN_WORDS words; both are found from the words:
+        # each word remembers the candidates and the pages holding it.
+        by_name, by_word, holding = {}, {}, {}
+        for at, (_, named, words, _) in enumerate(held):
+            for word in named:
+                by_name.setdefault(word, []).append(at)
+            for word in words:
+                by_word.setdefault(word, []).append(at)
+        paged = [(p, set(tokens(" ".join([p.title, *p.aliases, p.summary or ""]))))
+                 for p in self.knowledge if p.type not in ("episode", "project")]
+        for at, (_, page_words) in enumerate(paged):
+            for word in page_words:
+                holding.setdefault(word, []).append(at)
+
+        def sharing(words, index):
+            """Positions in `index` that hold PAIR_MIN_WORDS or more of these words."""
+            counts = Counter(chain.from_iterable(index.get(word, ()) for word in words))
+            return {at for at, count in counts.items() if count >= PAIR_MIN_WORDS}
 
         pairs = []
         for i, (name, named, words, sources) in enumerate(held):
-            for other, other_named, other_words, other_sources in held[i + 1:]:
+            alike = sharing(words, by_word).union(chain.from_iterable(by_name[word] for word in named))
+            for j in sorted(j for j in alike if j > i):  # the order the tally gives them
+                other, other_named, other_words, other_sources = held[j]
                 if sources == other_sources:
                     continue  # one source listing two ideas means two ideas
-                same_name = named and other_named and 2 * len(named & other_named) >= len(named | other_named)
-                common = named & other_named if same_name else shared(words, other_words)
+                both = named & other_named  # half the words of the two names together, or more
+                same_name = bool(both) and 2 * len(both) >= len(named) + len(other_named) - len(both)
+                common = both if same_name else shared(words, other_words)
                 if common:
                     pairs.append({"a": name, "b": other, "page": None, "why": "names" if same_name else "notes",
                                   "words": sorted(common)})
-            for p in self.knowledge:
-                if p.type in ("episode", "project"):
-                    continue
-                common = shared(words, set(tokens(" ".join([p.title, *p.aliases, p.summary or ""]))))
+            for at in sorted(sharing(words, holding)):  # the pages' own order
+                p, page_words = paged[at]
+                common = shared(words, page_words)
                 if common:
                     pairs.append({"a": name, "b": p.title, "page": p, "why": "page", "words": sorted(common)})
         return pairs
@@ -390,11 +431,11 @@ class MemoryMixin:
         """
         if page.type == "episode":
             return [] if page.generated else [page]
-        against = {a for a, rel, b in self.typed_edges() if rel == "contradicts" and b is page}
-        near = {b for a, b in self.edges if a is page} | {a for a, b in self.edges if b is page}
+        against = self.contradicted_by(page)
+        near = self.links_from(page) | self.in_links.get(page, frozenset())
         found = {p for p in near if p.replayed_by_sleep and not p.generated and p not in against}
         if page.type == "insight":
-            for p in (b for a, b in self.edges if a is page and b.type in ("concept", "entity")):
+            for p in (b for b in self.links_from(page) if b.type in ("concept", "entity")):
                 found |= set(self.evidence_for(p))
         found.discard(page)
         return sorted(found, key=lambda p: p.rel)
@@ -413,7 +454,7 @@ class MemoryMixin:
         """
         sources = {self.source_of(p) for p in self.evidence_for(page)}
         origins = {s.split("/", 1)[0] if s.startswith("url:") else s for s in sources}
-        contradicted = any(rel == "contradicts" and b is page for _, rel, b in self.typed_edges())
+        contradicted = bool(self.contradicted_by(page))
         disputed = "disputed" in as_list(page.fields.get("tags"))
         n, k = len(sources), len(origins)
         if page.type == "episode":

@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Check the brain for broken wikilinks, schema problems, index drift, orphans and stubs.
 
 Usage:
@@ -23,7 +22,10 @@ removed with `brain forget` is marked in the fingerprints and does not fail.
 Exits 1 on a broken link, a schema problem, an ambiguous name, an unknown
 relation, such an observation or such a change, so it can gate a commit;
 this also catches pages written by shell commands, which skip the hook.
-Unknown log operations, open decisions with untagged lines, possible
+Unknown log operations, log lines that are read as nothing (a malformed or
+impossible date), recall and rehearse lines naming a page that is neither here
+nor in dormant/ (`brain log` refuses these as they are written; history may
+hold them for pages since merged), open decisions with untagged lines, possible
 near-duplicate pages and undated facts (a count or a status in the present
 tense, on a concept, entity or insight, with no date and no pointer) are
 reported but do not fail.
@@ -31,8 +33,6 @@ reported but do not fail.
 (listed), naming the file, kind and line, never the value.
 Reads only; never modifies anything.
 """
-import argparse
-import json
 import os
 import re
 import subprocess
@@ -41,7 +41,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from fingerprint import fingerprint_problems, forgotten  # noqa: E402
 from secret_scan import scan_tree  # noqa: E402
-from vaultlib import STUB_WORDS, Vault, owner_file, parse_frontmatter, summary_problems  # noqa: E402
+from vaultlib import STUB_WORDS, Vault, owner_file, parse_frontmatter, summary_problems, unread_lines  # noqa: E402
 
 LIMIT = 40
 APPEND_ONLY = ("hippocampus/log.md", "hippocampus/metrics.md", "hippocampus/fingerprints.md")
@@ -109,27 +109,53 @@ def history_problems(root):
     return problems
 
 
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("root", nargs="?", default=".")
-    ap.add_argument("--json", action="store_true")
-    ap.add_argument("--guard", action="store_true")
-    args = ap.parse_args()
+# The sections of the text report, in order: the key of the result, its heading, how one entry is written.
+SECTIONS = (
+    ("broken", "broken links", lambda b: f"{b['page']} -> [[{b['target']}]]"),
+    ("schema", "schema problems", lambda x: f"{x['page']}: {'; '.join(x['problems'])}"),
+    ("ambiguous", "names more than one page answers to", lambda x: f"{x['name']}: {', '.join(x['pages'])}"),
+    ("shared_names", "titles or aliases pages share, no link uses them yet",
+     lambda x: f"{x['name']}: {', '.join(x['pages'])}"),
+    ("relations", "unknown typed-link relations", lambda x: f"{x['page']}: ({x['relation']}::)"),
+    ("claims", "observations resting only on /explore episodes", lambda x: f"{x['page']}: {x['claim']}"),
+    ("history", "inputs, append-only lines or frozen expectations changed", str),
+    ("secrets", "possible credentials (remove at the source, rotate)", str),
+    ("personal", "personal data (the owner decides)", str),
+    ("untagged", "open decisions with untagged lines (tag them before deciding)", str),
+    ("near_duplicates", "possible near-duplicates (/maintain merge, if they are one idea)",
+     lambda x: f"{' ~ '.join(x['pages'])}  ({x['why']})"),
+    ("undated", "facts that go out of date, with no date or pointer (/maintain: restamp, point or move)",
+     lambda x: f"{x['page']}: {x['line'] if len(x['line']) <= 120 else x['line'][:117] + '...'}"),
+    ("log", "log lines with an unknown operation", str),
+    ("log_unread", "log lines read as nothing (they do not parse, or their date does not exist)", str),
+    ("log_unresolved", "recall lines naming a page that is not here (it strengthens nothing)",
+     lambda x: f"{x['line']}  (not a page: {', '.join(x['names'])})"),
+    ("gaps", "known gaps (listed in the index)", lambda g: f"[[{g}]]"),
+    ("to_dormant", "links to pages that faded to dormant/", str),
+    ("not_in_index", "pages missing from the index (`brain index` lists them)", str),
+    ("orphans", "orphans", str),
+    ("stubs", f"stubs (<{STUB_WORDS} words, no links)", str),
+    ("no_summary", "pages without a summary (recall cannot say what they hold)", str),
+)
+FAILING = ("broken", "schema", "ambiguous", "relations", "claims", "history", "secrets")  # any of these: exit 1
 
-    if not os.path.isdir(args.root):
-        sys.exit(f"not a directory: {args.root}")
-    vault = Vault(args.root)
+
+def arguments(ap):
+    ap.add_argument("--guard", action="store_true")
+
+
+def run(root, args):
+    vault = Vault(root)
     pages = vault.knowledge
     edges = vault.knowledge_edges()
     clashes, unused = vault.ambiguous_names()
     found = scan_tree(vault.root) if args.guard else []
-
-    result = {
+    return {
         "pages": len(pages),
         "links": len(edges),
         "avg_degree": round(2 * len(edges) / len(pages), 2) if pages else 0,
         "broken": [{"page": p.rel, "target": t} for p, t in vault.broken]
-                  + [{"page": f"{owner_file(args.root)} > Goals > {g}", "target": t} for g, t in vault.goal_link_problems()],
+                  + [{"page": f"{owner_file(root)} > Goals > {g}", "target": t} for g, t in vault.goal_link_problems()],
         "ambiguous": [{"name": n, "pages": [p.rel for p in ps]} for n, ps in clashes.items()],
         "shared_names": [{"name": n, "pages": [p.rel for p in ps]} for n, ps in unused.items()],
         "schema": [{"page": p.rel, "problems": probs} for p, probs in vault.schema_problems()],
@@ -143,6 +169,8 @@ def main():
                             for a, b, s, why in vault.near_duplicates()],
         "undated": [{"page": p.rel, "line": line} for p, line in vault.undated_facts()],
         "log": vault.log_problems(),
+        "log_unread": unread_lines(vault.root),
+        "log_unresolved": [{"line": line, "names": lost} for line, lost in vault.log_unresolved()],
         # One entry per gap, spelled as the index's Gaps section lists it.
         "gaps": sorted({t.lower(): t for p, t in sorted(vault.gaps, key=lambda g: g[0].type == "index")}.values(),
                        key=str.lower),
@@ -153,47 +181,19 @@ def main():
         "no_summary": sorted(p.rel for p in vault.knowledge if summary_problems(p.text)),
     }
 
-    if args.json:
-        print(json.dumps(result, indent=2))
-    else:
-        print(f"pages: {result['pages']}")
-        print(f"links: {result['links']} (avg degree {result['avg_degree']})")
-        for key, label, fmt in (
-            ("broken", "broken links", lambda b: f"{b['page']} -> [[{b['target']}]]"),
-            ("schema", "schema problems", lambda x: f"{x['page']}: {'; '.join(x['problems'])}"),
-            ("ambiguous", "names more than one page answers to", lambda x: f"{x['name']}: {', '.join(x['pages'])}"),
-            ("shared_names", "titles or aliases pages share, no link uses them yet",
-             lambda x: f"{x['name']}: {', '.join(x['pages'])}"),
-            ("relations", "unknown typed-link relations", lambda x: f"{x['page']}: ({x['relation']}::)"),
-            ("claims", "observations resting only on /explore episodes", lambda x: f"{x['page']}: {x['claim']}"),
-            ("history", "inputs, append-only lines or frozen expectations changed", str),
-            ("secrets", "possible credentials (remove at the source, rotate)", str),
-            ("personal", "personal data (the owner decides)", str),
-            ("untagged", "open decisions with untagged lines (tag them before deciding)", str),
-            ("near_duplicates", "possible near-duplicates (/maintain merge, if they are one idea)",
-             lambda x: f"{' ~ '.join(x['pages'])}  ({x['why']})"),
-            ("undated", "facts that go out of date, with no date or pointer (/maintain: restamp, point or move)",
-             lambda x: f"{x['page']}: {x['line'] if len(x['line']) <= 120 else x['line'][:117] + '...'}"),
-            ("log", "log lines with an unknown operation", str),
-            ("gaps", "known gaps (listed in the index)", lambda g: f"[[{g}]]"),
-            ("to_dormant", "links to pages that faded to dormant/", str),
-            ("not_in_index", "pages missing from the index", str),
-            ("orphans", "orphans", str),
-            ("stubs", f"stubs (<{STUB_WORDS} words, no links)", str),
-            ("no_summary", "pages without a summary (recall cannot say what they hold)", str),
-        ):
-            if key in ("secrets", "personal") and not args.guard:
-                continue
-            items = result[key]
-            print(f"{label}: {len(items)}")
-            for item in items[:LIMIT]:
-                print(f"  {fmt(item)}")
-            if len(items) > LIMIT:
-                print(f"  ... {len(items) - LIMIT} more (use --json)")
 
-    failing = ("broken", "schema", "ambiguous", "relations", "claims", "history", "secrets")
-    sys.exit(1 if any(result[k] for k in failing) else 0)
+def render(result, args):
+    out = [f"pages: {result['pages']}", f"links: {result['links']} (avg degree {result['avg_degree']})"]
+    for key, label, fmt in SECTIONS:
+        if key in ("secrets", "personal") and not args.guard:
+            continue
+        items = result[key]
+        out.append(f"{label}: {len(items)}")
+        out += [f"  {fmt(item)}" for item in items[:LIMIT]]
+        if len(items) > LIMIT:
+            out.append(f"  ... {len(items) - LIMIT} more (use --json)")
+    return "\n".join(out)
 
 
-if __name__ == "__main__":
-    main()
+def exit_code(result):
+    return 1 if any(result[k] for k in FAILING) else 0

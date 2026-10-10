@@ -52,7 +52,7 @@ The `reviewer` agent can run this whole review in its own context.
    Create nothing without approval.
 9. **Save** (with `save`): write the output below to
    `motor/digest-<YYYY-MM-DD>.md` and log
-   `DATE write digest <period> -> motor/digest-<YYYY-MM-DD>.md`.
+   `brain log write "digest <period>" --result motor/digest-<YYYY-MM-DD>.md`.
 
 ## Output
 

@@ -1,10 +1,7 @@
 """Learning signals: salience, rehearsal order, prediction error, probabilities, intentions, goals, structure. Run: brain test"""
 import json
-import os
-import subprocess
-import sys
 
-from support import DECIDED, SCRIPTS, TempBrain, ago, page, vaultlib
+from support import DECIDED, TempBrain, ago, page, run_brain, vaultlib
 
 
 def concept(body="", **fields):
@@ -51,8 +48,7 @@ class RehearsalOrder(TempBrain):
         v = self.brain()
         self.assertEqual([p.stem for p in v.due_for_rehearsal()], ["salient", "missed", "calm"])
         self.assertEqual(v.miss_risk(v.resolve("missed")), (0.8, 3))
-        r = subprocess.run([sys.executable, os.path.join(SCRIPTS, "introspect.py"), self.root, "--due"],
-                           capture_output=True, text=True)
+        r = run_brain(self.root, "introspect", "--due")
         self.assertIn("misses 80% of 3", r.stdout)
 
 
@@ -66,8 +62,7 @@ class PredictionError(TempBrain):
         self.assertEqual([(a.stem, b.stem) for a, b in v.contradiction_queue()], [("blog", "spacing")])
         out = self.run_hook("wake_up.py", {}).stdout
         self.assertIn("Prediction errors: 1 new inputs contradict a page (blog vs spacing)", out)
-        stats = json.loads(subprocess.run([sys.executable, os.path.join(SCRIPTS, "introspect.py"), self.root,
-                                           "--json"], capture_output=True, text=True).stdout)
+        stats = json.loads(run_brain(self.root, "introspect", "--json").stdout)
         self.assertEqual(stats["contradictions"], [{"episode": "cortex/episodes/blog.md",
                                                     "page": "cortex/concepts/spacing.md", "status": "established"}])
 
@@ -107,8 +102,7 @@ class Probabilities(TempBrain):
         self.assertEqual((b["n"], b["score"], b["enough"]), (2, 0.45, False))
         self.assertEqual(b["buckets"], {"70%": {"n": 1, "held": 1}, "90%": {"n": 1, "held": 0}})
         self.assertEqual(v.reference_class()["unverified"]["outcomes"], {"better": 1})
-        text = subprocess.run([sys.executable, os.path.join(SCRIPTS, "introspect.py"), self.root, "--decisions"],
-                              capture_output=True, text=True).stdout
+        text = run_brain(self.root, "introspect", "--decisions").stdout
         self.assertIn("probabilities: 2 scored, too few to judge (needs 10)", text)
 
     def test_enough_guesses_get_a_score(self):
@@ -129,8 +123,7 @@ class Intentions(TempBrain):
         self.assertEqual([i["text"] for i in v.due_intentions()], ["Renew the domain"])
         self.assertEqual([i["event"] for i in v.waiting_intentions()], ["a rival cuts prices"])
         self.assertIn("Reminders: 1 due (Renew the domain)", self.run_hook("wake_up.py", {}).stdout)
-        text = subprocess.run([sys.executable, os.path.join(SCRIPTS, "introspect.py"), self.root, "--remind"],
-                              capture_output=True, text=True).stdout
+        text = run_brain(self.root, "introspect", "--remind").stdout
         self.assertIn("a rival cuts prices", text)
 
     def test_intentions_type_only_at_its_path(self):
@@ -179,8 +172,7 @@ class Structure(TempBrain):
         self.assertIn(("left", "right"), pairs)
         self.assertIn("3 neighbours shared", pairs[("left", "right")])
         self.assertFalse(any("e1" in pair for pair in pairs))
-        r = subprocess.run([sys.executable, os.path.join(SCRIPTS, "link_check.py"), self.root, "--json"],
-                           capture_output=True, text=True)
+        r = run_brain(self.root, "check", "--json")
         self.assertEqual(len(json.loads(r.stdout)["near_duplicates"]), len(pairs))
 
     def test_schema_candidates(self):
@@ -195,8 +187,7 @@ class Structure(TempBrain):
         u = self.brain().usage()
         self.assertEqual(u["thresholds"]["dormant_days"], vaultlib.DORMANT_DAYS)
         self.assertIn("hebbian_half_life", u["thresholds"])
-        text = subprocess.run([sys.executable, os.path.join(SCRIPTS, "introspect.py"), self.root, "--usage"],
-                              capture_output=True, text=True).stdout
+        text = run_brain(self.root, "introspect", "--usage").stdout
         self.assertIn("rehearsal_days = [1, 3, 7, 14, 30, 60, 120]", text)
 
 

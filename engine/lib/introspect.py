@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """The brain looking at itself: health metrics and the queues sleep works from.
 
 Usage:
@@ -9,7 +8,11 @@ Usage:
 
 Default output is the four health metrics (orphan rate, average degree,
 components, stale-concept rate) with a verdict on each, plus counts and the
-most recalled pages.
+most recalled pages. Only what is asked for is computed: that summary, and
+each flag's own views. `--json` with no flag gives the whole report, apart
+from the graph views and the link suggestions, which cost more; with flags it
+gives the summary and those flags' views. `links` is always the number of
+links; `--links` adds `link_suggestions`.
   --queue    episodes and reviewed decisions awaiting consolidation, and
              candidate ideas by how many distinct sources name them (two or
              more is the bar for a concept page; episodes sharing a url or an
@@ -67,7 +70,6 @@ most recalled pages.
              before the brain (other plugins, connectors) is not visible
              here: `/context` in Claude Code shows it
 """
-import argparse
 import glob
 import json
 import os
@@ -209,82 +211,144 @@ def pct(part, whole):
     return round(100 * part / whole, 1) if whole else 0.0
 
 
-def graph_report(vault):
-    """The expensive views, computed only when asked for."""
-    inbound = vault.inbound()
-    between = vault.betweenness()
-    return {
-        "hubs": [{"page": p.rel, "inbound": inbound[p]} for p in vault.hubs()],
-        "bridges": [{"page": p.rel, "betweenness": round(b, 3)}
-                    for p, b in sorted(between.items(), key=lambda kv: -kv[1])[:TOP] if b > 0],
-        "bridges_estimated": vault.betweenness_estimated(),
-        "cut_points": [p.rel for p in vault.cut_points()],
-        "clusters": [{"size": len(c), "core": [p.title for p in c[:3]]} for c in vault.clusters()],
-        "schema_candidates": [[p.rel for p in c] for c in vault.schema_candidates()],
-        "tags": vault.tag_counts(),
-    }
+def _risk(r):
+    return {p.rel: {"miss_rate": round(risk, 2), "attempts": n}
+            for p in r["_due"] for risk, n in [r.vault.miss_risk(p)] if n >= RISK_MIN_ATTEMPTS}
 
 
-def report(vault, graph=False, links=False):
-    pages, edges = vault.knowledge, vault.knowledge_edges()
-    components = vault.components()
-    concepts, stale = vault.stale_concepts()
-    avg_degree = round(2 * len(edges) / len(pages), 2) if pages else 0
-    orphan_rate = pct(len(vault.orphans()), len(vault.linked_to()))  # records are never orphans
-    main_share = pct(len(components[0]), len(pages)) if components else 0.0
-    result = {
-        "pages": len(pages),
-        "by_type": dict(Counter(p.type for p in pages).most_common()),
-        "links": len(edges),
-        "avg_degree": avg_degree,
-        "orphan_rate": orphan_rate,
-        "components": len(components),
-        "main_component_share": main_share,
-        "verdicts": verdicts(orphan_rate, avg_degree, main_share, len(pages)),
-        "stale_concept_rate": pct(len(stale), len(concepts)),
-        "broken_links": len(vault.broken),
-        "awaiting_consolidation": len(vault.unconsolidated()),
-        "due_for_rehearsal": len(vault.due_for_rehearsal()),
-        "decisions_due": len(vault.decisions_due()),
-        "goals": vault.goal_report(),
-        "projects": vault.project_report(),
-        "relations": dict(sorted(Counter(rel for _, rel, _ in vault.typed_edges()).items())),
-        "calibration": vault.calibration(),
-        "usage": vault.usage(),
-        "most_recalled": [{"page": p.rel, "recalls": n} for p, n in
-                          sorted(vault.recall_count.items(), key=lambda kv: -kv[1])[:10]],
-        "stale": [{"page": p.rel, "updated": p.updated.isoformat()} for p in stale],
-        "queue": [p.rel for p in vault.unconsolidated()],
-        "candidates": [{"name": r["name"], "episodes": len(r["episodes"]), "sources": r["sources"],
-                        "generated": len(r["generated"]), "salient": r["salient"],
-                        "page": r["page"].rel if r["page"] else None} for r in vault.candidate_tally()],
-        "candidate_pairs": [{"a": x["a"], "b": x["b"], "page": x["page"].rel if x["page"] else None,
-                             "why": x["why"], "words": x["words"]} for x in vault.candidate_pairs()],
-        "contradictions": [{"episode": a.rel, "page": b.rel, "status": b.fields.get("status")}
-                           for a, b in vault.contradiction_queue()],
-        "due": [p.rel for p in vault.due_for_rehearsal()],
-        "risk": {p.rel: {"miss_rate": round(r, 2), "attempts": n}
-                 for p in vault.due_for_rehearsal() for r, n in [vault.miss_risk(p)] if n >= RISK_MIN_ATTEMPTS},
-        "decisions": {
-            "due": [{"page": p.rel, "review": p.fields["review"]} for p in vault.decisions_due()],
+def _decisions(r):
+    vault = r.vault
+    return {"due": [{"page": p.rel, "review": p.fields["review"]} for p in r["_decisions_due"]],
             "open": [p.rel for p in vault.of_type("decision") if p.fields.get("status") == "open"],
             "in_force": vault.decision_report(),
             "claim_results": vault.claim_results(),
             "brier": vault.brier(),
-            "reference_class": vault.reference_class(),
-        },
-        "intentions": {"due": [{"text": i["text"], "when": i["when"]} for i in vault.due_intentions()],
-                       "waiting": [{"text": i["text"], "when": i["when"]} for i in vault.waiting_intentions()]},
-        "dormant": [p.rel for p in vault.dormant_candidates()],
-        "open": {k: [p.rel if not isinstance(p, tuple) else f"{p[0].rel} contradicts {p[1].rel}" for p in v]
-                 for k, v in vault.open_items().items()},
-    }
-    if graph:
-        result.update(graph_report(vault))
-    if links:
-        result["links"] = [{"pages": [a.rel, b.rel], "score": s, "why": why}
-                           for a, b, s, why in vault.link_suggestions()]
-    return result
+            "reference_class": vault.reference_class()}
+
+
+def _bridges(r):
+    between = r.vault.betweenness()
+    return [{"page": p.rel, "betweenness": round(b, 3)}
+            for p, b in sorted(between.items(), key=lambda kv: -kv[1])[:TOP] if b > 0]
+
+
+def _hubs(r):
+    inbound = r.vault.inbound()
+    return [{"page": p.rel, "inbound": inbound[p]} for p in r.vault.hubs()]
+
+
+# Every view of the report, by name. A view is computed when it is first asked for and kept
+# (Report), and may ask for others. A name that starts with `_` is a part several views
+# share: computed once, never printed.
+VIEWS = {
+    "_components": lambda r: r.vault.components(),
+    "_stale": lambda r: r.vault.stale_concepts(),  # (every concept, the stale ones)
+    "_queue": lambda r: r.vault.unconsolidated(),
+    "_due": lambda r: r.vault.due_for_rehearsal(),
+    "_decisions_due": lambda r: r.vault.decisions_due(),
+    "pages": lambda r: len(r.vault.knowledge),
+    "by_type": lambda r: dict(Counter(p.type for p in r.vault.knowledge).most_common()),
+    "links": lambda r: len(r.vault.knowledge_edges()),
+    "avg_degree": lambda r: round(2 * r["links"] / r["pages"], 2) if r["pages"] else 0,
+    "orphan_rate": lambda r: pct(len(r.vault.orphans()), len(r.vault.linked_to())),  # records are never orphans
+    "components": lambda r: len(r["_components"]),
+    "main_component_share": lambda r: pct(len(r["_components"][0]), r["pages"]) if r["_components"] else 0.0,
+    "verdicts": lambda r: verdicts(r["orphan_rate"], r["avg_degree"], r["main_component_share"], r["pages"]),
+    "stale_concept_rate": lambda r: pct(len(r["_stale"][1]), len(r["_stale"][0])),
+    "broken_links": lambda r: len(r.vault.broken),
+    "awaiting_consolidation": lambda r: len(r["_queue"]),
+    "due_for_rehearsal": lambda r: len(r["_due"]),
+    "decisions_due": lambda r: len(r["_decisions_due"]),
+    "goals": lambda r: r.vault.goal_report(),
+    "projects": lambda r: r.vault.project_report(),
+    "relations": lambda r: dict(sorted(Counter(rel for _, rel, _ in r.vault.typed_edges()).items())),
+    "calibration": lambda r: r.vault.calibration(),
+    "usage": lambda r: r.vault.usage(),
+    "most_recalled": lambda r: [{"page": p.rel, "recalls": n} for p, n in
+                                sorted(r.vault.recall_count.items(), key=lambda kv: -kv[1])[:10]],
+    "stale": lambda r: [{"page": p.rel, "updated": p.updated.isoformat()} for p in r["_stale"][1]],
+    "queue": lambda r: [p.rel for p in r["_queue"]],
+    "candidates": lambda r: [{"name": c["name"], "episodes": len(c["episodes"]), "sources": c["sources"],
+                              "generated": len(c["generated"]), "salient": c["salient"],
+                              "page": c["page"].rel if c["page"] else None} for c in r.vault.candidate_tally()],
+    "candidate_pairs": lambda r: [{"a": x["a"], "b": x["b"], "page": x["page"].rel if x["page"] else None,
+                                   "why": x["why"], "words": x["words"]} for x in r.vault.candidate_pairs()],
+    "contradictions": lambda r: [{"episode": a.rel, "page": b.rel, "status": b.fields.get("status")}
+                                 for a, b in r.vault.contradiction_queue()],
+    "due": lambda r: [p.rel for p in r["_due"]],
+    "risk": _risk,
+    "decisions": _decisions,
+    "intentions": lambda r: {"due": [{"text": i["text"], "when": i["when"]} for i in r.vault.due_intentions()],
+                             "waiting": [{"text": i["text"], "when": i["when"]}
+                                         for i in r.vault.waiting_intentions()]},
+    "dormant": lambda r: [p.rel for p in r.vault.dormant_candidates()],
+    "open": lambda r: {k: [p.rel if not isinstance(p, tuple) else f"{p[0].rel} contradicts {p[1].rel}" for p in v]
+                       for k, v in r.vault.open_items().items()},
+    # The graph views cost more (betweenness is pages x links), so they come only when asked for.
+    "hubs": _hubs,
+    "bridges": _bridges,
+    "bridges_estimated": lambda r: r.vault.betweenness_estimated(),
+    "cut_points": lambda r: [p.rel for p in r.vault.cut_points()],
+    "clusters": lambda r: [{"size": len(c), "core": [p.title for p in c[:3]]} for c in r.vault.clusters()],
+    "schema_candidates": lambda r: [[p.rel for p in c] for c in r.vault.schema_candidates()],
+    "tags": lambda r: r.vault.tag_counts(),
+    "link_suggestions": lambda r: [{"pages": [a.rel, b.rel], "score": s, "why": why}
+                                   for a, b, s, why in r.vault.link_suggestions()],
+}
+# What the default output prints, and so what every run computes.
+SUMMARY = ("pages", "by_type", "links", "avg_degree", "orphan_rate", "components", "main_component_share", "verdicts",
+           "stale_concept_rate", "broken_links", "awaiting_consolidation", "due_for_rehearsal", "decisions_due",
+           "goals", "projects", "calibration", "most_recalled")
+# What each flag adds to the summary. --goals and --projects print views the summary already holds.
+FLAG_VIEWS = {
+    "queue": ("queue", "candidates", "candidate_pairs", "contradictions"),
+    "due": ("due", "risk"),
+    "decisions": ("decisions",),
+    "open": ("open",),
+    "goals": (),
+    "projects": (),
+    "dormant": ("dormant",),
+    "stale": ("stale",),
+    "remind": ("intentions",),
+    "links": ("link_suggestions",),
+    "hubs": ("hubs",),
+    "bridges": ("bridges", "bridges_estimated", "cut_points"),
+    "clusters": ("clusters", "schema_candidates"),
+    "tags": ("tags",),
+    "usage": ("usage",),
+}
+# `--json` with no flag: the whole report, apart from the graph views and the link suggestions.
+EVERYTHING = ("pages", "by_type", "links", "avg_degree", "orphan_rate", "components", "main_component_share",
+              "verdicts", "stale_concept_rate", "broken_links", "awaiting_consolidation", "due_for_rehearsal",
+              "decisions_due", "goals", "projects", "relations", "calibration", "usage", "most_recalled", "stale",
+              "queue", "candidates", "candidate_pairs", "contradictions", "due", "risk", "decisions", "intentions",
+              "dormant", "open")
+ORDER = EVERYTHING + ("hubs", "bridges", "bridges_estimated", "cut_points", "clusters", "schema_candidates", "tags",
+                      "link_suggestions")
+GRAPH = ("hubs", "bridges", "clusters", "tags")  # the flags `--graph` stands for
+
+
+class Report:
+    """The report, a view at a time: each view is computed when first asked for, and kept."""
+
+    def __init__(self, vault):
+        self.vault = vault
+        self.kept = {}
+
+    def __getitem__(self, name):
+        if name not in self.kept:
+            self.kept[name] = VIEWS[name](self)
+        return self.kept[name]
+
+    def only(self, names):
+        """{name: view} for these views, in the report's own order."""
+        return {name: self[name] for name in ORDER if name in names}
+
+
+def report(vault, flags=(), everything=False):
+    """The views a run needs: the summary and what each flag adds, or `everything` (`--json` with no flag)."""
+    names = set(EVERYTHING) if everything else set(SUMMARY).union(*(FLAG_VIEWS[flag] for flag in flags))
+    return Report(vault).only(names)
 
 
 def brier_line(b):
@@ -306,171 +370,164 @@ def decision_line(d):
             + ("  (rests mostly on guesses)" if guesses > seen else ""))
 
 
-def print_list(title, rows):
-    print(f"\n{title}: {len(rows)}")
-    for row in rows:
-        print(f"  {row}")
+def listed(title, rows):
+    return [f"\n{title}: {len(rows)}"] + [f"  {row}" for row in rows]
 
 
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("root", nargs="?", default=".")
-    ap.add_argument("--json", action="store_true")
-    for flag in ("stale", "queue", "due", "decisions", "open", "goals", "projects", "dormant", "snapshot",
-                 "hubs", "bridges", "clusters", "tags", "graph", "usage", "remind", "links", "context"):
+def arguments(ap):
+    for flag in (*FLAG_VIEWS, "graph", "snapshot", "context"):
         ap.add_argument(f"--{flag}", action="store_true")
-    args = ap.parse_args()
-    if args.graph:
-        args.hubs = args.bridges = args.clusters = args.tags = True
 
-    if not os.path.isdir(args.root):
-        sys.exit(f"not a directory: {args.root}")
-    vault = Vault(args.root)
-    r = report(vault, graph=args.hubs or args.bridges or args.clusters or args.tags, links=args.links)
+
+def asked(args):
+    """The flags a run was given, `--graph` spelled out as the four views it stands for."""
+    return [flag for flag in (*FLAG_VIEWS, "snapshot", "context")
+            if getattr(args, flag) or (args.graph and flag in GRAPH)]
+
+
+def run(root, args):
+    vault = Vault(root)
+    flags = [flag for flag in asked(args) if flag in FLAG_VIEWS]
+    r = report(vault, flags, everything=args.json and not flags)
     if args.context or args.snapshot:
-        budget = context_budget(args.root)
-        budget["since"] = context_since(args.root, budget, vault.today.isoformat())
+        budget = context_budget(root)
+        budget["since"] = context_since(root, budget, vault.today.isoformat())
         r["session_bytes"] = budget["session_bytes"]
         if args.context:
             r["context"] = budget
     if args.snapshot:
-        previous, current, changes = snapshot(args.root, r, vault.today.isoformat())
+        previous, current, changes = snapshot(root, r, vault.today.isoformat())
         r["snapshot"] = {"since": previous[0] if previous else None, "changes": changes}
+    return r
 
-    if args.json:
-        print(json.dumps(r, indent=2))
-        return
 
-    print(f"pages           {r['pages']}  " + " ".join(f"{t}:{c}" for t, c in r["by_type"].items()))
-    print(f"links           {r['links']}   broken {r['broken_links']}")
+def render(r, args):
+    show = asked(args)
     v = r["verdicts"]
-    print(f"avg degree      {r['avg_degree']:.2f}   {v.get('avg_degree', '')}")
-    print(f"orphan rate     {r['orphan_rate']}%   {v.get('orphan_rate', '(healthy under 5)')}")
-    print(f"components      {r['components']}   (main holds {r['main_component_share']}%) {v.get('components', '')}")
-    print(f"stale concepts  {r['stale_concept_rate']}%   (untouched {STALE_DAYS}+ days)")
-    print(f"to consolidate  {r['awaiting_consolidation']} pages   due to rehearse {r['due_for_rehearsal']}")
     reviewed = sum(r["calibration"].values())
-    print(f"decisions       {r['decisions_due']} due for review   {reviewed} reviewed"
-          + (" (" + ", ".join(f"{k} {n}" for k, n in r["calibration"].items() if n) + ")" if reviewed else ""))
+    out = [f"pages           {r['pages']}  " + " ".join(f"{t}:{c}" for t, c in r["by_type"].items()),
+           f"links           {r['links']}   broken {r['broken_links']}",
+           f"avg degree      {r['avg_degree']:.2f}   {v.get('avg_degree', '')}",
+           f"orphan rate     {r['orphan_rate']}%   {v.get('orphan_rate', '(healthy under 5)')}",
+           f"components      {r['components']}   (main holds {r['main_component_share']}%) {v.get('components', '')}",
+           f"stale concepts  {r['stale_concept_rate']}%   (untouched {STALE_DAYS}+ days)",
+           f"to consolidate  {r['awaiting_consolidation']} pages   due to rehearse {r['due_for_rehearsal']}",
+           f"decisions       {r['decisions_due']} due for review   {reviewed} reviewed"
+           + (" (" + ", ".join(f"{k} {n}" for k, n in r["calibration"].items() if n) + ")" if reviewed else "")]
     if r["most_recalled"]:
-        print_list("most recalled", [f"{x['recalls']:>4}  {x['page']}" for x in r["most_recalled"]])
-    if args.queue:
-        print_list("awaiting consolidation, oldest first", r["queue"])
-        print_list("candidates (sources/episodes naming them; + generated by /explore, not evidence)",
-                   [f"{c['sources']:>3}/{c['episodes']:<3} {c['name']}"
-                    + ("  salient" if c["salient"] else "")
-                    + (f"  +{c['generated']} generated" if c["generated"] else "")
-                    + (f"  -> {c['page']}" if c["page"] else "") for c in r["candidates"]])
-        print_list("possibly one idea twice (read both; a candidate that is the same idea counts as one, with both sources)",
-                   [f"{x['a']} ~ {x['page'] or x['b']}  (shared: {', '.join(x['words'])})" for x in r["candidate_pairs"]])
-        print_list("prediction errors (new episodes contradicting a page; sleep records both sides)",
-                   [f"{x['episode']} contradicts {x['page']}" + (f" ({x['status']})" if x["status"] else "")
-                    for x in r["contradictions"]])
-    if args.due:
-        print_list("due for rehearsal (goals first, then salience, misses, most overdue)",
-                   [p + (f"  misses {r['risk'][p]['miss_rate']:.0%} of {r['risk'][p]['attempts']}"
-                         if p in r["risk"] else "") for p in r["due"]])
-    if args.decisions:
-        print_list("decisions due for an outcome review, most overdue first",
-                   [f"{x['review']}  {x['page']}" for x in r["decisions"]["due"]])
-        print_list("open decisions (not made yet)", r["decisions"]["open"])
-        print_list("decisions in force (revisit if ...; claims by tag)", [decision_line(d) for d in r["decisions"]["in_force"]])
+        out += listed("most recalled", [f"{x['recalls']:>4}  {x['page']}" for x in r["most_recalled"]])
+    if "queue" in show:
+        out += listed("awaiting consolidation, oldest first", r["queue"])
+        out += listed("candidates (sources/episodes naming them; + generated by /explore, not evidence)",
+                      [f"{c['sources']:>3}/{c['episodes']:<3} {c['name']}"
+                       + ("  salient" if c["salient"] else "")
+                       + (f"  +{c['generated']} generated" if c["generated"] else "")
+                       + (f"  -> {c['page']}" if c["page"] else "") for c in r["candidates"]])
+        out += listed("possibly one idea twice (read both; a candidate that is the same idea counts as one, with both sources)",
+                      [f"{x['a']} ~ {x['page'] or x['b']}  (shared: {', '.join(x['words'])})" for x in r["candidate_pairs"]])
+        out += listed("prediction errors (new episodes contradicting a page; sleep records both sides)",
+                      [f"{x['episode']} contradicts {x['page']}" + (f" ({x['status']})" if x["status"] else "")
+                       for x in r["contradictions"]])
+    if "due" in show:
+        out += listed("due for rehearsal (goals first, then salience, misses, most overdue)",
+                      [p + (f"  misses {r['risk'][p]['miss_rate']:.0%} of {r['risk'][p]['attempts']}"
+                            if p in r["risk"] else "") for p in r["due"]])
+    if "decisions" in show:
+        out += listed("decisions due for an outcome review, most overdue first",
+                      [f"{x['review']}  {x['page']}" for x in r["decisions"]["due"]])
+        out += listed("open decisions (not made yet)", r["decisions"]["open"])
+        out += listed("decisions in force (revisit if ...; claims by tag)",
+                      [decision_line(d) for d in r["decisions"]["in_force"]])
         for tag, n in r["decisions"]["claim_results"].items():
             if sum(n.values()):
-                print(f"{tag} lines in reviewed decisions: " + ", ".join(f"{k} {v}" for k, v in n.items()))
-        print(brier_line(r["decisions"]["brier"]))
-        print_list("reference classes (reviewed decisions by tag: outcomes; probabilities)",
-                   [f"{tag}: {c['n']} reviewed, " + (", ".join(f"{o} {n}" for o, n in c["outcomes"].items()) or
-                                                     "no outcomes") + "; " + brier_line(c["brier"])
-                    for tag, c in r["decisions"]["reference_class"].items()])
+                out.append(f"{tag} lines in reviewed decisions: " + ", ".join(f"{k} {v}" for k, v in n.items()))
+        out.append(brier_line(r["decisions"]["brier"]))
+        out += listed("reference classes (reviewed decisions by tag: outcomes; probabilities)",
+                      [f"{tag}: {c['n']} reviewed, " + (", ".join(f"{o} {n}" for o, n in c["outcomes"].items()) or
+                                                        "no outcomes") + "; " + brier_line(c["brier"])
+                       for tag, c in r["decisions"]["reference_class"].items()])
     if r["goals"] or r["projects"]:
         bare = sum(not g["pages"] for g in r["goals"])
-        print(f"purpose         {len(r['goals'])} goals ({bare} with no pages)   "
-              f"{sum(p['status'] != 'done' for p in r['projects'])} live projects")
-    if args.goals:
-        print_list("goals (days left: pages behind it)",
-                   [f"{'' if g['days_left'] is None else g['days_left']:>5}  {g['goal']} [{g['state']}]: "
-                    f"{len(g['pages'])} pages, {g['activity']} recent"
-                    + (f", missing {', '.join(g['missing'])}" if g["missing"] else "")
-                    + ("  AT RISK: nothing done toward it lately" if g["at_risk"] else "") for g in r["goals"]])
-    if args.remind:
-        print_list("reminders due", [f"{i['when']}  {i['text']}" for i in r["intentions"]["due"]])
-        print_list("reminders waiting on an event", [f"{i['text']}  (when {i['when']})"
-                                                      for i in r["intentions"]["waiting"]])
-    if args.links:
-        print_list("links that probably belong (sleep proposes; the owner agrees or not)",
-                   [f"{x['score']:>6.2f}  {' ~ '.join(x['pages'])}  ({x['why']})" for x in r["links"]])
-    if args.projects:
-        print_list("projects (status: pages, decisions, feedback files)",
-                   [f"{p['project']} ({p['status']}): {len(p['pages'])} pages, {len(p['decisions'])} decisions, "
-                    f"{len(p['feedback'])} feedback" for p in r["projects"]])
-    if args.open:
-        print_list("disputed pages", r["open"]["disputed"])
-        print_list("contradictions (typed links)", r["open"]["contradicts"])
-        print_list("tagged to-revisit", r["open"]["revisit"])
-    if args.dormant:
-        print_list(f"dormant candidates (unlinked, unrecalled, {DORMANT_DAYS}+ days)", r["dormant"])
-    if args.stale:
-        print_list("stale concepts, oldest first", [f"{x['updated']}  {x['page']}" for x in r["stale"]])
-    if args.hubs:
-        print_list("hubs (inbound >= 5 and 3x average): split candidates",
-                   [f"{x['inbound']:>4}  {x['page']}" for x in r["hubs"]])
-    if args.bridges:
-        print_list("bridges (highest betweenness" + (f", estimated from {BRIDGES_SAMPLE} starting pages"
-                                                     if r["bridges_estimated"] else "") + ")",
-                   [f"{x['betweenness']:.3f}  {x['page']}" for x in r["bridges"]])
-        print_list("cut points (removing one disconnects the graph)", r["cut_points"])
-    if args.clusters:
-        print_list("clusters (size: core pages)", [f"{c['size']:>4}  {', '.join(c['core'])}" for c in r["clusters"]])
-        print_list("schema candidates (4+ concepts no insight frames; sleep proposes one tagged schema)",
-                   [", ".join(c) for c in r["schema_candidates"]])
-    if args.tags:
-        print_list("tags in use", [f"{n:>4}  {t}" for t, n in r["tags"].items()])
-    if args.usage:
+        out.append(f"purpose         {len(r['goals'])} goals ({bare} with no pages)   "
+                   f"{sum(p['status'] != 'done' for p in r['projects'])} live projects")
+    if "goals" in show:
+        out += listed("goals (days left: pages behind it)",
+                      [f"{'' if g['days_left'] is None else g['days_left']:>5}  {g['goal']} [{g['state']}]: "
+                       f"{len(g['pages'])} pages, {g['activity']} recent"
+                       + (f", missing {', '.join(g['missing'])}" if g["missing"] else "")
+                       + ("  AT RISK: nothing done toward it lately" if g["at_risk"] else "") for g in r["goals"]])
+    if "remind" in show:
+        out += listed("reminders due", [f"{i['when']}  {i['text']}" for i in r["intentions"]["due"]])
+        out += listed("reminders waiting on an event", [f"{i['text']}  (when {i['when']})"
+                                                         for i in r["intentions"]["waiting"]])
+    if "links" in show:
+        out += listed("links that probably belong (sleep proposes; the owner agrees or not)",
+                      [f"{x['score']:>6.2f}  {' ~ '.join(x['pages'])}  ({x['why']})" for x in r["link_suggestions"]])
+    if "projects" in show:
+        out += listed("projects (status: pages, decisions, feedback files)",
+                      [f"{p['project']} ({p['status']}): {len(p['pages'])} pages, {len(p['decisions'])} decisions, "
+                       f"{len(p['feedback'])} feedback" for p in r["projects"]])
+    if "open" in show:
+        out += listed("disputed pages", r["open"]["disputed"])
+        out += listed("contradictions (typed links)", r["open"]["contradicts"])
+        out += listed("tagged to-revisit", r["open"]["revisit"])
+    if "dormant" in show:
+        out += listed(f"dormant candidates (unlinked, unrecalled, {DORMANT_DAYS}+ days)", r["dormant"])
+    if "stale" in show:
+        out += listed("stale concepts, oldest first", [f"{x['updated']}  {x['page']}" for x in r["stale"]])
+    if "hubs" in show:
+        out += listed("hubs (inbound >= 5 and 3x average): split candidates",
+                      [f"{x['inbound']:>4}  {x['page']}" for x in r["hubs"]])
+    if "bridges" in show:
+        out += listed("bridges (highest betweenness" + (f", estimated from {BRIDGES_SAMPLE} starting pages"
+                                                        if r["bridges_estimated"] else "") + ")",
+                      [f"{x['betweenness']:.3f}  {x['page']}" for x in r["bridges"]])
+        out += listed("cut points (removing one disconnects the graph)", r["cut_points"])
+    if "clusters" in show:
+        out += listed("clusters (size: core pages)", [f"{c['size']:>4}  {', '.join(c['core'])}" for c in r["clusters"]])
+        out += listed("schema candidates (4+ concepts no insight frames; sleep proposes one tagged schema)",
+                      [", ".join(c) for c in r["schema_candidates"]])
+    if "tags" in show:
+        out += listed("tags in use", [f"{n:>4}  {t}" for t, n in r["tags"].items()])
+    if "usage" in show:
         u = r["usage"]
-        print_list("operations logged", [f"{n:>4}  {op}" for op, n in u["operations"].items()])
-        print_list("by month", [f"{m}  " + ", ".join(f"{op} {n}" for op, n in c.items())
-                                for m, c in u["by_month"].items()])
+        out += listed("operations logged", [f"{n:>4}  {op}" for op, n in u["operations"].items()])
+        out += listed("by month", [f"{m}  " + ", ".join(f"{op} {n}" for op, n in c.items())
+                                   for m, c in u["by_month"].items()])
         for kind, names in u["unused"].items():
-            print(f"never used ({kind}): {', '.join(names) or 'none'}")
+            out.append(f"never used ({kind}): {', '.join(names) or 'none'}")
         c = u["checkpoint"]
         state = "done" if c["reviewed"] else "due now" if c["reached"] else "not yet"
-        print(f"calibration checkpoint: {c['inputs']}/{c['inputs_needed']} inputs, "
-              f"{c['sleeps']}/{c['sleeps_needed']} sleeps: {state}")
-        print_list("thresholds (vault_model.py; tune at the checkpoint against brain eval)",
-                   [f"{k} = {v}" for k, v in u["thresholds"].items()])
-    if args.context:
+        out.append(f"calibration checkpoint: {c['inputs']}/{c['inputs_needed']} inputs, "
+                   f"{c['sleeps']}/{c['sleeps_needed']} sleeps: {state}")
+        out += listed("thresholds (vault_model.py; tune at the checkpoint against brain eval)",
+                      [f"{k} = {v}" for k, v in u["thresholds"].items()])
+    if "context" in show:
         c = r["context"]
         row = lambda x: f"{x['bytes']:>7} {x['lines']:>6} {x['tokens_est']:>7}  {x['what']}"  # noqa: E731
-        print(f"\ncontext budget (tokens are an estimate, bytes over {BYTES_PER_TOKEN}, not a measurement)"
-              f"\n  {'bytes':>7} {'lines':>6} {'~tokens':>7}  loads every session")
-        for x in c["every_session"]:
-            print("  " + row(x))
-        print(f"  {c['session_bytes']:>7} {'':>6} {c['session_tokens_est']:>7}  total")
-        print(f"  {'bytes':>7} {'lines':>6} {'~tokens':>7}  loads on use")
-        for x in c["on_use"]:
-            print("  " + row(x))
+        out.append(f"\ncontext budget (tokens are an estimate, bytes over {BYTES_PER_TOKEN}, not a measurement)"
+                   f"\n  {'bytes':>7} {'lines':>6} {'~tokens':>7}  loads every session")
+        out += ["  " + row(x) for x in c["every_session"]]
+        out.append(f"  {c['session_bytes']:>7} {'':>6} {c['session_tokens_est']:>7}  total")
+        out.append(f"  {'bytes':>7} {'lines':>6} {'~tokens':>7}  loads on use")
+        out += ["  " + row(x) for x in c["on_use"]]
         since = c["since"]
         if since:
-            print(f"  since the snapshot of {since['date']}: every-session bytes "
-                  f"{'+' if since['change'] > 0 else ''}{since['change']}"
-                  + ("  GROWN: say what was added and whether it has to load every session"
-                     if since["change"] > 0 else ""))
+            out.append(f"  since the snapshot of {since['date']}: every-session bytes "
+                       f"{'+' if since['change'] > 0 else ''}{since['change']}"
+                       + ("  GROWN: say what was added and whether it has to load every session"
+                          if since["change"] > 0 else ""))
         else:
-            print("  no earlier snapshot holds this number; `brain introspect --snapshot` records it")
-        for w in c["warnings"]:
-            print(f"  WARNING: {w}")
-        print("  not counted: what the harness loads before the brain; `/context` in Claude Code shows it")
-    if args.snapshot:
+            out.append("  no earlier snapshot holds this number; `brain introspect --snapshot` records it")
+        out += [f"  WARNING: {w}" for w in c["warnings"]]
+        out.append("  not counted: what the harness loads before the brain; `/context` in Claude Code shows it")
+    if "snapshot" in show:
         snap = r["snapshot"]
         if not snap["since"]:
-            print("\nsnapshot recorded: the first one, nothing to compare yet")
+            out.append("\nsnapshot recorded: the first one, nothing to compare yet")
         else:
             moved = ", ".join(f"{k} {'+' if d > 0 else ''}{d}" for k, d in snap["changes"].items()) or "nothing moved"
-            print(f"\nsnapshot recorded; since {snap['since']}: {moved}")
+            out.append(f"\nsnapshot recorded; since {snap['since']}: {moved}")
     if "overall" in v:
-        print(f"\nverdict: {v['overall']}")
-
-
-if __name__ == "__main__":
-    main()
+        out.append(f"\nverdict: {v['overall']}")
+    return "\n".join(out)

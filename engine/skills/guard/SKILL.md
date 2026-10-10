@@ -51,7 +51,7 @@ Repo visibility: <public | private | no remote>
 Publish: <n> pages | links to private pages <n> | verdict
 ```
 
-Log `DATE guard <mode> -> <n> critical, <n> high, <n> to review`, never
-naming what was found.
+Log `brain log guard <mode> --result "<n> critical, <n> high, <n> to review"`,
+never naming what was found.
 
 Err toward flagging: a false positive costs ten seconds, a leak is permanent.

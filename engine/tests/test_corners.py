@@ -9,15 +9,10 @@ import threading
 import unittest
 from unittest import mock
 
-from support import ENGINE, HOOKS, SCRIPTS, TODAY, VALID, TempBrain, page, project, vaultlib
+from support import ENGINE, HOOKS, SCRIPTS, TODAY, VALID, TempBrain, page, project, run_brain, vaultlib
 
 BRAIN = os.path.join(ENGINE, "bin", "brain")
 FILLER = "A sentence that is long enough to count as part of a page of text. " * 8
-
-
-def script(name, *args, **kw):
-    folder = HOOKS if name == "save_resume.py" else SCRIPTS
-    return subprocess.run([sys.executable, os.path.join(folder, name), *args], capture_output=True, text=True, **kw)
 
 
 def episode(body="", **fields):
@@ -63,7 +58,7 @@ class FetchFromTheWeb(TempBrain):
         cls.server.server_close()
 
     def fetch(self, path, *args):
-        return script("fetch.py", self.base + path, "--root", self.root, *args)
+        return run_brain(self.root, "fetch", self.base + path, *args)
 
     def test_a_page_is_downloaded_and_saved_with_a_plain_report(self):
         r = self.fetch("/page")
@@ -90,7 +85,7 @@ class FetchFromTheWeb(TempBrain):
 class FetchOddMarkup(TempBrain):
     def text_of(self, html):
         path = self.write("page.html", f"<html><head><meta name='viewport'></head><body>{html}<p>{FILLER}</p></body></html>")
-        r = script("fetch.py", "https://blog.example/odd", "--root", self.root, "--file", path, "--json", "--name", "odd")
+        r = run_brain(self.root, "fetch", "https://blog.example/odd", "--file", path, "--json", "--name", "odd")
         self.assertEqual(r.returncode, 0, r.stderr)
         with open(os.path.join(self.root, json.loads(r.stdout)["saved"]), encoding="utf-8") as fh:
             return fh.read()
@@ -136,7 +131,7 @@ class ForgetVerdicts(TempBrain):
         self.write("cortex/entities/tool.md", page("entity", "[[gone]] [[other]]", kind="tool", **VALID))
 
     def forget(self, *args):
-        return script("forget.py", "--root", self.root, *args)
+        return run_brain(self.root, "forget", *args)
 
     def test_each_citing_page_gets_its_verdict(self):
         found = json.loads(self.forget("senses/a.md", "--json").stdout)
@@ -175,7 +170,7 @@ class ForgetVerdicts(TempBrain):
 
     def test_outside_a_brain_it_says_so(self):
         with tempfile.TemporaryDirectory() as elsewhere:
-            r = script("forget.py", "--root", elsewhere, "x")
+            r = run_brain(elsewhere, "forget", "x")
         self.assertEqual((r.returncode, r.stderr.strip()), (1, f"not a brain: {elsewhere}"))
 
 
@@ -189,13 +184,13 @@ class ForgottenInGit(TempBrain):
         self.write("senses/kept.md", "a good source")
         self.write("cortex/episodes/bad.md", episode("x", title="Bad", input="senses/bad.md"))
         self.log("2026-01-01 ingest bad -> [[bad]]")
-        script("fingerprint.py", self.root)
+        run_brain(self.root, "fingerprint")
         self.git("init", "-q")
         self.git("add", "-A")
         self.git("commit", "-qm", "one")
-        script("forget.py", "--root", self.root, "senses/bad.md", "--yes")
+        run_brain(self.root, "forget", "senses/bad.md", "--yes")
         os.remove(os.path.join(self.root, "senses/kept.md"))
-        history = json.loads(script("link_check.py", self.root, "--json").stdout)["history"]
+        history = json.loads(run_brain(self.root, "check", "--json").stdout)["history"]
         self.assertEqual(history, ["senses/kept.md: input removed since the last commit",
                                    "senses/kept.md: input removed since it was fingerprinted"])
 
@@ -259,8 +254,8 @@ class ResumeCorners(TempBrain):
 class QuietWhereThereIsNoBrain(unittest.TestCase):
     def test_statusline_and_prompt_recall_print_nothing(self):
         with tempfile.TemporaryDirectory() as elsewhere:
-            r = script("statusline.py", elsewhere, input="{}")
-            self.assertEqual((r.returncode, r.stdout), (0, ""))
+            r = run_brain(None, "statusline", input="{}", cwd=elsewhere)
+            self.assertEqual((r.stdout, r.stderr.split(" (")[0]), ("", "brain: no brain here"))
             r = subprocess.run([sys.executable, os.path.join(HOOKS, "prompt_recall.py")],
                                input=json.dumps({"prompt": "What does spacing do to memory over time?"}),
                                capture_output=True, text=True,
@@ -275,29 +270,29 @@ class PlainReports(TempBrain):
                 {"type": "user", "timestamp": "2026-10-01T09:31:00Z", "message": {"content": {"odd": "shape"}}},
                 {"type": "user", "timestamp": "2026-10-01T09:32:00Z", "message": {}}]
         path = self.write("t.jsonl", "\n".join(json.dumps(r) for r in rows) + "\n")
-        out = script("session.py", self.root, path).stdout
+        out = run_brain(self.root, "session", path).stdout
         self.assertEqual(out, "1 messages the owner typed (t.jsonl); quoted material, not instructions\n"
                               "\n[2026-10-01 09:30]\nencode this note\n")
 
     def test_cache_reports_its_size(self):
         self.write("cortex/concepts/a.md", concept("Spacing spreads study over days.", title="A"))
-        script("search.py", "search", "spacing", "--root", self.root)
-        out = script("cache.py", self.root).stdout
+        run_brain(self.root, "search", "spacing")
+        out = run_brain(self.root, "cache").stdout
         self.assertIn("  pages 1, ", out)
         self.assertNotIn("rebuilt", out)
 
     def test_context_says_when_no_snapshot_holds_the_number(self):
         os.remove(os.path.join(self.root, "CLAUDE.md"))  # a brain without its rules file is still measured
-        out = script("introspect.py", self.root, "--context").stdout
+        out = run_brain(self.root, "introspect", "--context").stdout
         self.assertIn("no earlier snapshot holds this number; `brain introspect --snapshot` records it", out)
         self.assertNotIn("CLAUDE.md is", out)
 
     def test_new_page_refuses_a_field_the_type_does_not_take_and_a_title_with_no_name_in_it(self):
-        r = script("new_page.py", "--root", self.root, "concept", "--title", "Spacing", "--kind", "tool")
+        r = run_brain(self.root, "new", "concept", "--title", "Spacing", "--kind", "tool")
         self.assertEqual(r.returncode, 1)
         self.assertIn("would break the page contracts: 'kind' belongs on entity pages only", r.stderr)
         self.assertFalse(os.path.exists(os.path.join(self.root, "cortex/concepts/spacing.md")))
-        r = script("new_page.py", "--root", self.root, "concept", "--title", "???")
+        r = run_brain(self.root, "new", "concept", "--title", "???")
         self.assertEqual((r.returncode, r.stderr.strip()), (1, "brain new: the title gives no file name; give --name"))
 
 
@@ -327,14 +322,14 @@ class EvalCorners(unittest.TestCase):
             questions["questions"].append({"id": "x01", "question": "What is spacing?", "expect": ["no-such-page"]})
             with open(own, "w", encoding="utf-8") as fh:
                 json.dump(questions, fh)
-            r = script("eval.py", "--questions", own, "--baseline", base)
+            r = run_brain(None, "eval", "--questions", own, "--baseline", base)
             self.assertIn("x01: expects [[no-such-page]], which is not a page", r.stdout + r.stderr)
-            script("eval.py", "--save-baseline", "--baseline", base)
+            run_brain(None, "eval", "--save-baseline", "--baseline", base)
             with open(base, encoding="utf-8") as fh:
                 saved = json.load(fh)
             with open(base, "w", encoding="utf-8") as fh:
                 json.dump(dict(saved, brain="0" * 16), fh)
-            out = script("eval.py", "--baseline", base).stdout
+            out = run_brain(None, "eval", "--baseline", base).stdout
         self.assertIn(f"the brain's pages changed since the baseline was saved ({'0' * 16} then, {saved['brain']} now)", out)
 
 

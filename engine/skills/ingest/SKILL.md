@@ -65,8 +65,8 @@ from the owner, in the conversation.
    another episode already lists it (`brain introspect --queue`), and run
    `brain search "<name>"` first: an idea already on a page under another
    name is a link to that page, not a new candidate.
-6. **Index and log** in the same run: add the episode to `index.md`, its line being the `summary:`; append
-   `DATE ingest <path> -> 1 episode, <n> candidates, <n> links`.
+6. **Index and log** in the same run: `brain index` (it lists the episode with its `summary:`), then
+   `brain log ingest <path> --result "1 episode, <n> candidates, <n> links"`.
 
 ## Input types
 

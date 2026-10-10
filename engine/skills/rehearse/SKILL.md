@@ -31,9 +31,9 @@ knowledge. Grade against the page, not against what is true.
 3. **Withhold answers** until attempted.
 4. **Grade** against the page. A right answer the page contradicts is a page
    problem worth surfacing.
-5. **Log** the pages answered well: `DATE recall rehearse -> [[page]], ...`,
-   and the pages answered badly: `DATE rehearse missed -> [[page]], ...`. A
-   miss comes back tomorrow. A page problem is neither: do not log that page.
+5. **Log** the pages answered well: `brain log recall rehearse --pages <page> ...`,
+   and the pages answered badly: `brain log rehearse missed --pages <page> ...`.
+   A miss comes back tomorrow. A page problem is neither: do not log that page.
 
 ## Output
 

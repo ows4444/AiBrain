@@ -1,7 +1,7 @@
 """Retrieval: keyword search, links that strengthen with use, and spreading activation.
 
 Mixed into vaultlib.Vault; relies on its pages, events, edges, resolve(),
-typed_edges(), strength(), confidence() and links_from().
+typed_edges(), contradicted_by(), strength(), confidence() and links_from().
 
     search    BM25 over title (x3), aliases (x2), body and summary (x0.5);
               dormant/ on request
@@ -253,14 +253,13 @@ class RetrievalMixin:
         if not seeds:
             return []
         activation, via = self.activate(seeds, hops=hops)
-        contradicted = {b for _, rel, b in self.typed_edges() if rel == "contradicts"}
         rows = []
         for p, a in activation.items():
             score = a * (1 + STRENGTH_LIFT * self.strength(p))
             seed, hop = via.get(p, (p, 0))
             flags = [f for f, on in (
                 ("disputed", "disputed" in as_list(p.fields.get("tags"))),
-                ("contradicted", p in contradicted),
+                ("contradicted", bool(self.contradicted_by(p))),
                 ("stale", p.type in ("concept", "insight") and p.updated
                  and (self.today - p.updated).days > STALE_DAYS),
                 ("generated", p.generated),

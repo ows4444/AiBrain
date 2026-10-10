@@ -81,9 +81,33 @@ class FromASubfolder(TempBrain):
             self.assertIn("Active project: Launch (`prefrontal/launch/CLAUDE.md`)", fh.read())
         self.assertIn("Resume: read prefrontal/launch/process/resume.md first", self.hook("wake_up.py", {}).stdout)
 
+    def test_the_log_is_still_written_only_by_its_command(self):
+        log = self.write("hippocampus/log.md", "---\ntype: log\n---\n")
+        line = "2026-10-03 recall q -> [[a]]\n"
+        for payload in ({"tool_name": "Edit", "tool_input": {"file_path": log, "old_string": "", "new_string": line}},
+                        {"tool_name": "Write", "tool_input": {"file_path": "../../hippocampus/log.md", "content": line}},
+                        {"tool_name": "MultiEdit", "tool_input": {"file_path": log, "edits": [{"new_string": line}]}}):
+            r = self.hook("protect_log.py", payload)
+            self.assertEqual(r.returncode, 2, payload)
+            self.assertIn("Run `brain log <operation> <what> --pages <page> ...", r.stderr)
+        self.assertEqual(self.hook("protect_log.py", payload, start=self.root).returncode, 2)  # the brain itself
+        with open(os.path.join(self.root, ".cache", "errors.log"), encoding="utf-8") as fh:
+            self.assertIn(" protect_log log | Blocked: hippocampus/log.md is append-only", fh.read())
+        for quiet in ({"tool_name": "Read", "tool_input": {"file_path": log}},
+                      {"tool_name": "Bash", "tool_input": {"command": "tail hippocampus/log.md"}},
+                      {"tool_name": "Edit", "tool_input": {"file_path": os.path.join(self.root, "hippocampus/index.md")}},
+                      {"tool_name": "Write", "tool_input": {"file_path": os.path.join(self.root, "motor/log.md")}},
+                      {"tool_name": "Edit", "tool_input": {}}, {"tool_name": "Edit"}):
+            self.assertEqual(self.hook("protect_log.py", quiet).returncode, 0, quiet)
+        r = subprocess.run([sys.executable, os.path.join(ENGINE, "hooks", "protect_log.py")], input="not json",
+                           capture_output=True, text=True, env=dict(os.environ, CLAUDE_PROJECT_DIR=self.root))
+        self.assertEqual(r.returncode, 0)  # input it cannot read is not a reason to stop a write
+
     def test_outside_any_brain_the_hooks_stay_silent(self):
         outside = os.path.dirname(os.path.realpath(self.root))
         edit = {"tool_name": "Edit", "tool_input": {"file_path": self.input, "old_string": "hi", "new_string": "x"}}
+        self.assertEqual(self.hook("protect_log.py", {"tool_name": "Edit", "tool_input": {
+            "file_path": os.path.join(self.root, "hippocampus", "log.md")}}, start=outside).returncode, 0)
         for name in ("protect_senses.py", "protect_expected.py", "validate_page.py", "scan_secrets.py", "wake_up.py",
                      "save_resume.py"):
             self.assertEqual(self.hook(name, edit, start=outside).returncode, 0, name)
@@ -110,6 +134,12 @@ class WhateverTheCase(TempBrain):
         self.write("cortex/episodes/e.md", page("episode", "key AKIA" + "A" * 16 + "\n", **VALID))
         r = self.run_hook("scan_secrets.py", {"tool_name": "Write", "tool_input": {"file_path": "Cortex/episodes/e.md"}})
         self.assertEqual(r.returncode, 2)
+
+    def test_the_log(self):
+        self.write("hippocampus/log.md", "---\ntype: log\n---\n")
+        for path in ("Hippocampus/log.md", "HIPPOCAMPUS/Log.MD"):
+            edit = {"tool_name": "Edit", "tool_input": {"file_path": path, "old_string": "", "new_string": "x"}}
+            self.assertEqual(self.run_hook("protect_log.py", edit).returncode, 2, path)
 
 
 class ShellAgainstSenses(TempBrain):

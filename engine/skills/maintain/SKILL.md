@@ -36,15 +36,15 @@ without naming them.
    whose names overlap, or that share most of their neighbours). Read both
    pages; propose a merge only where they are one idea. On a large brain, the
    `curator` agent drafts the list.
-7. **Index drift:** `not_in_index` from `brain check`, and entries pointing
-   nowhere.
+7. **Index:** `brain index` rewrites the listing from the pages. Entries
+   pointing nowhere outside it (Gaps, a section written by hand) are yours to fix.
 8. **Undated facts:** `undated` from `brain check` (a count or a status in
    the present tense, with no date and no pointer). It reads words, so first
    drop the lines that are timeless. For each of the rest, one of three:
    look again and restamp it, `(as of DATE, [[episode]])`; keep only the
    pointer to where the number lives; or move it to the dated page it came
    from. Never restamp without looking: a new date on an old number is worse.
-9. Repair, rerun `brain check`, log `DATE maintain -> <fixed>, <proposed>`.
+9. Repair, rerun `brain check`, log `brain log maintain --result "<fixed>, <proposed>"`.
 
 ## Operations
 
@@ -58,7 +58,7 @@ rename a heavily linked page for style.
 distinct claim survives with its source; differing claims both stay. Old title
 becomes an alias. Redirect every inbound link, in project pages and the Goals in
 `OWNER.md` too. Log first, then delete the old
-page, update the index, verify. If the two pages disagree on a fact, they may
+page, run `brain index`, verify. If the two pages disagree on a fact, they may
 not be duplicates: ask.
 
 **Split** (only on approval). The original keeps its name for the main idea;
@@ -68,9 +68,9 @@ new pages from `${CLAUDE_PLUGIN_ROOT}/templates/`; point each inbound link at th
 For a `disputed` page from `brain introspect --open`: keep both claims with
 their sources and dates, mark the losing one superseded with what settled it,
 remove the `disputed` tag, and change a `contradicts` link that no longer
-holds to plain text. Log `DATE maintain settle [[page]] -> <which claim
-stands, why>`. A dispute nobody can settle stays disputed; say what evidence
-would.
+holds to plain text. Log `brain log maintain "settle [[page]]" --result
+"<which claim stands, why>"`. A dispute nobody can settle stays disputed; say
+what evidence would.
 
 **Typed links.** Add `(supports:: [[X]])` and the rest only where the source
 states the relation. Never infer one.
@@ -86,11 +86,12 @@ grow for one thing. Adding an alias is mechanical; do it.
 **Tags.** `brain introspect --tags`: flag tags used once, near-synonyms and
 anything outside the vocabulary; propose a consolidation.
 
-**Rebuild the index.** From `brain check`'s `not_in_index` and the actual
-pages: group by type and theme, one line of description each, gaps last.
+**Index.** `brain index` writes the listing between its two marker lines: by
+type, one line a page, its `summary`. What is outside the markers is written by
+hand: a section that groups pages by theme goes there, and Gaps stays last.
 
 **Move to dormant** (only on approval). Log, move the file to `dormant/`,
-remove from the index, run `brain check`. Episodes that named the page keep
+run `brain index` and `brain check`. Episodes that named the page keep
 their links: `brain check` lists them as links to dormant pages, not broken.
 
 ## Output

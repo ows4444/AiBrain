@@ -3,6 +3,7 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
 import unittest
 
 from support import HOOKS, TempBrain, page, project, vaultlib
@@ -76,8 +77,42 @@ class CheckRecall(TempBrain):
     def tool(name, **args):
         return {"type": "assistant", "message": {"content": [{"type": "tool_use", "name": name, "input": args}]}}
 
+    @staticmethod
+    def call(call_id, name, **args):
+        return {"type": "assistant", "message": {"content": [{"type": "tool_use", "id": call_id, "name": name,
+                                                              "input": args}]}}
+
+    @staticmethod
+    def result(call_id, failed=False):
+        return {"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": call_id,
+                                                         "is_error": failed, "content": "x"}]}}
+
     def run_check(self, path, active=False):
         return self.run_hook("check_recall.py", {"transcript_path": path, "stop_hook_active": active}).returncode
+
+    def test_brain_log_writes_the_recall_line_unless_it_was_refused(self):
+        ask = (self.prompt("what do I know"), self.tool("Skill", skill="aibrain:ask"))
+        logged = self.call("t1", "Bash", command='brain log recall "what do I know" --pages a b')
+        self.assertEqual(self.run_check(self.transcript(*ask, logged, self.result("t1"))), 0)
+        self.assertEqual(self.run_check(self.transcript(*ask, logged)), 0)  # a result not written yet is not a failure
+        refused = self.transcript(*ask, logged, self.result("t1", failed=True))  # a misspelt page: nothing was written
+        self.assertEqual(self.run_check(refused), 2)
+        by_path = self.call("t4", "Bash", command="/opt/aibrain/engine/bin/brain log recall q --pages a")
+        self.assertEqual(self.run_check(self.transcript(*ask, by_path, self.result("t4"))), 0)
+        missed = self.call("t2", "Bash", command="cd . && brain log rehearse missed --pages a")
+        self.assertEqual(self.run_check(self.transcript(*ask, missed, self.result("t2"))), 0)
+        for command in ('brain log recall "q" --pages a --dry-run', "brain log sleep '3 episodes' --result none",
+                        "ls cortex"):
+            path = self.transcript(*ask, self.call("t3", "Bash", command=command), self.result("t3"))
+            self.assertEqual(self.run_check(path), 2, command)
+
+    def test_an_edit_of_the_log_that_was_refused_logged_nothing(self):
+        ask = (self.prompt("what do I know"), self.tool("Skill", skill="aibrain:ask"))
+        edit = self.call("t1", "Edit", file_path="hippocampus/log.md", new_string="2026-10-03 recall x -> [[a]]\n")
+        self.assertEqual(self.run_check(self.transcript(*ask, edit, self.result("t1", failed=True))), 2)
+        self.assertEqual(self.run_check(self.transcript(*ask, edit, self.result("t1"))), 0)
+        nameless = {"type": "user", "message": {"content": [{"type": "tool_result", "is_error": True}]}}
+        self.assertEqual(self.run_check(self.transcript(*ask, edit, self.result("t9", failed=True), nameless)), 0)
 
     def test_recall_without_log_is_stopped(self):
         path = self.transcript(self.prompt("what do I know"), self.tool("Skill", skill="aibrain:ask"))
@@ -138,6 +173,22 @@ class CheckRecall(TempBrain):
     def test_unreadable_transcript_fails_open(self):
         self.assertEqual(self.run_check(os.path.join(self.root, "missing.jsonl")), 0)
 
+    def test_only_the_end_of_a_long_transcript_is_read(self):
+        filler = {"type": "assistant", "message": {"content": [{"type": "text", "text": "x" * 4_100_000}]}}
+        ask = self.tool("Skill", skill="aibrain:ask")
+        # The turn began before the part that is read, behind a line that is not JSON at all:
+        # everything in the part read belongs to the turn, and nothing before it is parsed.
+        path = self.write("t.jsonl", "{not json\n" + "\n".join(json.dumps(e) for e in (
+            self.prompt("what do I know"), filler, ask)))
+        self.assertGreater(os.path.getsize(path), 4_000_000)
+        self.assertEqual(self.run_check(path), 2)
+        with open(os.path.join(self.root, ".cache", "errors.log"), encoding="utf-8") as fh:
+            self.assertNotIn("check_recall error", fh.read())  # it refused; it did not crash on the line before
+        later = self.transcript(self.prompt("q"), ask, filler, self.prompt("now fix a link"),
+                                self.tool("Edit", file_path="cortex/a.md"))
+        self.assertEqual(self.run_check(later), 0)  # the last prompt is in the part read: the turn starts there
+        self.assertEqual(self.run_check(self.transcript(ask)), 0)  # a short transcript with no prompt holds no turn
+
 
 class Resume(TempBrain):
     """PreCompact writes where the work stood; the briefing points at it until something is logged."""
@@ -196,6 +247,18 @@ class Resume(TempBrain):
         r = subprocess.run([sys.executable, os.path.join(HOOKS, "save_resume.py")], input="not json",
                            capture_output=True, text=True, env=dict(os.environ, CLAUDE_PROJECT_DIR="/nowhere"))
         self.assertEqual((r.returncode, r.stdout), (0, ""))
+
+    def test_a_note_that_cannot_be_written_is_logged_and_leaves_nothing_behind(self):
+        with open(os.path.join(self.root, "hippocampus", "log.md"), "wb") as fh:
+            fh.write(b"\xff\xfe not text the note can read\n")
+        with tempfile.TemporaryDirectory() as elsewhere:  # where the session stands; the brain is the project
+            r = subprocess.run([sys.executable, os.path.join(HOOKS, "save_resume.py")], input="{}", cwd=elsewhere,
+                               capture_output=True, text=True, env=dict(os.environ, CLAUDE_PROJECT_DIR=self.root))
+            self.assertEqual((r.returncode, r.stdout, r.stderr), (0, "", ""))
+            self.assertEqual(os.listdir(elsewhere), [])
+        self.assertFalse(os.path.exists(os.path.join(self.root, ".cache", "resume.md")))
+        with open(os.path.join(self.root, ".cache", "errors.log"), encoding="utf-8") as fh:
+            self.assertIn("save_resume error | UnicodeDecodeError", fh.read())
 
 
 class WakeUp(TempBrain):

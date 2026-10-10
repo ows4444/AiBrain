@@ -9,6 +9,7 @@ Deliberately dependency-free: a wall must not fail open because an import broke.
 The Bash check is best-effort; it catches the common ways a shell edits, removes
 or overwrites a file (rm, mv, sed -i, >, tee, and cp/rsync onto an existing file).
 """
+import contextlib
 import json
 import os
 import re
@@ -112,6 +113,10 @@ def ask(reason):
 
 def block(message):
     print(message, file=sys.stderr)
+    with contextlib.suppress(Exception):  # the log must not add a way to fail
+        sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
+        from errlog import note
+        note("protect_senses", "senses", message)
     sys.exit(2)
 
 

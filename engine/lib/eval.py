@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """The answer test set: after an engine change, does the brain still find the right pages?
 
 Usage:
@@ -67,7 +66,7 @@ fills them in asks what the page answers without those words; the set is
 that break their own set: an expected page that does not exist, or a
 paraphrase that uses a word of the page's names.
 """
-import argparse
+import contextlib
 import hashlib
 import json
 import os
@@ -243,102 +242,121 @@ def answers(vault, questions, given):
             "per_question": rows}
 
 
-def main():
-    ap = argparse.ArgumentParser(prog="brain eval")
+def arguments(ap):
     ap.add_argument("--root", default=FIXTURE)
     ap.add_argument("--questions", default=QUESTIONS)
     ap.add_argument("--answers")
     ap.add_argument("--k", type=int, default=5)
-    ap.add_argument("--json", action="store_true")
     ap.add_argument("--save-baseline", action="store_true")
     ap.add_argument("--baseline")
     ap.add_argument("--draft", type=int, metavar="N")
-    args = ap.parse_args()
+
+
+def baseline_of(args):
+    """Where the baseline is kept: the engine's set keeps the engine's; any other keeps its own beside it."""
+    if args.baseline:
+        return args.baseline
+    own = os.path.realpath(args.questions) != os.path.realpath(QUESTIONS)
+    return os.path.splitext(args.questions)[0] + "-baseline.json" if own else BASELINE
+
+
+@contextlib.contextmanager
+def cache_off():
+    """Search without the cache inside this block, and leave BRAIN_CACHE as it was found."""
+    was = os.environ.get("BRAIN_CACHE")
+    os.environ["BRAIN_CACHE"] = "0"
+    try:
+        yield
+    finally:
+        del os.environ["BRAIN_CACHE"]
+        if was is not None:
+            os.environ["BRAIN_CACHE"] = was
+
+
+def run(root, args):
+    """`root` is not used: the brain tested is --root, the engine's fixture unless another is given."""
     spec = load(args.questions) if os.path.exists(args.questions) or not args.draft else {"questions": []}
-    if not args.baseline:  # the engine's set keeps the engine's baseline; any other keeps its own beside it
-        own = os.path.realpath(args.questions) != os.path.realpath(QUESTIONS)
-        args.baseline = os.path.splitext(args.questions)[0] + "-baseline.json" if own else BASELINE
-    if os.path.realpath(args.root) == os.path.realpath(FIXTURE):
-        os.environ["BRAIN_CACHE"] = "0"  # the engine never writes into its own folder
-    vault = Vault(args.root, today=parse_date(spec.get("today", "")) or None)
-    if args.draft is not None:
-        print(json.dumps({"questions": draft(vault, spec["questions"], args.draft)}, indent=2))
-        return
-    asked = [q for q in spec["questions"] if q.get("question", "").strip()]
-    result = {"retrieval": dict(retrieval(vault, asked, args.k), brain=brain_hash(args.root)),
-              "problems": question_problems(vault, asked)}
-    if args.answers:
-        result["answers"] = answers(vault, asked, load(args.answers))
+    fixture = os.path.realpath(args.root) == os.path.realpath(FIXTURE)
+    with cache_off() if fixture else contextlib.nullcontext():  # the engine never writes into its own folder
+        vault = Vault(args.root, today=parse_date(spec.get("today", "")) or None)
+        if args.draft is not None:
+            return {"questions": draft(vault, spec["questions"], args.draft)}
+        asked = [q for q in spec["questions"] if q.get("question", "").strip()]
+        result = {"retrieval": dict(retrieval(vault, asked, args.k), brain=brain_hash(args.root)),
+                  "problems": question_problems(vault, asked)}
+        if args.answers:
+            result["answers"] = answers(vault, asked, load(args.answers))
     if args.save_baseline:
         r = result["retrieval"]
-        with open(args.baseline, "w", encoding="utf-8") as fh:
+        with open(baseline_of(args), "w", encoding="utf-8") as fh:
             json.dump({"k": r["k"], "brain": r["brain"], "search": r["search"], "recall": r["recall"],
                        "sets": r["sets"], "held": {k: v for k, v in r["held"].items() if k != "per_question"}},
                       fh, indent=2)
             fh.write("\n")
-    if args.json:
-        print(json.dumps(result, indent=2))
-        return
+    return result
+
+
+def render(result, args):
+    """The report, with the saved baseline beside each number; the questions to write, for --draft, as JSON."""
+    if args.draft is not None:
+        return json.dumps(result, indent=2)
     r = result["retrieval"]
-    base = load(args.baseline) if os.path.exists(args.baseline) else None
+    base = load(baseline_of(args)) if os.path.exists(baseline_of(args)) else None
     covered = r['recall']['questions'] or sum(sets['recall']['questions'] for sets in r['sets'].values())
-    print(f"retrieval over {covered} covered questions, top {r['k']}")
+    out = [f"retrieval over {covered} covered questions, top {r['k']}"]
     if base and base.get("brain") not in (None, r["brain"]):
-        print(f"  the brain's pages changed since the baseline was saved ({base['brain']} then, {r['brain']} now): "
-              "its numbers are not comparable")
+        out.append(f"  the brain's pages changed since the baseline was saved ({base['brain']} then, {r['brain']} now): "
+                   "its numbers are not comparable")
 
     def lines(sets, was_sets, indent):
+        rows = []
         for mode in ("search", "recall"):
             s, b = sets[mode], (was_sets or {}).get(mode)
             was = f"   (baseline hit {b['hit_at_k']}, mrr {b['mrr']})" if b else ""
-            print(f"{indent}{mode:<7} hit@1 {s['hit_at_1']:.3f}   hit@{r['k']} {s['hit_at_k']:.3f}   "
-                  f"all {s['all_at_k']}/{s['questions']}   mrr {s['mrr']:.3f}{was}")
+            rows.append(f"{indent}{mode:<7} hit@1 {s['hit_at_1']:.3f}   hit@{r['k']} {s['hit_at_k']:.3f}   "
+                        f"all {s['all_at_k']}/{s['questions']}   mrr {s['mrr']:.3f}{was}")
+        return rows
 
-    for problem in result["problems"]:
-        print(f"  question {problem}")
+    out += [f"  question {problem}" for problem in result["problems"]]
     if r["recall"]["questions"]:  # the standard set; a set kept for one's own brain may hold none
-        lines(r, base, "  ")
+        out += lines(r, base, "  ")
         s, n = r["recall"], r["recall"]["questions"] or 1
         was = f"   (baseline {base['recall']['bytes_read']})" if base and "bytes_read" in base.get("recall", {}) else ""
-        print(f"  recall  rows returned {s['rows']}, {s['rows'] / n:.1f} a question")
-        print(f"  recall  bytes read {s['bytes_read']}, {s['bytes_read'] // n} a question; "
-              f"the expected pages alone {s['bytes_needed']}{was}")
-        print("    " + ", ".join(f"{row['id']} {row['bytes']}" for row in r["per_question"]["recall"]
-                              if row["set"] == STANDARD))
-        print(f"  recall  by summary: {s['bytes_by_summary']} ({s['bytes_listing']} of listing, then the expected pages), "
-              f"{s['bytes_by_summary'] // n} a question, if every summary leads to the right page"
-              + (f"; {s['unsummarised']} returned pages had no summary" if s["unsummarised"] else ""))
+        out.append(f"  recall  rows returned {s['rows']}, {s['rows'] / n:.1f} a question")
+        out.append(f"  recall  bytes read {s['bytes_read']}, {s['bytes_read'] // n} a question; "
+                   f"the expected pages alone {s['bytes_needed']}{was}")
+        out.append("    " + ", ".join(f"{row['id']} {row['bytes']}" for row in r["per_question"]["recall"]
+                                      if row["set"] == STANDARD))
+        out.append(f"  recall  by summary: {s['bytes_by_summary']} ({s['bytes_listing']} of listing, then the expected pages), "
+                   f"{s['bytes_by_summary'] // n} a question, if every summary leads to the right page"
+                   + (f"; {s['unsummarised']} returned pages had no summary" if s["unsummarised"] else ""))
     for name, sets in r["sets"].items():
         if name != STANDARD:
-            print(f"set {name}: {sets['recall']['questions']} questions")
-            lines(sets, (base or {}).get("sets", {}).get(name), "  ")
-    for row in r["per_question"]["recall"]:
-        if row["missed"]:
-            print(f"  recall missed {row['id']}: {', '.join(row['missed'])}")
+            out.append(f"set {name}: {sets['recall']['questions']} questions")
+            out += lines(sets, (base or {}).get("sets", {}).get(name), "  ")
+    out += [f"  recall missed {row['id']}: {', '.join(row['missed'])}" for row in r["per_question"]["recall"]
+            if row["missed"]]
     for mode in ("search", "recall"):
         for qid, rank, first in buried(r["per_question"][mode]):
             where = f"at rank {rank}" if rank else f"not in the top {r['k']}"
-            print(f"  {mode} buried {qid}: the first expected page is {where}; {first or 'nothing'} came first")
+            out.append(f"  {mode} buried {qid}: the first expected page is {where}; {first or 'nothing'} came first")
     if r["uncovered"]:
-        print("  uncovered: " + ", ".join(f"{u['id']} ({u['search_results']} pages matched words, recall lists "
-                                          f"{u['recall_results']})" for u in r["uncovered"]))
+        out.append("  uncovered: " + ", ".join(f"{u['id']} ({u['search_results']} pages matched words, recall lists "
+                                                 f"{u['recall_results']})" for u in r["uncovered"]))
         listed = sum(1 for u in r["uncovered"] if u["recall_results"])
-        print(f"  uncovered questions recall still lists pages for: {listed} of {len(r['uncovered'])}")
+        out.append(f"  uncovered questions recall still lists pages for: {listed} of {len(r['uncovered'])}")
     h = r["held"]
     if h["questions"]:
-        print(f"  held ideas: {h['listed']} of {h['questions']} questions list the idea they name; "
-              f"its line is {h['row_bytes']} bytes, the episodes holding it {h['episode_bytes']}")
-    if args.answers:
+        out.append(f"  held ideas: {h['listed']} of {h['questions']} questions list the idea they name; "
+                   f"its line is {h['row_bytes']} bytes, the episodes holding it {h['episode_bytes']}")
+    if "answers" in result:
         a = result["answers"]
-        print(f"answers: {a['answered']}/{a['of']} given; citation recall {a['citation_recall']}, "
-              f"precision {a['citation_precision']}; uncovered said so {a['uncovered_passed']}")
+        out.append(f"answers: {a['answered']}/{a['of']} given; citation recall {a['citation_recall']}, "
+                   f"precision {a['citation_precision']}; uncovered said so {a['uncovered_passed']}")
         for row in a["per_question"]:
             if row.get("missing") or row.get("extra") or row.get("pass") is False:
-                print(f"  {row['id']}: missing {row.get('missing', [])}, extra {row.get('extra', [])}"
-                      + ("" if row.get("pass", True) else ", did not say it was not covered"))
+                out.append(f"  {row['id']}: missing {row.get('missing', [])}, extra {row.get('extra', [])}"
+                           + ("" if row.get("pass", True) else ", did not say it was not covered"))
     if args.save_baseline:
-        print(f"baseline saved to {args.baseline}")
-
-
-if __name__ == "__main__":
-    main()
+        out.append(f"baseline saved to {baseline_of(args)}")
+    return "\n".join(out)

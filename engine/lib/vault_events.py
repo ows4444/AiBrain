@@ -7,8 +7,12 @@ view follows.
 """
 import collections
 import os
+import re
 
 from vault_model import LINK, LOG_LINE, LOG_PATH, parse_date
+
+# How a log line starts, whether or not the rest of it parses.
+DATED = re.compile(r"\d{4}-\d")
 
 # date: the YYYY-MM-DD text; day: it as a date (None if impossible, e.g. 2026-02-30);
 # op: the operation; rest: everything after it; what: the part before `->`;
@@ -31,6 +35,25 @@ def read_events(root):
             what, arrow, after = rest.partition("->")
             out.append(Event(date, parse_date(date), op, rest, what.strip(),
                              [t.strip() for t in LINK.findall(after)] if arrow else [], bool(arrow)))
+    return out
+
+
+def unread_lines(root):
+    """Log lines that look dated and are read as nothing: they do not parse, or their date does not exist.
+
+    `2026-10-2 recall q -> [[page]]` is passed over by read_events, and a line dated
+    2026-02-30 is read and then counted nowhere, so what either recorded is lost in silence.
+    """
+    path = os.path.join(root, LOG_PATH)
+    if not os.path.exists(path):
+        return []
+    out = []
+    with open(path, encoding="utf-8", errors="replace") as fh:
+        for raw in fh:
+            line = raw.strip()
+            m = LOG_LINE.match(line)
+            if DATED.match(line) and (not m or parse_date(m.group(1)) is None):
+                out.append(line)
     return out
 
 

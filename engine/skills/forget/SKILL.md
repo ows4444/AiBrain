@@ -33,9 +33,9 @@ command, removes one.
    - take out the citation, and any sentence that rested only on it; a claim
      another episode also supports keeps that episode's citation;
    - a concept left with one source and no salient episode: log
-     `DATE forget <concept> -> back to a candidate on [[episode]]`, add it
+     `brain log forget "<concept>" --result "back to a candidate on [[episode]]"`, add it
      under `## Candidates` on the episode that is left, remove the page and
-     its index line;
+     run `brain index`;
    - a concept left with one salient episode: `status: emerging`;
    - a page with no source left: remove it the same way, unless the owner
      says what it now rests on;

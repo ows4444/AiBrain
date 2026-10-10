@@ -9,4 +9,4 @@ Find the last run (or $ARGUMENTS) from `hippocampus/log.md` and
 agent can judge whether the run met its goal) and stop. On confirmation, revert
 only those files: `git restore` if uncommitted, `git revert <commit>` if
 committed; never `git reset --hard`. Log
-`DATE rollback <run> -> <n> files restored` and run `brain check`.
+`brain log rollback "<run>" --result "<n> files restored"` and run `brain check`.

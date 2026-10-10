@@ -32,10 +32,10 @@ behind it. Say plainly what the brain does not cover.
    - handoff: goal, state, decisions and why, open questions, where things live.
 4. **Save** to `motor/` and offer to encode the finished piece back as an
    episode by the owner.
-5. **Log** `DATE write <mode> <topic> -> motor/<file>` and
-   `DATE recall write <topic> -> [[page]], ...` for the pages the piece rests
-   on. Pages used for writing are recalled pages; without the line they look
-   unused and drift toward `dormant/`.
+5. **Log** `brain log write "<mode> <topic>" --result motor/<file>` and
+   `brain log recall "write <topic>" --pages <page> ...` for the pages the piece
+   rests on. Pages used for writing are recalled pages; without the line they
+   look unused and drift toward `dormant/`.
 
 ## Calibration
 

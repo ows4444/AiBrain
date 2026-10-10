@@ -14,4 +14,4 @@ goal depends on, if any exist). The brain reads this list: it decides what is
 rehearsed first and what never fades. When a goal is met or abandoned, end
 its line with `(done)` or `(dropped)` rather than deleting it. Change no other file
 without asking. A vague answer gets a follow-up question, not a vague line.
-Log `DATE owner -> OWNER.md <filled | updated: what changed>`.
+Log `brain log owner --result "OWNER.md <filled | updated: what changed>"`.

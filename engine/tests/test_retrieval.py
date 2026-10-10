@@ -8,7 +8,7 @@ import tempfile
 import unittest
 from unittest import mock
 
-from support import ENGINE, SCRIPTS, TempBrain, TODAY, ago, page, vaultlib
+from support import ENGINE, SCRIPTS, TempBrain, TODAY, ago, page, run_brain, vaultlib
 
 import vault_cache  # noqa: E402  (support puts engine/lib on the path)
 
@@ -186,14 +186,12 @@ class AnswerTestSet(unittest.TestCase):
     """The fixture brain is a brain in its own right, and retrieval must not get worse on it."""
 
     def run_eval(self, *args):
-        r = subprocess.run([sys.executable, os.path.join(SCRIPTS, "eval.py"), "--json", *args],
-                           capture_output=True, text=True)
+        r = run_brain(None, "eval", "--json", *args)
         self.assertEqual(r.returncode, 0, r.stderr)
         return json.loads(r.stdout)
 
     def test_fixture_passes_brain_check(self):
-        r = subprocess.run([sys.executable, os.path.join(SCRIPTS, "link_check.py"), FIXTURE, "--json"],
-                           capture_output=True, text=True)
+        r = run_brain(FIXTURE, "check", "--json")
         report = json.loads(r.stdout)
         self.assertEqual((report["broken"], report["schema"], report["orphans"]), ([], [], []))
 
@@ -219,8 +217,7 @@ class AnswerTestSet(unittest.TestCase):
                 self.assertGreaterEqual(sets["recall"][measure], base["sets"][name]["recall"][measure], (name, measure))
 
     def recall_cmd(self, *args):
-        r = subprocess.run([sys.executable, os.path.join(SCRIPTS, "search.py"), "recall", *args, "--root", FIXTURE],
-                           capture_output=True, text=True, env=dict(os.environ, BRAIN_CACHE="0"))
+        r = run_brain(FIXTURE, "recall", *args, env=dict(os.environ, BRAIN_CACHE="0"))
         self.assertEqual(r.returncode, 0, r.stderr)
         return r.stdout
 
@@ -339,8 +336,7 @@ class Synthetic(unittest.TestCase):
             a, b = os.path.join(tmp, "a"), os.path.join(tmp, "b")
             synth.build(a, pages=120, seed=7, days=200, today=TODAY)
             synth.build(b, pages=120, seed=7, days=200, today=TODAY)
-            r = subprocess.run([sys.executable, os.path.join(SCRIPTS, "link_check.py"), a, "--json"],
-                               capture_output=True, text=True)
+            r = run_brain(a, "check", "--json")
             report = json.loads(r.stdout)
             self.assertEqual((r.returncode, report["broken"], report["schema"], report["claims"]), (0, [], [], []))
             v = vaultlib.Vault(a, today=TODAY)
@@ -414,9 +410,7 @@ class OwnQuestionSet(TempBrain):
             {"id": "o03", "set": "paraphrase", "question": "", "expect": ["gone"]}]}))
 
         def run(*args):
-            return subprocess.run([sys.executable, os.path.join(SCRIPTS, "eval.py"), "--root", self.root,
-                                   "--questions", questions, *args], capture_output=True, text=True,
-                                  env=dict(os.environ, BRAIN_CACHE="0"))
+            return run_brain(None, "eval", "--root", self.root, "--questions", questions, *args, env=dict(os.environ, BRAIN_CACHE="0"))
 
         drafted = json.loads(run("--draft", "5").stdout)["questions"]
         # pages no question expects yet, concepts before episodes, ids that are free
@@ -538,8 +532,7 @@ class SearchCache(TempBrain):
 
     def test_brain_cache_command_text(self):
         def run(*args, **env):
-            r = subprocess.run([sys.executable, os.path.join(SCRIPTS, "cache.py"), self.root, *args],
-                               capture_output=True, text=True, env=dict(os.environ, **env))
+            r = run_brain(self.root, "cache", *args, env=dict(os.environ, **env))
             return r.returncode, r.stdout + r.stderr
         code, out = run("--rebuild")
         self.assertEqual(code, 0)
@@ -560,8 +553,7 @@ class SearchCache(TempBrain):
 
     def test_brain_cache_command(self):
         def run(*args):
-            r = subprocess.run([sys.executable, os.path.join(SCRIPTS, "cache.py"), self.root, "--json", *args],
-                               capture_output=True, text=True)
+            r = run_brain(self.root, "cache", "--json", *args)
             self.assertEqual(r.returncode, 0, r.stderr)
             return json.loads(r.stdout)
         self.assertEqual(run("--rebuild")["pages"], 2)

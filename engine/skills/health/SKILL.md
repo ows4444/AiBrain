@@ -62,8 +62,8 @@ word count are never health signals; both rise whether things improve or not.
    appends today's metrics to `hippocampus/metrics.md` as one line of data
    (once a day) and prints what changed since the previous snapshot. Report
    that; never compute the change by reading the file. This is the only
-   writer of `metrics.md`. Log `DATE health snapshot -> <pages> pages,
-   orphan <n>%, degree <n>`.
+   writer of `metrics.md`. Log `brain log health snapshot --result "<pages> pages,
+   orphan <n>%, degree <n>"`.
 
 ## Output
 
