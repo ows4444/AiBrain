@@ -174,6 +174,12 @@ THRESHOLDS = {name: Threshold(*spec) for name, spec in {
                                     "read over a longer time and across every target"),
     "mood_lean": (0.33, 0.0, 1.0, "how far what is done well must outweigh what is missed and overdue, or the other "
                                   "way, as a share of both, before the mood is content or uneasy and not even"),
+    # -- the round nobody watches (`brain work`) ---------------------------------------------
+    "work_tries": (3, 1, 20, "times a reminder's action is tried before it waits for the owner"),
+    "work_wait": (30, 1, 10080, "minutes after a failure before the next try; twice as long after each one more"),
+    "work_steps": (5, 1, 100, "reminders carried out in one round at most"),
+    "work_minutes": (10, 1, 1440, "minutes a round may take before it starts nothing more; a lock twice as old is "
+                                  "taken to be left by a round that died"),
     # -- what a trait does (CHARACTER.md > Traits) -----------------------------------------
     "trait_span": (2.0, 1.0, 10.0, "how far a trait at either end moves a threshold: times this at one end, divided "
                                    "by it at the other; at 1 no trait moves anything"),

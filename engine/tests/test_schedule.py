@@ -1,4 +1,4 @@
-"""A schedule that needs no session: `brain schedule` sets the job, `brain tend --check --notify` is what it runs. Run: brain test"""
+"""A schedule that needs no session: `brain schedule` sets the job, `brain work --notify` is what it runs. Run: brain test"""
 import datetime
 import json
 import os
@@ -80,19 +80,19 @@ class TheJob(Unattended):
         self.assertEqual(self.called(), [])  # looking asks launchd nothing
         made = self.schedule("--set")
         self.assertEqual((made["did"], made["set"], made["plist"], made["minutes"], made["runs"]),
-                         ("set", True, self.plist, 15, "brain tend --check --notify"))
+                         ("set", True, self.plist, 15, "brain work --notify"))
         self.assertEqual(self.called(), ["bootout", f"{self.target}/{self.label}", "bootstrap", self.target, self.plist])
         with open(self.plist, "rb") as fh:
             job = plistlib.load(fh)
         self.assertEqual((job["Label"], job["ProgramArguments"], job["StartInterval"], job["RunAtLoad"]),
-                         (self.label, [sys.executable, schedule.BRAIN, "tend", "--check", "--notify"], 900, True))
+                         (self.label, [sys.executable, schedule.BRAIN, "work", "--notify"], 900, True))
         self.assertEqual((job["EnvironmentVariables"], job["WorkingDirectory"]), ({"BRAIN_ROOT": self.root}, self.root))
         self.assertTrue(os.path.isfile(schedule.BRAIN))
         again = self.schedule("--set", "--minutes", "5")
         self.assertEqual((again["did"], again["minutes"], again["cron"]),
-                         ("set again", 5, f"*/5 * * * * cd {self.root} && brain tend --check --notify"))
-        self.assertEqual(self.text().splitlines()[:2], ["schedule: set. Every 5 minutes this machine runs `brain tend --check "
-                                                        "--notify`", f"  {self.plist}"])
+                         ("set again", 5, f"*/5 * * * * cd {self.root} && brain work --notify"))
+        self.assertEqual(self.text().splitlines()[:2], ["schedule: set. Every 5 minutes this machine runs `brain work --notify`",
+                                                        f"  {self.plist}"])
         self.assertTrue(self.text("--set").startswith("schedule: set again. Every 15 minutes "))
         self.called()
         gone = self.schedule("--remove")
@@ -124,10 +124,10 @@ class TheJob(Unattended):
         with mock.patch.object(schedule, "on_mac", lambda: False):
             found = self.schedule("--set", "--minutes", "30")
             self.assertEqual((found["did"], found["set"], found["cron"]),
-                             ("looked", False, f"*/30 * * * * cd {self.root} && brain tend --check --notify"))
+                             ("looked", False, f"*/30 * * * * cd {self.root} && brain work --notify"))
             self.assertEqual(self.text(), "schedule: this machine is not macOS, so nothing is installed here. The line that "
-                                          f"does the same, for `crontab -e`:\n  */15 * * * * cd {self.root} && brain tend "
-                                          "--check --notify")
+                                          f"does the same, for `crontab -e`:\n  */15 * * * * cd {self.root} && brain work "
+                                          "--notify")
             self.assertEqual(self.schedule("--remove")["did"], "looked")
         self.assertEqual((self.called(), os.path.exists(self.plist)), ([], False))
 

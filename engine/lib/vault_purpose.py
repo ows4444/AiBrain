@@ -38,26 +38,29 @@ class PurposeMixin:
         return self._reminded_kept
 
     def standing(self, intention):
-        """Where a reminder the brain carries out itself stands: {state, attempt, attempts, course}; None for one
-        that only reminds.
+        """Where a reminder the brain carries out itself stands: {state, attempt, attempts, ever, course}; None for
+        one that only reminds.
 
         Read from the log alone (vault_intentions.read_course). `state` is scheduled (its
         time has not come), ready (it has, and nothing was done), or the last step said of
         it: started, finished, failed, waiting. A repeat that finished is over for that
         round and stands by what was said since; a dated one that finished is done.
         `attempt` names the last one started, `attempts` counts them, and `course` is the
-        steps that count, each (day, time, step, attempt, note).
+        steps that count, each (day, time, step, attempt, note). `ever` counts every start
+        the log holds of it, so an attempt's name is never used twice.
         """
         if not intention.get("do"):
             return None
         course = read_course(self.events).get(words(intention["text"]), [])
+        ever = sum(step[2] == "started" for step in course)
         ends = [n for n, step in enumerate(course) if step[2] == "finished"]
         if intention["every"] and ends:
             course = course[ends[-1] + 1:]  # an earlier round, done with
         due = (self.next_round(intention) if intention["every"] else intention["at"]) <= self.now
         state = course[-1][2] if course else "ready" if due else "scheduled"
         started = [step[3] for step in course if step[2] == "started"]
-        return {"state": state, "attempt": started[-1] if started else None, "attempts": len(started), "course": course}
+        return {"state": state, "attempt": started[-1] if started else None, "attempts": len(started), "ever": ever,
+                "course": course}
 
     def next_round(self, intention):
         """When an open repeat next comes round, counted from the last log line naming it; one never logged is due."""

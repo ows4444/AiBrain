@@ -29,7 +29,7 @@ class Registry(unittest.TestCase):
                     self.assertIn(action.command[0], commands.COMMANDS)  # a `brain` command, called as any is
                 else:
                     self.assertIsNone(action.command)  # nothing to call: it is here to be refused for its reason
-        self.assertEqual(CHANGING, ["fingerprint", "graph", "index", "snapshot"])
+        self.assertEqual(CHANGING, ["fingerprint", "graph", "index", "snapshot", "work"])
 
     def test_the_one_place_that_says_whether_an_action_may_run(self):
         for name, action in ACTIONS.items():
@@ -194,7 +194,7 @@ class Act(Page):
         self.assertEqual((found["policy"], found["allowed"], [a["action"] for a in found["actions"]]),
                          (PAGE, ["snapshot"], list(ACTIONS)))
         self.assertEqual({a["action"]: a["may"] for a in found["actions"] if a["tier"] == CHANGES},
-                         {"index": False, "fingerprint": False, "snapshot": True, "graph": False})
+                         {"index": False, "fingerprint": False, "snapshot": True, "graph": False, "work": False})
         text = run_brain(self.root, "act").stdout.splitlines()
         self.assertEqual(text[0], "actions, and whether each may run with nobody there:")
         self.assertIn("  runs         check        reads    broken links, schema problems, index drift, edited inputs", text)

@@ -93,15 +93,16 @@ def first_line(said):
     return (said.splitlines() or ["done"])[0].replace("[[", "").replace("]]", "")[:SAID]
 
 
-def advance(root, text, step, note=""):
+def advance(root, text, step, note="", now=None):
     """Write the next step of how a reminder is carried out, and return the line; Refused when it may not follow.
 
     `text` is the reminder's words, `step` one of started, finished, failed, waiting. The
     table says what may follow where the reminder stands, as the log has it: a step is
     never written twice, and nothing ends that did not begin. A start names its attempt
-    (a1, a2, ...), and the step that ends it carries the same name.
+    (a1, a2, ...), and the step that ends it carries the same name. `now` is the moment the
+    reminder is judged from, the clock's unless a round was handed another.
     """
-    vault = Vault(root)
+    vault = Vault(root, now=now)
     found = [i for i in vault.carried_out() if words(i["text"]) == words(text)]
     if not found:
         raise Refused(f"no open reminder with an action says '{text}'")
@@ -109,7 +110,7 @@ def advance(root, text, step, note=""):
     if step not in NEXT[stands["state"]]:
         raise Refused(f"'{found[0]['text']}' is {stands['state']}: it cannot be {step} now "
                       f"(what may follow: {', '.join(NEXT[stands['state']]) or 'nothing'})")
-    attempt = f"a{stands['attempts'] + 1}" if step == "started" else stands["attempt"]
+    attempt = f"a{stands['ever'] + 1}" if step == "started" else stands["attempt"]
     said = first_line(note) if note else ""
     result = said if step == "waiting" else f"{attempt}: {said}" if said else attempt
     try:

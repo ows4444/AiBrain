@@ -71,6 +71,7 @@ COMMANDS = {
     "forget": ("forget", True, {}),
     "statusline": ("statusline", True, {}),
     "tend": ("tend", True, {}),
+    "work": ("work", True, {}),
     "eval": ("eval", False, {}),
     "synth": ("synth", False, {}),
     "bench": ("bench", False, {}),

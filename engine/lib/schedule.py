@@ -5,11 +5,17 @@ Usage:
     brain schedule --set [--minutes N]   set it, or set it again (every 15 minutes unless given)
     brain schedule --remove              take it out
 
-What it runs is `brain tend --check --notify`: read-only, so no page, no index
-and no log line changes, and a week left alone leaves the brain as it was. The
-first run of a day shows everything that waits in one notification; a later
-run shows only a reminder that has come due since, so one written
-`when 2026-10-11 10:00` is on the screen within N minutes of ten.
+What it runs is `brain work --notify`: one round of the worker, then what waits
+on the screen. In a brain whose hippocampus/policy.md does not allow `work`,
+which is every brain until its owner writes that line, the round carries out
+nothing and only the second half happens: read-only, so no page, no index and
+no log line changes, and a week left alone leaves the brain as it was. Where
+the owner allows it, the round takes each reminder that names an action one
+step further and writes each step in the log (`brain work`). The first run of
+a day shows everything that waits in one notification; a later run shows only
+a reminder that has come due since, so one written `when 2026-10-11 10:00` is
+on the screen within N minutes of ten. A job set before `brain work` existed
+still runs `brain tend --check --notify`: set it again to change that.
 
 On macOS it is a launchd job of your own user, `~/Library/LaunchAgents/
 com.aibrain.tend.<id>.plist`, one for each brain, started at login. Elsewhere
@@ -31,6 +37,7 @@ from commands import Refused  # noqa: E402
 
 BRAIN = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "bin", "brain")
 MINUTES = 15
+RUNS = "brain work --notify"  # one round of the worker, then what waits on the screen
 
 
 def on_mac():
@@ -60,8 +67,8 @@ def state(root, did):
         with open(path, "rb") as fh:
             minutes = plistlib.load(fh).get("StartInterval", MINUTES * 60) // 60
     return {"brain": root, "did": did, "set": minutes is not None, "plist": path if minutes is not None else None,
-            "minutes": minutes, "runs": "brain tend --check --notify",
-            "cron": f"*/{minutes or MINUTES} * * * * cd {root} && brain tend --check --notify"}
+            "minutes": minutes, "runs": RUNS,
+            "cron": f"*/{minutes or MINUTES} * * * * cd {root} && {RUNS}"}
 
 
 def arguments(ap):
@@ -80,7 +87,7 @@ def run(root, args):
     if not on_mac() or not (args.set or args.remove):
         found = state(root, "looked")
         if args.set:  # not macOS: nothing to install here, the cron line is the way
-            found["cron"] = f"*/{args.minutes} * * * * cd {root} && brain tend --check --notify"
+            found["cron"] = f"*/{args.minutes} * * * * cd {root} && {RUNS}"
         return found
     was = os.path.exists(path)
     launchctl("bootout", f"{target}/{label}")  # the one running, if any: it is replaced or removed
@@ -91,7 +98,7 @@ def run(root, args):
     os.makedirs(os.path.dirname(path), exist_ok=True)
     os.makedirs(os.path.join(root, ".cache"), exist_ok=True)
     with open(path, "wb") as fh:
-        plistlib.dump({"Label": label, "ProgramArguments": [sys.executable, BRAIN, "tend", "--check", "--notify"],
+        plistlib.dump({"Label": label, "ProgramArguments": [sys.executable, BRAIN, *RUNS.split()[1:]],
                        "EnvironmentVariables": {"BRAIN_ROOT": root}, "WorkingDirectory": root,
                        "StartInterval": args.minutes * 60, "RunAtLoad": True,
                        "StandardOutPath": os.path.join(root, ".cache", "schedule.log"),

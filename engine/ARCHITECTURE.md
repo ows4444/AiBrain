@@ -115,7 +115,7 @@ the dict with `--json`, which every command takes. Another program makes the sam
 | Record | `log` (the one writer of log lines: it checks the operation and every page name), `index` (rewrites the index's listing from the pages) |
 | Output | `export` (clean copies of chosen pages; it stops on a credential), `graph` (the links as CSV or GraphML, or with `--format html` one page that opens from the disk and asks the network for nothing) |
 | Remove and continue | `forget` (remove an input), `restore` (a faded page back from `dormant/`), `resume` (write where the work stands) |
-| Operate | `act` (the one way an action of the brain's own runs with nobody there: it asks `hippocampus/policy.md` each time, runs what only reads, runs what changes the brain only where the owner's line allows it, and refuses what reaches outside or cannot be undone), `statusline`, `tend --check` (everything that needs the owner, read-only, what is felt most first: what a scheduled run sends; `--notify` puts it on the screen, each thing once a day), `schedule` (a launchd job that runs it every few minutes with no session open), `mcp` (the read-only server for other hosts), `character` (what `CHARACTER.md` says: who the brain is to its owner), `cache`, `errors`, `synth`, `bench`, `test` |
+| Operate | `act` (the one way an action of the brain's own runs with nobody there: it asks `hippocampus/policy.md` each time, runs what only reads, runs what changes the brain only where the owner's line allows it, and refuses what reaches outside or cannot be undone), `work` (one round with nobody there: each reminder that names an action and is due goes one step further, each step a line in the log; it runs only where the policy page allows `work`, tries a failure again later and then leaves it to the owner, and never takes a step that began and has no end as not done), `statusline`, `tend --check` (everything that needs the owner, read-only, what is felt most first: what a scheduled run sends; `--notify` puts it on the screen, each thing once a day), `schedule` (a launchd job that runs `brain work --notify` every few minutes with no session open), `mcp` (the read-only server for other hosts), `character` (what `CHARACTER.md` says: who the brain is to its owner), `cache`, `errors`, `synth`, `bench`, `test` |
 
 ### 4.3 The hooks: `engine/hooks/` (six events, one command each)
 
@@ -285,8 +285,9 @@ The brain also works as plain Markdown in Obsidian (the folder is its own vault)
 - Search is word-based plus link spreading; there is no embedding search.
 - Nothing writes unless a session is open, with one exception the owner opens line by line: `brain act NAME`
   runs an action that changes the brain when `hippocampus/policy.md` names it (rewriting the index's listing,
-  a day's metrics). `brain tend --check` can run on a schedule and say what is waiting; encoding, sleep and
-  rehearsal still wait for the owner.
+  a day's metrics), and `brain work`, when that page allows it, carries out the reminders that name such an
+  action and writes each step in the log. No model runs with nobody there: encoding, sleep and rehearsal
+  still wait for the owner.
 - The model does the extraction from PDFs, images and transcripts; the engine has no extractor.
 - One owner; a page's dates carry no time of day. Log lines do, so the events of one day are read in the
   order they happened, also in a log merged from two copies of the brain.

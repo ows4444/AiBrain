@@ -47,7 +47,9 @@ WHY = {
 # command: the `brain` command it is, with its arguments; None for one that takes a target
 #          (a URL, a page, an input) and so is never a fixed action: it is here to be
 #          refused for the right reason, and so that the policy page cannot name it
-Action = collections.namedtuple("Action", "tier what command")
+# again: whether it may be run a second time when nobody knows if the first run ended (a
+#        crash after it began). True for what only reads or rewrites what it derives.
+Action = collections.namedtuple("Action", "tier what command again", defaults=(True,))
 ACTIONS = {
     "check": Action(READS, "broken links, schema problems, index drift, edited inputs", ("check",)),
     "guard": Action(READS, "the same, and a scan for credentials and personal data", ("check", "--guard")),
@@ -59,6 +61,8 @@ ACTIONS = {
     "fingerprint": Action(CHANGES, "record a hash of each new input, so a later edit of one is caught", ("fingerprint",)),
     "snapshot": Action(CHANGES, "append today's metrics to hippocampus/metrics.md, once a day", ("introspect", "--snapshot")),
     "graph": Action(CHANGES, "write the link graph as one page into motor/graph/", ("graph", "--format", "html")),
+    "work": Action(CHANGES, "carry out the reminders that name an action, a step each, and write each step in the log",
+                   ("work",)),
     "door": Action(OUTSIDE, "take the notes that wait in the folder at the door, which is outside the brain", None),
     "fetch": Action(OUTSIDE, "a web page into senses/", None),
     "import": Action(OUTSIDE, "the notes of another tool into senses/", None),

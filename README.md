@@ -113,6 +113,7 @@ brain feel            # what the record gives the brain to feel, each feeling wi
 brain character       # who the brain is to you: what CHARACTER.md says it holds to and how it speaks
 brain tend --check    # everything that needs you, in one read-only digest
 brain act             # the brain's own actions, and which may run with nobody there; `brain act NAME` runs one
+brain work            # one round: carry out the reminders that name an action, are due and are allowed; then say what waits
 brain schedule        # have this machine run that every few minutes, with no session open
 brain mcp             # a read-only MCP server for other programs: search, recall, since, gaps, waiting, character
 brain log recall "a question" --pages a-page   # one checked line in the log; skills run it
