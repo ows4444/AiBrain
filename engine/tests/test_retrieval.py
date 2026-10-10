@@ -634,6 +634,23 @@ class TheBrainAsItWas(TempBrain):
         tried = vaultlib.Vault(self.root, today=TODAY, tuning={"hebbian_half_life": 63}).as_of(1)
         self.assertEqual(tried.edge_weights(), {frozenset((tried.resolve("alpha"), tried.resolve("beta"))): 0.5})
 
+    def test_a_copy_is_lifted_by_the_recalls_before_its_line_and_by_none_after(self):
+        v = vaultlib.Vault(self.root, today=TODAY, tuning={"use_lift": 0.2, "use_full": 1})
+        alpha, beta = v.resolve("alpha"), v.resolve("beta")
+
+        def score(vault):
+            return vault.recall("alpha", hops=0)[0]["score"]
+
+        # Both of alpha's recalls, as they stand today; gamma's line is a rehearsal and counts for none.
+        self.assertEqual(v.use_weights(), {alpha: 0.5 ** (63 / 90) + 0.5 ** (23 / 90), beta: 0.5 ** (63 / 90)})
+        self.assertEqual(score(v), 1.2)  # more than use_full of them: the whole lift
+        unused = v.as_of(0)  # the weights above were worked out for the whole log, and are not handed on
+        self.assertEqual((unused.use_weights(), unused.lift_from_use(alpha), score(unused)), ({}, 0.0, 1.0))
+        then = v.as_of(3, today=datetime.date(2026, 9, 10))  # as the last question was asked, its own line unknown
+        self.assertEqual(then.use_weights(), {alpha: 0.5 ** (40 / 90), beta: 0.5 ** (40 / 90)})
+        self.assertEqual(score(then), round(1 + 0.2 * 0.5 ** (40 / 90), 4))
+        self.assertEqual(v.use_weights()[alpha], 0.5 ** (63 / 90) + 0.5 ** (23 / 90))  # the brain itself is as it was
+
 
 class ReplayOfTheLog(TempBrain):
     """`brain eval --from-log`: every question the log holds, asked again of the brain as it was that day."""

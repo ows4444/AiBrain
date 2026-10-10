@@ -98,7 +98,8 @@ THRESHOLDS = {name: Threshold(*spec) for name, spec in {
     "seed_limit": (5, 1, 100, "search hits that start the spread"),
     "spread_hops": (2, 0, 6, "links activation is followed along from each seed"),
     "spread_decay": (0.5, 0.0, 1.0, "share of a page's activation each hop passes on"),
-    "hebbian_half_life": (90, 1, 36500, "days for a co-recall to lose half its weight"),
+    "hebbian_half_life": (90, 1, 36500, "days for a recall to lose half its weight, in a pair recalled together and "
+                                        "in a page's own lift (use_lift)"),
     # How much a typed link carries activation, against 1.0 for a plain link. A
     # contradiction is followed like a plain link (the other side must be seen), and the
     # result is flagged. Never 0: a page's strongest link is what the others are measured by.
@@ -112,6 +113,15 @@ THRESHOLDS = {name: Threshold(*spec) for name, spec in {
     "project_boost": (1.5, 0.0, 100.0, "--project: how much more a hit counts when the project links it"),
     "project_seed": (0.2, 0.0, 1.0, "--project: how strongly a page it links joins the seeds when it was no hit"),
     "strength_lift": (0.05, 0.0, 1.0, "how much each rehearsal level the owner holds lifts a page's score"),
+    # A page's own recalls do not move its rank unless a brain says so: use_lift is 0 until a
+    # replay of that brain's log shows it helps (`brain eval --from-log --set use_lift=0.2`,
+    # against the same run without it). Every recall line naming the page counts, fading as
+    # a co-recall does (hebbian_half_life); a rehearsal does not, strength_lift has it. The
+    # lift grows up to use_full such recalls and stops, so a page asked for every day gains
+    # use_lift at most and cannot pass a page that matches the question that much better.
+    "use_lift": (0.0, 0.0, 1.0, "the most a page's own recalls add to its score, as a share of it; 0 leaves them "
+                                "out of the ranking"),
+    "use_full": (5, 1, 1000, "recalls of a page, each fading as a co-recall does, that earn it use_lift in full"),
     # `brain recall` stops where the match stops. Rows scoring under recall_floor of the
     # best row are cut: on the eval's fixture no expected page in the top five scores
     # under 0.47 of the first. And when the best page holds under min_coverage of the

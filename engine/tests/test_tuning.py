@@ -345,6 +345,40 @@ class WhatEachThresholdMoves(Tuned):
         self.assertEqual(tried["far"], 0.7)
         self.assertAlmostEqual(tried["delta"] / on_project["delta"], 2.0, places=2)  # 3.0 against 1.5
 
+    def test_a_page_s_own_recalls_lift_it_only_when_the_brain_says(self):
+        self.write("cortex/concepts/alpha.md", concept("Alpha alpha alpha.", title="Alpha"))
+        self.write("cortex/concepts/delta.md", concept("Alpha, and alpha again here.", title="Delta"))
+        self.write("cortex/concepts/far.md", concept("Unlinked.", title="Far"))
+        self.write("hippocampus/index.md", page("index", "\n# Index\n"))
+        self.log(f"{ago(90)} recall alpha in passing -> [[delta]], [[far]], [[no-such-page]]",
+                 f"{ago(0)} recall alpha in passing again -> [[delta]], [[delta]], [[index]]",  # named twice: used once
+                 f"{ago(0)} recall and once more -> [[delta]]",
+                 f"{ago(0)} recall rehearse -> [[far]]", f"{ago(0)} rehearse missed -> [[far]]",  # the owner tested: no use
+                 f"{ago(0)} ingest senses/a.md -> 1 episode")
+
+        def scores(vault):
+            return {r["page"].stem: r["score"] for r in vault.recall("alpha", hops=0)}
+
+        v = self.brain()
+        delta, far = v.resolve("delta"), v.resolve("far")
+        self.assertEqual(v.use_weights(), {delta: 2.5, far: 0.5})  # one half-life old counts half; no system page
+        self.assertEqual((v.lift_from_use(delta), scores(v)["alpha"]), (0.0, 1.0))  # counted, and left out of the rank
+        plain = scores(v)
+        self.assertEqual(list(plain), ["alpha", "delta"])
+        self.assertTrue(0.5 < plain["delta"] < 0.8, plain)  # what the three cases below rest on
+
+        on = self.trying(use_lift=0.2)
+        self.assertAlmostEqual(on.lift_from_use(on.resolve("delta")), 0.1)  # 2.5 of the 5 that earn all of it
+        self.assertEqual(on.lift_from_use(on.resolve("alpha")), 0.0)  # never recalled: nothing to lift it by
+        self.assertAlmostEqual(on.lift_from_use(on.resolve("far")), 0.02)
+        self.assertAlmostEqual(scores(on)["delta"] / plain["delta"], 1.1, places=3)
+        full = self.trying(use_lift=0.2, use_full=2)
+        self.assertEqual(full.lift_from_use(full.resolve("delta")), 0.2)  # past use_full it grows no further
+        self.assertEqual(list(scores(full)), ["alpha", "delta"])  # the cap: the page the question names stays first
+        self.assertEqual(list(scores(self.trying(use_lift=1.0, use_full=2))), ["delta", "alpha"])  # what a cap is for
+        faster = self.trying(use_lift=0.2, hebbian_half_life=45)
+        self.assertEqual(faster.use_weights()[faster.resolve("delta")], 2.25)  # the old recall is two half-lives old
+
     def test_recall_cuts_and_abstains_as_the_brain_says(self):
         self.write("cortex/concepts/alpha.md", concept("Alpha alpha alpha.", title="Alpha", summary="What alpha is."))
         self.write("cortex/concepts/delta.md", concept("A long page. " + "Filler text. " * 40, title="Delta",

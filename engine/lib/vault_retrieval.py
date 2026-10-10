@@ -11,6 +11,8 @@ Every number here is the brain's own (vault_tuning): the defaults are named belo
               does name, can still come back (associative recall)
     weights   every recall line naming two pages together strengthens their
               pair, fading with age (Hebbian; nothing is stored, the log is replayed)
+    use       the recall lines naming a page lift its own score, up to a cap; off
+              unless the brain sets use_lift, since no log has shown yet that it helps
     links     pairs that are not linked but probably should be (next links)
 
 Read-only: none of this writes the log or a page. A skill that answers from
@@ -177,6 +179,36 @@ class RetrievalMixin:
             self.__dict__[key] = weights
         return self.__dict__[key]
 
+    def use_weights(self):
+        """{page: weight} from the recall lines naming each page, each halving every hebbian_half_life days.
+
+        What a page's own history of answering comes to. A rehearsal line is left out, as it
+        is for pairs: it is the owner being tested, and strength() counts it. A page a line
+        names twice was used once. What use teaches fades at one rate, for a pair and a page.
+        """
+        key = ("_use", self.tuning.hebbian_half_life)  # a tuple, as the pair weights are: as_of drops both
+        if key not in self.__dict__:
+            weights = {}
+            for e, named in zip(self.events, self._event_pages()):
+                if e.op == "recall" and e.day and e.arrow and not is_rehearsal_pass(e):
+                    w = 0.5 ** (max(0, (self.today - e.day).days) / key[1])
+                    for p in dict.fromkeys(named):
+                        if p is not None and not p.is_system:
+                            weights[p] = weights.get(p, 0.0) + w
+            self.__dict__[key] = weights
+        return self.__dict__[key]
+
+    def lift_from_use(self, page):
+        """The share of its score a page's own recalls add: use_lift once use_full of them stand, less before.
+
+        0.0 while use_lift is 0, which it is unless the brain says otherwise: a page's recalls
+        then keep it from fading and tie it to the pages it was recalled with, and no more.
+        """
+        t = self.tuning
+        if not t.use_lift:
+            return 0.0
+        return t.use_lift * min(1.0, self.use_weights().get(page, 0.0) / t.use_full)
+
     def _link_weights(self):
         """{page: {neighbour: weight}} from the links alone: 1.0 for a plain one, more for a typed one.
 
@@ -297,7 +329,10 @@ class RetrievalMixin:
         Search hits seed the spread (scaled so the best is 1.0). With `project`
         (a prefrontal/ folder name), its pages count project_boost times more
         when they are hits, and join as weak seeds when they are not: what is
-        recalled depends on what the owner is working on.
+        recalled depends on what the owner is working on. A page's score is
+        the activation that reached it, lifted by each rehearsal level the
+        owner holds (strength_lift) and, in a brain that sets use_lift, by
+        its own recalls (lift_from_use).
         flags: disputed, contradicted, stale (a concept or insight not updated in
         stale_days: ask whether it still holds), generated (/explore), dormant.
         section: the part of the page to read first, when one stands out (best_sections).
@@ -326,7 +361,7 @@ class RetrievalMixin:
         activation, via = self.activate(seeds, hops=hops)
         rows = []
         for p, a in activation.items():
-            score = a * (1 + t.strength_lift * self.strength(p))
+            score = a * (1 + t.strength_lift * self.strength(p) + self.lift_from_use(p))
             seed, hop = via.get(p, (p, 0))
             flags = [f for f, on in (
                 ("disputed", "disputed" in as_list(p.fields.get("tags"))),

@@ -220,7 +220,10 @@ The gatekeeper runs `/guard` over the pages chosen for an export in a clean cont
 5. `check_recall` (Stop) confirms the line exists, else asks once.
 6. The next recall sees stronger pairs: pages named together in a recall line associate more strongly, and
    the line keeps each of them in use, so it does not fade. Both are folded from the log. A page's own recalls
-   do not lift its rank: the only lift from its history is its rehearsal level, which `/rehearse` moves.
+   do not lift its rank: the only lift from its history is its rehearsal level, which `/rehearse` moves. A
+   brain can switch a second one on, `use_lift` in its `tuning.md`: each recall line naming a page then adds to
+   its score, fading as a pair does and capped at `use_full` of them. It is 0 in the engine, because no log has
+   yet shown that it helps (TASKS 25): `brain eval --from-log --set use_lift=0.2` is how a brain finds out.
 
 ### 6.3 One write, as the hooks see it
 
