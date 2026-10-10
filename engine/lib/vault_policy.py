@@ -19,16 +19,33 @@ asked for) counts for nothing here. `brain check` fails on a line that names no 
 or one no line can allow, and the page is the owner's to write: a wall refuses any other
 hand (hooks/protect_policy.py).
 
+A reminder that waits (its action is not allowed, or it failed too often) is a proposal,
+and has a name of seven characters made from everything about it: its words, its action,
+what must hold after it, its `when`, and how often it was started. The owner's yes for
+that one proposal is a line under `## Once`, the name and the day they wrote it,
+
+    - 3f9a2c1 2026-10-12 (just this time)
+
+It lets that reminder run once and no other: change anything about the reminder and its
+name is another; once it has started, its name is another too. And it lapses: it holds
+for yes_days after its day. A line there is checked for its form only; whether a
+proposal by that name still waits is seen when a round looks.
+
 No dependencies. Nothing here walks the brain: the policy is one file, read by its path.
 """
 import collections
+import datetime
 import difflib
+import hashlib
 import os
 import re
 
 POLICY_PATH = os.path.join("hippocampus", "policy.md")
 ALLOWED = re.compile(r"^## Allowed[ \t]*\n(.*?)(?=^## |\Z)", re.S | re.M)
+ONCE = re.compile(r"^## Once[ \t]*\n(.*?)(?=^## |\Z)", re.S | re.M)
 BULLET = re.compile(r"^[-*]\s+")
+# `- 3f9a2c1 2026-10-12`: the proposal's name and the day of the yes, then anything in brackets.
+YES = re.compile(r"^[-*]\s+`?(?P<name>[0-9a-f]{7})`?\s+(?P<day>\d{4}-\d{1,2}-\d{1,2})\s*(?:\(.*\)\s*)?$")
 # `- name`, then anything in brackets: why it is allowed, and since when.
 LINE = re.compile(r"^[-*]\s+`?(?P<name>[A-Za-z][\w-]*)`?\s*(?:\(.*\)\s*)?$")
 
@@ -122,9 +139,50 @@ def read_policy(text):
     return names, problems
 
 
+def proposal(said, do, until, when, started):
+    """The name of one proposal: seven characters that are others once anything about it changes.
+
+    `said` is the reminder's words as the log matches them, `do` and `until` its action and
+    what must hold after it, `when` its time, `started` how often the log says it began.
+    """
+    return hashlib.sha256("\n".join((said, do, until or "", when, str(started))).encode("utf-8")).hexdigest()[:7]
+
+
+def read_once(text):
+    """([(name, the day of the yes)], [what is wrong]) from the `## Once` section of a policy page.
+
+    A line there is `- name YYYY-MM-DD`, with an optional note in brackets after it: the
+    owner's yes for the one proposal of that name, on that day. A line that cannot be read
+    so, or whose day is none, is listed and counts for nothing.
+    """
+    section = ONCE.search(text)
+    said, problems = [], []
+    for line in (section.group(1).splitlines() if section else []):
+        line = line.strip()
+        if not BULLET.match(line):
+            continue
+        m = YES.match(line)
+        try:
+            said.append((m.group("name"), datetime.date.fromisoformat(m.group("day"))))
+        except (AttributeError, ValueError):  # no such line, or no such day
+            problems.append(f"cannot read '{line}': a yes is `- <the proposal's name> YYYY-MM-DD (why)`, the name as "
+                            "`brain tend --check` gives it and the day you write it")
+    return said, problems
+
+
 def policy_problems(text):
     """What is wrong with the lines of a policy page's text; [] if nothing."""
-    return read_policy(text)[1]
+    return read_policy(text)[1] + read_once(text)[1]
+
+
+def yes_of(root, today, days):
+    """The names of the proposals the owner's yes holds for today: written on a day that has come, at most `days` ago."""
+    path = os.path.join(root, POLICY_PATH)
+    if not os.path.exists(path):
+        return frozenset()
+    with open(path, encoding="utf-8", errors="replace") as fh:
+        said = read_once(fh.read())[0]
+    return frozenset(name for name, day in said if day <= today <= day + datetime.timedelta(days=days))
 
 
 def policy_of(root):

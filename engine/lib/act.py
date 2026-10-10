@@ -1,7 +1,8 @@
 """Run one action of the brain's own, if its policy allows it now.
 
 Usage:
-    brain act                     every action: its tier, and whether it may run with nobody there
+    brain act                     every action: its tier, and whether it may run with nobody there;
+                                  then each yes the owner gave for this once, and what it is for
     brain act NAME [--dry-run]    run it, or say why not
 
 An action is a `brain` command with its arguments fixed, under a name
@@ -33,6 +34,7 @@ when the policy does not allow it. `advance` is the one writer of a step, and
 writes only one the table allows from where the reminder stands
 (vault_intentions.NEXT): nothing is finished that was not started.
 """
+import contextlib
 import os
 import sys
 
@@ -42,7 +44,7 @@ import log  # noqa: E402
 from commands import Refused  # noqa: E402
 from errlog import note  # noqa: E402
 from vault_intentions import NEXT, words  # noqa: E402
-from vault_policy import ACTIONS, CHANGES, POLICY_PATH, READS, decide, policy_of  # noqa: E402
+from vault_policy import ACTIONS, CHANGES, POLICY_PATH, READS, decide, policy_of, read_once, yes_of  # noqa: E402
 from vaultlib import Vault  # noqa: E402
 
 SAID = 120  # characters of what the command said that go into its log line
@@ -59,7 +61,15 @@ def listing(root):
     for name, action in ACTIONS.items():
         may, why = decide(name, allowed)
         rows.append({"action": name, "tier": action.tier, "what": action.what, "may": may, "why": why})
-    return {"policy": POLICY_PATH, "allowed": sorted(allowed), "actions": rows}
+    vault = Vault(root)
+    waits = {i["stands"]["proposal"]: i["text"] for i in vault.carried_out() if i["stands"]["state"] == "waiting"}
+    with open(os.path.join(root, POLICY_PATH), encoding="utf-8", errors="replace") if os.path.exists(
+            os.path.join(root, POLICY_PATH)) else contextlib.nullcontext() as fh:
+        said = read_once(fh.read())[0] if fh else []
+    holds = yes_of(root, vault.today, vault.tuning.yes_days)
+    once = [{"yes": name, "day": day.isoformat(), "for": waits.get(name),
+             "holds": name in holds and name in waits} for name, day in said]
+    return {"policy": POLICY_PATH, "allowed": sorted(allowed), "actions": rows, "once": once}
 
 
 def run(root, args):
@@ -140,7 +150,11 @@ def render(result, args):
             + [f"  {state(a):<12} {a['action']:<12} {a['tier']:<8} {a['what']}" for a in result["actions"]]
             + ["reads: it changes nothing, and always runs. changes: it runs only where a line `- name (why)` under "
                f"`## Allowed` in {result['policy']}, written by the owner, allows it; git can undo it.",
-               "outside, final: it reaches outside the brain, or cannot be undone. No line can allow it."])
+               "outside, final: it reaches outside the brain, or cannot be undone. No line can allow it."]
+            + [f"yes {o['yes']} of {o['day']}: " + (f"lets `{o['for']}` run once" if o["holds"] else
+                                                    f"`{o['for']}` waits, and this yes has lapsed" if o["for"] else
+                                                    "names nothing that waits now (used, or its reminder changed)")
+               for o in result["once"]])
     if not result["ran"]:
         return f"act: {result['action']} would run ({result['why']}); nothing was run"
     return "\n".join(filter(None, [result["said"], f"act: {result['action']} ran ({result['why']})"

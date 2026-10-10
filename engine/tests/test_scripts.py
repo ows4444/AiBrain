@@ -615,6 +615,7 @@ class TendCheck(TempBrain):
             "contradictions": [{"episode": "cortex/episodes/blog.md", "page": "cortex/concepts/spacing.md"}],
             "rehearse": ["cortex/concepts/spacing.md"], "reminders": [{"text": "Renew the domain", "when": ago(2)}],
             "review": [{"page": "cortex/decisions/raise.md", "review": ago(5)}], "revisit": ["cortex/decisions/hire.md"],
+            "proposals": [],
             "late": [{"goal": "Move", "state": "past-due", "due": ago(10)}],
             "at_risk": [{"goal": "Hand in", "days_left": 12}],
             "gaps": [{"words": ["picasso"], "asked": 2, "last": ago(3)}], "needs": 11,

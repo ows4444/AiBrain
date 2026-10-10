@@ -19,6 +19,11 @@ LISTING, WHOLE, LOOK = "keep the listing current", "see the listing is whole", "
 NOT_ALLOWED = "policy: hippocampus/policy.md does not allow index"
 
 
+def named(text, do, until=None, when="2026-10-01", started=0):
+    """The name a reminder goes by while it waits: what the owner's yes must say."""
+    return vaultlib.proposal(text, do, until, when, started)
+
+
 class Worked(TempBrain):
     """A brain with one page, an index that does not list it yet, and reminders that name an action."""
 
@@ -35,10 +40,10 @@ class Worked(TempBrain):
         self.write("hippocampus/intentions.md", page("intentions", "\n# Intentions\n\n## Open\n\n"
                                                      + "".join(f"- {line}\n" for line in lines), title="Intentions"))
 
-    def allow(self, *names):
-        """The policy page as the owner would write it by hand."""
-        self.write(vaultlib.POLICY_PATH, page("policy", "\n# Policy\n\n## Allowed\n\n" + "".join(f"- {n}\n" for n in names),
-                                              title="Policy"))
+    def allow(self, *names, once=()):
+        """The policy page as the owner would write it by hand: what may always run, and a yes for this once."""
+        self.write(vaultlib.POLICY_PATH, page("policy", "\n# Policy\n\n## Allowed\n\n" + "".join(f"- {n}\n" for n in names)
+                                              + "\n## Once\n\n" + "".join(f"- {line}\n" for line in once), title="Policy"))
 
     def steps(self):
         return [e.rest for e in vaultlib.read_events(self.root) if e.op == "act"]
@@ -88,8 +93,11 @@ class ARound(Worked):
         self.allow("work")
         self.remind(f"{LISTING} when 2026-10-01 do `index`", f"{LOOK} when 2026-10-01 do `check`")
         found = work.round_of(self.root)
-        self.assertEqual([(x["text"], x["why"]) for x in found["left"]], [(LISTING, "the policy does not allow it")])
-        self.assertEqual(self.steps(), [f"waiting {LISTING} -> {NOT_ALLOWED}", f"started {LOOK} -> a1: check, due since 2026-10-01",
+        name = named(LISTING, "index")
+        self.assertEqual([(x["text"], x["why"]) for x in found["left"]],
+                         [(LISTING, f"the policy does not allow it (yes {name})")])
+        self.assertEqual(self.steps(), [f"waiting {LISTING} -> {NOT_ALLOWED}; yes {name}",
+                                        f"started {LOOK} -> a1: check, due since 2026-10-01",
                                         f"finished {LOOK} -> a1: pages: 1"])  # one that only reads needs no line
         work.round_of(self.root)
         work.round_of(self.root)
@@ -131,11 +139,12 @@ class WhatWentWrong(Worked):
         self.assertEqual([s.split(" -> ")[0].split()[0] + " " + s.split(" -> ")[1][:2] for s in self.steps()],
                          ["started a1", "failed a1", "started a2", "failed a2", "started a3", "failed a3"])
         late = work.round_of(self.root, now=self.later(10000))  # three tries: now it is the owner's
-        self.assertEqual(self.steps()[-1], f"waiting {WHOLE} -> owner: it failed 3 times; `brain work --retry` tries again")
+        name = named(WHOLE, "index", "check", started=3)
+        self.assertEqual(self.steps()[-1], f"waiting {WHOLE} -> owner: it failed 3 times; yes {name}")
         self.assertEqual(late["left"][0]["why"], "it waits for the owner")
         idle = work.round_of(self.root, now=self.later(20000))
         self.assertEqual((idle["left"][0]["why"], len(self.steps())),
-                         ("it waits for the owner (`brain work --retry` releases it)", 7))
+                         (f"it waits for the owner (yes {name}, or `brain work --retry`)", 7))
         os.remove(os.path.join(self.root, "cortex/concepts/broken.md"))  # put right, and released by the owner
         r = run_brain(self.root, "work", "--retry", "see", "the", "listing", "is", "whole")
         self.assertEqual(r.returncode, 0, r.stderr)
@@ -202,8 +211,8 @@ class WhatWentWrong(Worked):
             found = work.round_of(self.root)
             self.assertEqual(self.steps()[1:], [
                 f"failed {LISTING} -> a1: {work.INTERRUPTED}",
-                f"waiting {LISTING} -> owner: interrupted, and `index` is not run twice unasked; `brain work --retry` "
-                "runs it"])
+                f"waiting {LISTING} -> owner: interrupted, and `index` is not run twice unasked; yes "
+                + named(LISTING, "index", started=1)])
             self.assertEqual((found["left"][0]["why"], self.listed()), ("it waits for the owner", False))
             work.round_of(self.root)
             self.assertEqual(len(self.steps()), 3)  # never taken as not done: it is not run again unasked
@@ -262,12 +271,14 @@ class ItsLimits(Worked):
         self.assertEqual([(d["text"], d["steps"]) for d in found["did"]], [
             (LISTING, ["would be started: index, due since 2026-10-01"]),
             (WHOLE, [f"would be failed: {work.INTERRUPTED}",
-                     "would be waiting: policy: hippocampus/policy.md does not allow snapshot"])])
+                     "would be waiting: policy: hippocampus/policy.md does not allow snapshot; yes "
+                     + named(WHOLE, "snapshot", started=1)])])
         self.assertEqual((self.steps(), self.listed(), self.locked()), (before, False, False))
         text = run_brain(self.root, "work", "--dry-run").stdout.splitlines()
         self.assertRegex(text[0], r"^work, \d{4}-\d\d-\d\d: 2 carried a step further, 1 left \(a dry run: nothing was written\)$")
         self.assertEqual(text[1:3], [f"  {LISTING} (index)", "      would be started: index, due since 2026-10-01"])
-        self.assertIn(f"  left: {WHOLE} (snapshot): the policy does not allow it", text)
+        self.assertIn(f"  left: {WHOLE} (snapshot): the policy does not allow it (yes {named(WHOLE, 'snapshot', started=1)})",
+                      text)
 
     def test_the_owner_s_retry_names_one_reminder_that_is_due(self):
         self.remind(f"{LISTING} when 2026-10-01 do `index`", "take the numbers when 2099-01-01 do `snapshot`",
@@ -292,3 +303,128 @@ class ItsLimits(Worked):
         self.remind()
         os.remove(os.path.join(self.root, "cortex/concepts/spacing.md"))
         self.assertEqual(run_brain(self.root, "work").stdout.splitlines()[-1], "  nothing waits on the owner")
+
+
+class TheOwnersYes(Worked):
+    """A reminder that waits is a proposal with a name; a yes is for that name, once, and for a few days."""
+
+    def setUp(self):
+        super().setUp()
+        self.today = datetime.date.today()
+        self.remind(f"{LISTING} when 2026-10-01 do `index`", f"{WHOLE} when 2026-10-01 do `graph`")
+        self.allow("work")
+        work.round_of(self.root)  # neither action is allowed: both wait, each under its own name
+        self.listing, self.whole = named(LISTING, "index"), named(WHOLE, "graph")
+
+    def yes(self, name, days_ago=0):
+        return f"{name} {(self.today - datetime.timedelta(days=days_ago)).isoformat()} (just this time)"
+
+    def test_what_waits_is_shown_with_the_name_the_yes_must_say(self):
+        self.assertEqual(self.steps(), [f"waiting {LISTING} -> {NOT_ALLOWED}; yes {self.listing}",
+                                        f"waiting {WHOLE} -> policy: hippocampus/policy.md does not allow graph; yes {self.whole}"])
+        self.assertNotEqual(self.listing, self.whole)
+        found = tend.digest(vaultlib.Vault(self.root))
+        self.assertEqual(found["proposals"], [
+            {"text": LISTING, "do": "index", "why": f"{NOT_ALLOWED}; yes {self.listing}", "yes": self.listing},
+            {"text": WHOLE, "do": "graph", "why": f"policy: hippocampus/policy.md does not allow graph; yes {self.whole}",
+             "yes": self.whole}])
+        line = [row for row in tend.render(found, None).splitlines() if "wait for a yes" in row][0]
+        self.assertEqual(line, f"  wait for a yes    2: {LISTING} (do index; yes {self.listing}), {WHOLE} (do graph; yes "
+                               f"{self.whole})  (yours alone: `- <yes> <today>` under `## Once` in hippocampus/policy.md runs "
+                               "one once)")
+        briefing = self.run_hook("wake_up.py", {}).stdout
+        self.assertIn(f"Your yes: 2 wait for it ({LISTING}: do index, yes {self.listing}; {WHOLE}: do graph, yes "
+                      f"{self.whole}): written by you in hippocampus/policy.md, `- <yes> <today>` under `## Once` for this "
+                      "once, `- <action>` under `## Allowed` for always", briefing)
+
+    def test_a_yes_runs_that_one_reminder_once_and_no_other(self):
+        self.allow("work", once=[self.yes(self.listing)])
+        found = work.round_of(self.root)
+        self.assertEqual([d["text"] for d in found["did"]], [LISTING])  # the other still waits: the yes is not for it
+        self.assertEqual(self.steps()[2:], [
+            f"started {LISTING} -> a1: index, due since 2026-10-01, by the owner's yes {self.listing}",
+            f"finished {LISTING} -> a1: index: 1 pages listed; added spacing"])
+        self.assertEqual([p["text"] for p in vaultlib.Vault(self.root).proposals()], [WHOLE])
+        listing = commands.call("act", [], root=self.root)["once"]
+        self.assertEqual(listing, [{"yes": self.listing, "day": self.today.isoformat(), "for": None, "holds": False}])
+        self.assertIn(f"yes {self.listing} of {self.today.isoformat()}: names nothing that waits now (used, or its reminder "
+                      "changed)", run_brain(self.root, "act").stdout)
+
+    def test_a_yes_is_spent_once_the_reminder_has_started(self):
+        self.remind(f"{LISTING} when every day do `index`")
+        self.log()
+        work.round_of(self.root)  # it waits, under the name of a reminder never started
+        first = named(LISTING, "index", when="every day")
+        self.allow("work", once=[self.yes(first)])
+        work.round_of(self.root)
+        self.assertEqual([s.split(" -> ")[0].split()[0] for s in self.steps()], ["waiting", "started", "finished"])
+        tomorrow = self.later(24 * 60 + 5)
+        again = work.round_of(self.root, now=tomorrow)  # the next round: not allowed still, and the old yes is of no use
+        second = named(LISTING, "index", when="every day", started=1)
+        self.assertNotEqual(first, second)
+        self.assertEqual(self.steps()[3], f"waiting {LISTING} -> {NOT_ALLOWED}; yes {second}")
+        self.assertEqual(again["left"][0]["why"], f"the policy does not allow it (yes {second})")
+
+    def test_a_yes_does_not_hold_for_the_same_reminder_changed(self):
+        for changed in (f"{LISTING} when 2026-10-01 do `graph`", f"{LISTING} when 2026-10-01 do `index` until `check`",
+                        f"{LISTING} when 2026-10-02 do `index`", f"{LISTING} now when 2026-10-01 do `index`"):
+            with self.subTest(changed):
+                self.remind(changed)
+                self.log(f"2026-10-02 09:00 act waiting {changed.split(' when ')[0]} -> policy: it waits")
+                self.allow("work", once=[self.yes(self.listing)])
+                found = work.round_of(self.root)
+                self.assertEqual((found["did"], len(self.steps())), ([], 1))
+        self.assertNotEqual(named("a", "index", "check"), named("a", "index"))
+        self.assertRegex(self.listing, r"^[0-9a-f]{7}$")
+
+    def test_a_yes_lapses_and_one_dated_ahead_does_not_count_yet(self):
+        for days_ago, holds in ((8, False), (-1, False), (7, True)):
+            with self.subTest(days_ago):
+                self.allow("work", once=[self.yes(self.listing, days_ago)])
+                before = len(self.steps())
+                work.round_of(self.root)
+                self.assertEqual(len(self.steps()) - before, 2 if holds else 0)
+                if not holds and days_ago > 0:
+                    self.assertEqual(commands.call("act", [], root=self.root)["once"][0],
+                                     {"yes": self.listing, "day": (self.today - datetime.timedelta(days=8)).isoformat(),
+                                      "for": LISTING, "holds": False})
+                    self.assertIn(f"`{LISTING}` waits, and this yes has lapsed", run_brain(self.root, "act").stdout)
+        self.write(vaultlib.TUNING_PATH, page("tuning", "\n## Overrides\n\n- yes_days = 30\n", title="Tuning"))
+        self.allow("work", once=[self.yes(self.whole, 20)])
+        self.assertIn(f"yes {self.whole} of ", run_brain(self.root, "act").stdout)
+        self.assertEqual([d["text"] for d in work.round_of(self.root)["did"]], [WHOLE])
+
+    def test_one_that_failed_too_often_is_released_by_a_yes_too_and_one_given_early_counts(self):
+        self.remind(f"{LOOK} when 2026-10-01 do `index` until `check`")
+        self.allow("work", "index")
+        self.write("cortex/concepts/broken.md", page("concept", "See [[nowhere]].\n", title="Broken", status="established",
+                                                     summary="It points nowhere.", **DATES))
+        self.log(*[f"2026-10-0{n} 09:00 act {step} {LOOK} -> a{n}: x" for n in (1, 2, 3) for step in ("started", "failed")])
+        work.round_of(self.root)
+        name = named(LOOK, "index", "check", started=3)
+        self.assertEqual(self.steps()[-1], f"waiting {LOOK} -> owner: it failed 3 times; yes {name}")
+        os.remove(os.path.join(self.root, "cortex/concepts/broken.md"))
+        self.allow("work", "index", once=[self.yes(name)])
+        work.round_of(self.root)
+        self.assertEqual([s.split(" -> ")[0].split()[0] for s in self.steps()[-2:]], ["started", "finished"])
+        self.assertTrue(self.steps()[-2].endswith(f"by the owner's yes {name}"))
+        # A yes written before the reminder was ever found waiting holds as well: the name is the same.
+        self.remind(f"{WHOLE} when 2026-10-01 do `graph`")
+        self.log()
+        self.allow("work", once=[self.yes(self.whole)])
+        work.round_of(self.root)
+        self.assertEqual([s.split(" -> ")[0].split()[0] for s in self.steps()], ["started", "finished"])
+
+    def test_a_yes_that_cannot_be_read_is_a_problem_of_the_page_and_counts_for_nothing(self):
+        self.allow("work", once=[f"{self.listing}", "3f9a2c 2026-10-12", f"{self.whole} 2026-02-30", "yes please",
+                                 f"`{self.whole}` {self.today.isoformat()}"])
+        r = run_brain(self.root, "check", "--json")
+        self.assertEqual(r.returncode, 1)
+        wrong = "a yes is `- <the proposal's name> YYYY-MM-DD (why)`, the name as `brain tend --check` gives it and the " \
+                "day you write it"
+        self.assertEqual(json.loads(r.stdout)["schema"], [{"page": "hippocampus/policy.md", "problems": [
+            f"cannot read '- {self.listing}': {wrong}", f"cannot read '- 3f9a2c 2026-10-12': {wrong}",
+            f"cannot read '- {self.whole} 2026-02-30': {wrong}", f"cannot read '- yes please': {wrong}"]}])
+        self.assertEqual(vaultlib.yes_of(self.root, self.today, 7), frozenset({self.whole}))  # the one line that reads
+        self.assertEqual(vaultlib.yes_of(os.path.join(self.root, "no-brain"), self.today, 7), frozenset())
+        self.assertEqual(vaultlib.read_once("# Policy\n\n## Once\n\nProse here.\n"), ([], []))

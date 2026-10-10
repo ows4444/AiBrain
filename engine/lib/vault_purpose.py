@@ -6,6 +6,7 @@ import datetime
 import os
 
 from vault_intentions import SPAN, STEP, clock, next_round, read_course, read_intentions, words
+from vault_policy import proposal, yes_of
 
 LAST_MINUTE = datetime.time(23, 59)  # a log line with no time of day: the end of its day
 
@@ -47,7 +48,8 @@ class PurposeMixin:
         round and stands by what was said since; a dated one that finished is done.
         `attempt` names the last one started, `attempts` counts them, and `course` is the
         steps that count, each (day, time, step, attempt, note). `ever` counts every start
-        the log holds of it, so an attempt's name is never used twice.
+        the log holds of it, so an attempt's name is never used twice. `proposal` is the
+        name it has while it waits, for the owner's yes (vault_policy.proposal).
         """
         if not intention.get("do"):
             return None
@@ -60,7 +62,19 @@ class PurposeMixin:
         state = course[-1][2] if course else "ready" if due else "scheduled"
         started = [step[3] for step in course if step[2] == "started"]
         return {"state": state, "attempt": started[-1] if started else None, "attempts": len(started), "ever": ever,
-                "course": course}
+                "course": course, "proposal": proposal(words(intention["text"]), intention["do"], intention["until"],
+                                                       intention["when"], ever)}
+
+    def proposals(self):
+        """The reminders that wait and have no yes that holds: [{text, do, why, yes}], in the order they came due.
+
+        `why` is what the last step said (the policy does not allow the action; it failed too
+        often), `yes` the name the owner's line under `## Once` of the policy page gives it.
+        """
+        given = yes_of(self.root, self.today, self.tuning.yes_days)
+        return [{"text": i["text"], "do": i["do"], "why": i["stands"]["course"][-1][4], "yes": i["stands"]["proposal"]}
+                for i in self.due_intentions()
+                if i["stands"] and i["stands"]["state"] == "waiting" and i["stands"]["proposal"] not in given]
 
     def next_round(self, intention):
         """When an open repeat next comes round, counted from the last log line naming it; one never logged is due."""

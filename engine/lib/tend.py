@@ -6,7 +6,8 @@ Usage:
 Everything the brain is waiting on, on one screen: input not encoded and notes
 in inbox/, episodes and decisions awaiting sleep, new input that says the
 opposite of a page, pages due for rehearsal, reminders whose date has come
-(one the brain carries out itself says its action and where it stands),
+(one the brain carries out itself says its action and where it stands), the
+ones among those that wait for the owner's yes with the name each goes by,
 decisions to review or to revisit, goals past their date or slipping, and the
 questions asked and not answered (`brain introspect --gaps`). A line is printed
 only when there is something on it, with how many and the first five; when
@@ -67,6 +68,7 @@ def digest(vault):
                       for i in vault.due_intentions()],
         "review": [{"page": p.rel, "review": p.fields["review"]} for p in vault.decisions_due()],
         "revisit": [d["page"] for d in vault.decision_report() if d["triggered"]],
+        "proposals": vault.proposals(),
         "late": [{"goal": g["goal"], "state": g["state"], "due": g["due"]} for g in goals
                  if g["state"] in ("past-due", "stale")],
         "at_risk": [{"goal": g["goal"], "days_left": g["days_left"]} for g in goals if g["at_risk"]],
@@ -177,6 +179,8 @@ def lines_in_turn(d):
         ("rehearse", "due to rehearse", d["rehearse"], "/rehearse: yours alone"),
         ("reminders", "reminders due", [f"{r['text']} ({r['when']}" + (f"; do {r['do']}: {r['state']}" if "do" in r else "")
                                         + ")" for r in d["reminders"]], ""),
+        ("proposals", "wait for a yes", [f"{p['text']} (do {p['do']}; yes {p['yes']})" for p in d["proposals"]],
+         "yours alone: `- <yes> <today>` under `## Once` in hippocampus/policy.md runs one once"),
         ("review", "to review", [f"{r['page']} ({r['review']})" for r in d["review"]], "/review-decision"),
         ("revisit", "to revisit", d["revisit"], "the event the decision named has come"),
         ("late", "goals past date", [f"{g['goal']} ({g['due']})" for g in d["late"]], "close, re-date or drop"),

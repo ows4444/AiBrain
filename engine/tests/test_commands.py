@@ -24,7 +24,7 @@ SUMMARY = ["avg_degree", "awaiting_consolidation", "broken_links", "by_type", "c
            "orphan_rate", "pages", "projects", "stale_concept_rate", "tuning", "verdicts"]
 # label -> (command, its arguments, the keys of what it returns). {root} is the brain, {tmp} a folder beside it.
 KEYS = {
-    "act": ("act", [], ["actions", "allowed", "policy"]),
+    "act": ("act", [], ["actions", "allowed", "once", "policy"]),
     "act NAME": ("act", ["feel"], ["action", "failed", "line", "ran", "said", "tier", "why"]),
     "check": ("check", [], [
         "ambiguous", "avg_degree", "broken", "claims", "gaps", "history", "links", "log", "log_unread", "log_unresolved",
@@ -86,7 +86,8 @@ KEYS = {
         "asset", "candidates", "citing", "episodes", "input", "other_inputs", "removed"]),
     "work": ("work", [], ["busy", "date", "did", "left", "may", "needs", "notified", "why"]),
     "tend --check": ("tend", ["--check"], ["at_risk", "contradictions", "date", "felt", "gaps", "inbox", "late", "needs",
-                                           "notified", "rehearse", "reminders", "review", "revisit", "senses", "sleep"]),
+                                           "notified", "proposals", "rehearse", "reminders", "review", "revisit", "senses",
+                                           "sleep"]),
     "schedule": ("schedule", [], ["brain", "cron", "did", "minutes", "plist", "runs", "set"]),
     "eval": ("eval", [], ["problems", "retrieval"]),
     "eval --answers": ("eval", ["--answers", "{tmp}/answers.json"], ["answers", "problems", "retrieval"]),

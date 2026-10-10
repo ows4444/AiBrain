@@ -31,7 +31,8 @@ from vault_model import *  # noqa: E402,F401,F403
 from vault_model import (DORMANT_DIR, MEMORY_DIRS, PROJECTS_DIR, Page, as_list, owner_file,  # noqa: E402
                          owner_goals, owner_text,
                          parse_frontmatter, schema_problems, summary_problems, tag_vocabulary)
-from vault_policy import ACTIONS, POLICY_PATH, decide, policy_of, policy_problems, read_policy  # noqa: E402,F401
+from vault_policy import (ACTIONS, POLICY_PATH, decide, policy_of, policy_problems, proposal, read_once,  # noqa: E402,F401
+                          read_policy, yes_of)
 from vault_purpose import PurposeMixin  # noqa: E402
 from vault_retrieval import RetrievalMixin  # noqa: E402
 from vault_tuning import (CHARACTER_FILE, THRESHOLDS, TRAITS, TUNING_PATH, Tuning, character_problems,  # noqa: E402,F401

@@ -85,6 +85,12 @@ def attention_lines(vault):
     due = vault.due_intentions()
     if due:
         lines.append(f"Reminders: {len(due)} due (" + "; ".join(i["text"] for i in due[:SHOW // 2 + 1]) + ")")
+    asked = vault.proposals()
+    if asked:
+        lines.append(f"Your yes: {len(asked)} wait for it (" + "; ".join(f"{p['text']}: do {p['do']}, yes {p['yes']}"
+                                                                        for p in asked[:SHOW // 2 + 1])
+                     + "): written by you in hippocampus/policy.md, `- <yes> <today>` under `## Once` for this once, "
+                       "`- <action>` under `## Allowed` for always")
     hand = vault.at_hand()
     if hand:
         lines.append("At hand: " + ", ".join(p.stem for p in hand))

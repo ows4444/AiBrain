@@ -180,6 +180,7 @@ THRESHOLDS = {name: Threshold(*spec) for name, spec in {
     "work_steps": (5, 1, 100, "reminders carried out in one round at most"),
     "work_minutes": (10, 1, 1440, "minutes a round may take before it starts nothing more; a lock twice as old is "
                                   "taken to be left by a round that died"),
+    "yes_days": (7, 1, 365, "days the owner's yes for one proposal holds after the day they wrote it"),
     # -- what a trait does (CHARACTER.md > Traits) -----------------------------------------
     "trait_span": (2.0, 1.0, 10.0, "how far a trait at either end moves a threshold: times this at one end, divided "
                                    "by it at the other; at 1 no trait moves anything"),

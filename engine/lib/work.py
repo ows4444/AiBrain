@@ -25,19 +25,25 @@ What a round does about a step that went wrong:
 
     failed       tried again after 30 minutes, then twice as long, three
                  tries in all; after that it waits for the owner
-                 (`waiting ... -> owner: ...`), and `--retry` is their way
-                 to release it
+                 (`waiting ... -> owner: ...`)
     interrupted  a step that started and has no end in the log (the machine
                  went down, the process was killed) is of unknown outcome:
                  it is never taken as not done. It is written down as failed,
                  and tried again only when its action may be run twice;
                  otherwise it waits for the owner
 
+A reminder that waits is a proposal, and its step ends with its name: `yes
+3f9a2c1`. The owner's yes is a line of the policy page, under `## Once`: that
+name and the day, `- 3f9a2c1 2026-10-12`. It lets that one reminder run once:
+its name is made from everything about it, so it is another once the reminder
+changes or has started, and the yes holds for seven days. `--retry` is the
+same word given in a session, for one that failed too often.
+
 One round runs for a brain at a time (a lock in .cache/, which a round that
 died leaves and the next takes over once it is old or its process is gone),
 carries out five reminders at most and starts nothing after ten minutes.
-(3, 30, 5 and 10 are thresholds: a brain may hold its own in
-hippocampus/tuning.md.) On two machines that share a brain, set the schedule
+(3, 30, 5, 10 and the 7 days of a yes are thresholds: a brain may hold its
+own in hippocampus/tuning.md.) On two machines that share a brain, set the schedule
 on one: the lock is this machine's.
 
 --notify then puts what waits on the screen, as `brain tend --check --notify`
@@ -59,7 +65,7 @@ import act  # noqa: E402
 import tend  # noqa: E402
 from commands import Refused  # noqa: E402
 from vault_intentions import stamp, words  # noqa: E402
-from vault_policy import ACTIONS, POLICY_PATH, decide, policy_of  # noqa: E402
+from vault_policy import ACTIONS, POLICY_PATH, decide, policy_of, yes_of  # noqa: E402
 from vaultlib import Vault  # noqa: E402
 
 LOCK = os.path.join(".cache", "work.lock")
@@ -127,7 +133,9 @@ def one(root, i, vault, forced, spent, dry):
     `spent` says the round's budget is used up. `dry` writes nothing and says what would be written.
     """
     t, stands = vault.tuning, i["stands"]
-    state, tries, steps = stands["state"], stands["attempts"], []
+    state, tries, steps, name = stands["state"], stands["attempts"], [], stands["proposal"]
+    yes = name in yes_of(root, vault.today, t.yes_days)  # the owner's yes for this one, as it stands: once, and now
+    forced = forced or (yes and state == "waiting")
 
     def step(kind, note):
         steps.append(f"would be {kind}: {note}" if dry else act.advance(root, i["text"], kind, note, vault.now))
@@ -139,24 +147,24 @@ def one(root, i, vault, forced, spent, dry):
         step("failed", INTERRUPTED)
         state = "failed"
         if not ACTIONS[i["do"]].again and not forced:
-            step("waiting", f"owner: interrupted, and `{i['do']}` is not run twice unasked; `brain work --retry` runs it")
+            step("waiting", f"owner: interrupted, and `{i['do']}` is not run twice unasked; yes {name}")
             return done("it waits for the owner")
     if state == "waiting" and stands["course"][-1][4].startswith("owner:") and not forced:
-        return done("it waits for the owner (`brain work --retry` releases it)")
-    if not decide(i["do"], policy_of(root))[0]:  # a reminder names only what reads or changes: so the page has no line
+        return done(f"it waits for the owner (yes {name}, or `brain work --retry`)")
+    if not decide(i["do"], policy_of(root))[0] and not yes:  # a reminder names only what reads or changes
         if state != "waiting":
-            step("waiting", f"policy: {POLICY_PATH} does not allow {i['do']}")
-        return done("the policy does not allow it")
+            step("waiting", f"policy: {POLICY_PATH} does not allow {i['do']}; yes {name}")
+        return done(f"the policy does not allow it (yes {name})")
     if state == "failed" and not forced:
         if tries >= t.work_tries:
-            step("waiting", f"owner: it failed {tries} times; `brain work --retry` tries again")
+            step("waiting", f"owner: it failed {tries} times; yes {name}")
             return done("it waits for the owner")
         again = moment(stands["course"][-1]) + datetime.timedelta(minutes=t.work_wait * 2 ** (tries - 1))
         if steps == [] and again > vault.now:
             return done(f"it is tried again after {again:%Y-%m-%d %H:%M}")
     if spent:
         return done("the round's budget is spent")
-    since = f"due since {stamp(i['since'], i['timed'])}"
+    since = f"due since {stamp(i['since'], i['timed'])}" + (f", by the owner's yes {name}" if yes else "")
     if dry:
         steps.append(f"would be started: {i['do']}, {since}")
     else:
