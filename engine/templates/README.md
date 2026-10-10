@@ -5,6 +5,8 @@ empty brain; `project/` is copied by `/aibrain:focus` into `prefrontal/<name>/`.
 A project's `CLAUDE.md` is a system page (`type: project`, with `status:
 active | paused | done`, `goal:` and `due:`): its links count and are checked,
 but it is not a memory page, so the field table below does not apply to it.
+`graph.html` is no page of the brain: `brain graph --format html` fills it
+with the pages and their links and writes it to `motor/graph/`.
 
 ## Frontmatter
 

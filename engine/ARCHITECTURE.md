@@ -36,7 +36,7 @@ scans live in code and run as hooks or `brain` commands.
 | Folder | Role | Written by | Rule |
 |--------|------|-----------|------|
 | `inbox/` | quick notes from anywhere | owner | swept into `senses/inbox/` by `/ingest` |
-| `senses/` | input as it arrived (`assets/` holds images) | owner, `brain fetch`, `brain chats`, `brain import` | never edited after landing; only `/forget` removes, on the owner's yes |
+| `senses/` | input as it arrived (`assets/` holds images and PDFs whose text is the input) | owner, `brain fetch`, `brain extract`, `brain chats`, `brain import` | never edited after landing; only `/forget` removes, on the owner's yes |
 | `cortex/episodes/` | one page per input: what that source said | `/ingest` | "this source says X", not "X is true" |
 | `cortex/concepts/` | one idea per page | `/sleep` | needs 2+ distinct sources or one salient (`salience` 4+) |
 | `cortex/entities/` | people, organisations, products, tools | `/sleep` | what it is and why it is here |
@@ -98,9 +98,9 @@ the dict with `--json`, which every command takes. Another program makes the sam
 |-------|----------|
 | Find | `search` (BM25), `recall` (words, then links), `since` (period view) |
 | Check | `check` (links, schema, index drift, edited inputs), `introspect` (18 views; `--gaps` is what was asked and not answered), `eval` (a question set, or with `--from-log` the log's own questions, each replayed as the brain was that day; `--set` tries a threshold at another value and writes nothing), `ground` (a drafted answer or piece held to the pages it cites: the sensor for the core rule of `/ask` and `/write`) |
-| Input | `capture` (a note in `inbox/`), `fetch`, `chats`, `session`, `import` (the notes of an Obsidian vault into `senses/`, one input each, never twice and never over one that is there), `fingerprint`, `fit` (the pages an input's own words reach, the held ideas it names), `new` |
+| Input | `capture` (a note in `inbox/`), `inbox` (what waits there, sorted by rule before it lands: ready, duplicate, credential, forgotten, empty, not text), `fetch`, `extract` (a PDF's or an image's text, read by `pdftotext` or `tesseract` when the machine has it; without, the model reads the file), `chats`, `session`, `import` (the notes of an Obsidian vault into `senses/`, one input each, never twice and never over one that is there), `fingerprint`, `fit` (the pages an input's own words reach, the held ideas it names), `new` |
 | Record | `log` (the one writer of log lines: it checks the operation and every page name), `index` (rewrites the index's listing from the pages) |
-| Output | `export` (clean copies of chosen pages; it stops on a credential), `graph` |
+| Output | `export` (clean copies of chosen pages; it stops on a credential), `graph` (the links as CSV or GraphML, or with `--format html` one page that opens from the disk and asks the network for nothing) |
 | Remove and continue | `forget` (remove an input), `restore` (a faded page back from `dormant/`), `resume` (write where the work stands) |
 | Operate | `statusline`, `tend --check` (everything that needs the owner, read-only: what a scheduled run sends), `mcp` (the read-only server for other hosts), `cache`, `errors`, `synth`, `bench`, `test` |
 
@@ -152,10 +152,11 @@ swallowed crash is not invisible.
 `/commit`, `/forget`, `/rollback`, `/start`, `/owner` and `/tend` are manual-only
 (`disable-model-invocation`). Skills that answer or write from pages also append a `recall` log line.
 
-### 5.2 Agents (10)
+### 5.2 Agents (11)
 
 | Agent | Model | Tools | Called by |
 |-------|-------|-------|-----------|
+| scout | sonnet | read + bash | `/ingest` |
 | encoder | sonnet | read + write | `/ingest`, `/tend` |
 | consolidator | inherit | read + write | `/sleep`, `/tend` |
 | critic | inherit | read + bash | `/tend`, `/commit`, `/rollback` |
@@ -167,7 +168,9 @@ swallowed crash is not invisible.
 | resolver | inherit | read + bash | `/maintain settle` |
 | gatekeeper | inherit | read + bash | `/export` |
 
-Only encoder and consolidator write. The critic judges a run in a clean context against its log line. The
+Only encoder and consolidator write. The scout sorts `inbox/` before anything lands in `senses/`: `brain inbox`
+decides what a rule can (a duplicate, a credential), and the scout reads the rest for what needs the owner. The
+critic judges a run in a clean context against its log line. The
 watcher runs `brain tend --check` and reports it: the one thing meant to run with nobody there. The resolver
 lays out both sides of a disputed page (sources, dates, strength) and settles nothing: the owner's word does.
 The gatekeeper runs `/guard` over the pages chosen for an export in a clean context and answers clear or stop.

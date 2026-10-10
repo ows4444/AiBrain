@@ -18,7 +18,8 @@ word count are never health signals; both rise whether things improve or not.
 
 ## Workflow
 
-1. `brain introspect --json`. Optionally `brain graph`
+1. `brain introspect --json`. To look at the graph, `brain graph --format html` writes one page to
+   `motor/graph/graph.html` that opens in a browser with no network. Optionally `brain graph`
    to `motor/graph/` for Gephi or NetworkX.
 2. **Read the four metrics:** orphan rate (healthy under 5%), average degree,
    components (main share), stale-concept rate. Add the queues: awaiting

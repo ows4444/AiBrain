@@ -9,7 +9,7 @@ import shutil
 import tempfile
 from unittest import mock
 
-from support import TempBrain, page, run_brain
+from support import TempBrain, page, readers, run_brain
 
 import commands  # noqa: E402  (support puts engine/lib on the path)
 import index  # noqa: E402
@@ -57,10 +57,13 @@ KEYS = {
     "cache --clear": ("cache", ["--clear"], ["path", "result"]),
     "errors": ("errors", [], ["groups", "last", "path", "total"]),
     "errors --clear": ("errors", ["--clear"], ["cleared", "path"]),
+    "extract --dry-run": ("extract", ["{tmp}/paper.pdf", "--dry-run"],
+                          ["original", "pages", "path", "placed", "saved", "tool", "words"]),
     "fetch": ("fetch", ["https://blog.example/spacing", "--file", "{tmp}/page.html"], [
         "author", "headings", "part", "path", "published", "raw_bytes", "saved", "saved_bytes", "title", "url",
         "words"]),
     "fit": ("fit", ["senses/cepeda.md"], ["held", "input", "pages", "words"]),
+    "inbox": ("inbox", [], ["notes", "ready"]),
     "import --dry-run": ("import", ["obsidian", "{tmp}/vault", "--dry-run"], [
         "already", "attachments", "changed", "duplicates", "empty", "forgotten", "from", "imported", "into",
         "not_inputs", "source", "written"]),
@@ -108,10 +111,16 @@ class Brain(TempBrain):
                 ("transcript.jsonl", json.dumps({"type": "user", "timestamp": "2026-10-07T11:05:09.000Z",
                                                  "message": {"role": "user", "content": "first words"}}) + "\n"),
                 ("answers.json", json.dumps({"q01": "See [[spacing-effect]]."})),
-                ("vault/A note.md", "A note kept in another tool.\n")):
+                ("vault/A note.md", "A note kept in another tool.\n"),
+                ("paper.pdf", "A paper of one page, as the tool that reads it prints it.\n\f")):
             os.makedirs(os.path.dirname(os.path.join(self.tmp_dir, name)), exist_ok=True)
             with open(os.path.join(self.tmp_dir, name), "w", encoding="utf-8") as fh:
                 fh.write(text)
+
+        tools = mock.patch.dict(os.environ, {"PATH": readers(os.path.join(self.tmp_dir, "bin")) + os.pathsep
+                                             + os.environ["PATH"]})  # `extract` calls a tool: a stand-in for it
+        tools.start()
+        self.addCleanup(tools.stop)
 
     def argv(self, args):
         return [a.replace("{root}", self.root).replace("{tmp}", self.tmp_dir) for a in args]

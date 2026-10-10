@@ -181,7 +181,9 @@ class MemoryMixin:
         """Files in senses/ no episode has encoded yet, as paths from the brain's root.
 
         A file counts as encoded when an episode names it in its `input:` field
-        (or, for older pages, mentions its root-relative path).
+        (or, for older pages, mentions its root-relative path). A PDF or an image
+        whose text `brain extract` wrote beside it as `<file>.md` is not counted
+        apart from that text: the two are one input.
         """
         episodes = self.of_type("episode")
         claimed = {p.removeprefix("./") for ep in episodes for p in as_list(ep.fields.get("input"))}
@@ -190,7 +192,7 @@ class MemoryMixin:
         for dirpath, dirnames, files in os.walk(os.path.join(self.root, "senses")):
             dirnames[:] = sorted(d for d in dirnames if d != "assets" and not d.startswith("."))
             for f in sorted(files):
-                if f.startswith(".") or f == "README.md":
+                if f.startswith(".") or f == "README.md" or (f + ".md" in files and not f.endswith(".md")):
                     continue
                 rel = os.path.relpath(os.path.join(dirpath, f), self.root)
                 if rel not in claimed and rel not in blob:

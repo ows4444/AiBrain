@@ -1,0 +1,580 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'">
+<title>__TITLE__</title>
+<style>
+/* One file, no network: the policy above refuses every request, so nothing here can load from anywhere.
+   Hue says the stage of memory (a source, what sleep built, what the owner chose); shape says the type of
+   page. Three hues that stay apart for every reader, in both themes; no two types differ by colour alone. */
+:root {
+  color-scheme: light;
+  --plane: #f9f9f7; --surface: #fcfcfb;
+  --text-primary: #0b0b0b; --text-secondary: #52514e; --muted: #898781;
+  --hairline: #e1e0d9; --border: rgba(11, 11, 11, 0.10);
+  --series-1: #2a78d6; --series-2: #eb6834; --series-3: #1baf7a; --other: #898781;
+}
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) {
+    color-scheme: dark;
+    --plane: #0d0d0d; --surface: #1a1a19;
+    --text-primary: #f0efec; --text-secondary: #c3c2b7; --muted: #898781;
+    --hairline: #2c2c2a; --border: rgba(255, 255, 255, 0.10);
+    --series-1: #3987e5; --series-2: #d95926; --series-3: #199e70; --other: #898781;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --plane: #0d0d0d; --surface: #1a1a19;
+  --text-primary: #f0efec; --text-secondary: #c3c2b7; --muted: #898781;
+  --hairline: #2c2c2a; --border: rgba(255, 255, 255, 0.10);
+  --series-1: #3987e5; --series-2: #d95926; --series-3: #199e70; --other: #898781;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body {
+  display: grid; grid-template-rows: auto auto minmax(0, 1fr);
+  background: var(--plane); color: var(--text-primary);
+  font: 13px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+header { padding: 14px 16px 6px; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; }
+h1 { font-size: 16px; font-weight: 600; margin: 0; }
+#counts { color: var(--text-secondary); }
+#controls { padding: 6px 16px 10px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
+#search {
+  font: inherit; color: inherit; background: var(--surface); border: 1px solid var(--border);
+  border-radius: 8px; padding: 6px 10px; width: min(260px, 100%);
+}
+#found { color: var(--text-secondary); min-width: 5em; }
+#legend { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
+.group { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.group > span { color: var(--muted); font-size: 12px; }
+button {
+  font: inherit; color: inherit; background: var(--surface); border: 1px solid var(--border);
+  border-radius: 8px; padding: 5px 10px; cursor: pointer;
+}
+button:hover { border-color: var(--muted); }
+button:focus-visible, #search:focus-visible, canvas:focus-visible { outline: 2px solid var(--series-1); outline-offset: 2px; }
+.chip { display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; padding: 3px 10px 3px 7px; }
+.mark { display: inline-block; width: 12px; height: 12px; flex: none; }
+.mark.circle { border-radius: 50%; }
+.mark.square { transform: scale(0.86); }
+.mark.diamond { clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%); }
+.mark.triangle { clip-path: polygon(50% 4%, 100% 92%, 0 92%); }
+.mark.hexagon { clip-path: polygon(25% 6%, 75% 6%, 100% 50%, 75% 94%, 25% 94%, 0 50%); }
+.s-evidence { background: var(--series-1); }
+.s-memory { background: var(--series-2); }
+.s-purpose { background: var(--series-3); }
+.s-other { background: var(--other); }
+.chip .n { color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.chip[aria-pressed="false"] { color: var(--muted); }
+.chip[aria-pressed="false"] .mark { opacity: 0.3; }
+.chip[aria-pressed="false"] .label { text-decoration: line-through; }
+#tools { margin-left: auto; display: flex; gap: 6px; }
+#tools button { min-width: 32px; }
+main { position: relative; min-height: 0; padding: 0 16px 16px; }
+figure {
+  position: relative; height: 100%; margin: 0; overflow: hidden;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+}
+canvas { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; cursor: grab; }
+canvas.over { cursor: pointer; }
+canvas.moving { cursor: grabbing; }
+figcaption { position: absolute; left: 12px; bottom: 10px; color: var(--muted); font-size: 12px; pointer-events: none; }
+#empty { position: absolute; inset: 0; display: grid; place-items: center; color: var(--text-secondary); }
+#tip {
+  position: absolute; z-index: 2; max-width: 300px; pointer-events: none;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+}
+#tip strong { display: block; font-weight: 600; }
+#tip .meta, #panel .meta { color: var(--text-secondary); font-size: 12px; }
+#tip p { margin: 4px 0 0; color: var(--text-secondary); }
+#panel {
+  position: absolute; z-index: 3; top: 12px; right: 28px; bottom: 28px; width: min(340px, calc(100% - 56px));
+  overflow: auto; background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+  padding: 14px; box-shadow: 0 6px 24px rgba(0, 0, 0, 0.14);
+}
+#panel h2 { font-size: 15px; font-weight: 600; margin: 0 28px 2px 0; overflow-wrap: anywhere; }
+#panel code { font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--muted); overflow-wrap: anywhere; }
+#panel p { margin: 10px 0; color: var(--text-secondary); }
+#panel h3 { font-size: 12px; font-weight: 600; color: var(--text-secondary); margin: 14px 0 4px; }
+#panel ul { list-style: none; margin: 0; padding: 0; }
+#panel li button {
+  display: flex; align-items: center; gap: 6px; width: 100%; text-align: left; border: 0; border-radius: 6px;
+  background: none; padding: 4px 6px;
+}
+#panel li button:hover { background: var(--plane); }
+#panel li .rel { margin-left: auto; color: var(--muted); font-size: 12px; white-space: nowrap; }
+#close { position: absolute; top: 10px; right: 10px; border: 0; padding: 2px 8px; font-size: 16px; line-height: 1.2; }
+#sheet { height: 100%; overflow: auto; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; }
+table { width: 100%; border-collapse: collapse; }
+caption { text-align: left; padding: 10px 12px; color: var(--text-secondary); }
+th, td { text-align: left; vertical-align: top; padding: 6px 12px; border-top: 1px solid var(--hairline); }
+th { position: sticky; top: 0; background: var(--surface); font-weight: 600; color: var(--text-secondary); font-size: 12px; }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+td button { border: 0; background: none; padding: 0; text-align: left; text-decoration: underline; text-underline-offset: 2px; }
+td.kind { white-space: nowrap; color: var(--text-secondary); }
+td.kind .mark { vertical-align: -1px; margin-right: 6px; }
+@media (max-width: 640px) {
+  #panel { top: auto; left: 28px; right: 28px; bottom: 28px; width: auto; max-height: 48%; }
+  #tools { margin-left: 0; }
+}
+[hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<header>
+  <h1 id="title"></h1>
+  <span id="counts"></span>
+</header>
+<div id="controls">
+  <input id="search" type="search" placeholder="Find a page" aria-label="Find a page by its title" autocomplete="off">
+  <span id="found" role="status"></span>
+  <div id="legend" aria-label="Types of page: press one to hide or show it"></div>
+  <div id="tools">
+    <button id="out" type="button" aria-label="Zoom out">&minus;</button>
+    <button id="in" type="button" aria-label="Zoom in">+</button>
+    <button id="fit" type="button">Fit</button>
+    <button id="table" type="button" aria-pressed="false">Table</button>
+  </div>
+</div>
+<main>
+  <figure id="figure">
+    <canvas id="canvas" tabindex="0" role="img" aria-label="The pages of the brain and the links between them. The Table button lists the same pages as text."></canvas>
+    <figcaption>Drag to move, scroll to zoom, select a page for its links.</figcaption>
+    <div id="empty" hidden>No pages yet: nothing to draw.</div>
+    <div id="tip" hidden></div>
+  </figure>
+  <aside id="panel" hidden aria-live="polite"></aside>
+  <div id="sheet" hidden></div>
+</main>
+<script type="application/json" id="graph-data">__DATA__</script>
+<script>
+(() => {
+  "use strict";
+  const data = JSON.parse(document.getElementById("graph-data").textContent);
+  const $ = (id) => document.getElementById(id);
+
+  // type of page -> [stage of memory, shape]. The stage picks the hue, so a type is always hue and shape together.
+  const KINDS = {
+    episode: ["evidence", "circle"], concept: ["memory", "circle"], entity: ["memory", "square"],
+    insight: ["memory", "diamond"], decision: ["purpose", "triangle"], project: ["purpose", "hexagon"],
+  };
+  const STAGES = [["evidence", "Sources", "--series-1"], ["memory", "Memory", "--series-2"],
+                  ["purpose", "Purpose", "--series-3"], ["other", "Other", "--other"]];
+  const HUE = Object.fromEntries(STAGES.map(([stage, , token]) => [stage, token]));
+
+  const nodes = data.nodes.map((n, i) => ({
+    i, id: n.id, title: n.title, type: n.type, summary: n.summary || "", status: n.status || "",
+    stage: (KINDS[n.type] || ["other"])[0], shape: (KINDS[n.type] || ["other", "circle"])[1],
+    out: [], inn: [], deg: 0, x: 0, y: 0, vx: 0, vy: 0,
+  }));
+  const edges = data.edges.map(([s, t, rel]) => ({ s: nodes[s], t: nodes[t], rel: rel || "" }));
+  for (const e of edges) { e.s.out.push(e); e.t.inn.push(e); e.s.deg++; e.t.deg++; }
+  for (const n of nodes) n.r = Math.min(15, 4.5 + 2 * Math.sqrt(n.deg));
+  const byDegree = nodes.slice().sort((a, b) => b.deg - a.deg || (a.id < b.id ? -1 : 1));
+
+  $("title").textContent = data.title;
+  $("counts").textContent = nodes.length + " pages, " + edges.length + " links, as they were on " + data.made;
+
+  // ---- state ----
+  const hidden = new Set();          // types the legend has switched off
+  let selected = null, hover = null, matches = null;
+  const view = { x: 0, y: 0, k: 1 };
+  let width = 0, height = 0, fitted = true;  // fitted: the view follows the layout until the reader moves it
+  const visible = (n) => !hidden.has(n.type);
+
+  // ---- layout: springs along links, repulsion between near pages, a pull to the middle. The same every time. ----
+  byDegree.forEach((n, j) => {       // the most linked pages start in the middle
+    const r = 16 * Math.sqrt(j + 0.5), a = j * 2.39996323;
+    n.x = r * Math.cos(a); n.y = r * Math.sin(a);
+  });
+  const CELL = 130, REPEL = 520, SPRING = 0.09, LENGTH = 52, PULL = 0.018, DAMP = 0.55, MAX_STEP = 28;
+  function tick(alpha) {
+    const grid = new Map();
+    for (const n of nodes) {
+      const key = Math.floor(n.x / CELL) + "," + Math.floor(n.y / CELL);
+      if (!grid.has(key)) grid.set(key, []);
+      grid.get(key).push(n);
+    }
+    for (const n of nodes) {
+      const cx = Math.floor(n.x / CELL), cy = Math.floor(n.y / CELL);
+      for (let gx = cx - 1; gx <= cx + 1; gx++) {
+        for (let gy = cy - 1; gy <= cy + 1; gy++) {
+          for (const m of grid.get(gx + "," + gy) || []) {
+            if (m.i <= n.i) continue;
+            let dx = m.x - n.x, dy = m.y - n.y, d2 = dx * dx + dy * dy;
+            if (d2 > CELL * CELL) continue;
+            if (d2 < 0.01) { dx = 0.1 + 0.01 * (m.i - n.i); dy = 0.1; d2 = dx * dx + dy * dy; }
+            const gap = n.r + m.r + 10;  // two marks closer than this are pushed apart, however late in the settling
+            const f = alpha * REPEL / d2 + (d2 < gap * gap ? 0.3 * (gap / Math.sqrt(d2) - 1) : 0);
+            n.vx -= dx * f; n.vy -= dy * f; m.vx += dx * f; m.vy += dy * f;
+          }
+        }
+      }
+    }
+    for (const e of edges) {
+      const dx = e.t.x - e.s.x, dy = e.t.y - e.s.y, d = Math.sqrt(dx * dx + dy * dy) || 1;
+      const f = alpha * SPRING * (d - LENGTH) / d;
+      const ws = 1 / Math.sqrt(e.s.deg), wt = 1 / Math.sqrt(e.t.deg);  // a hub is moved less by each of its links
+      e.s.vx += dx * f * ws; e.s.vy += dy * f * ws; e.t.vx -= dx * f * wt; e.t.vy -= dy * f * wt;
+    }
+    for (const n of nodes) {
+      n.vx = (n.vx - n.x * PULL * alpha) * DAMP; n.vy = (n.vy - n.y * PULL * alpha) * DAMP;
+      const step = Math.sqrt(n.vx * n.vx + n.vy * n.vy);
+      if (step > MAX_STEP) { n.vx *= MAX_STEP / step; n.vy *= MAX_STEP / step; }
+      n.x += n.vx; n.y += n.vy;
+    }
+  }
+
+  // ---- drawing ----
+  const canvas = $("canvas"), ctx = canvas.getContext("2d");
+  const ink = {};
+  function readInk() {
+    const css = getComputedStyle(document.documentElement);
+    for (const name of ["--surface", "--text-primary", "--text-secondary", "--muted", "--series-1",
+                        "--series-2", "--series-3", "--other"]) ink[name] = css.getPropertyValue(name).trim();
+  }
+  const scale = () => Math.max(0.7, Math.min(1.7, Math.sqrt(view.k)));  // marks grow less than the space between them
+  const sx = (n) => n.x * view.k + view.x, sy = (n) => n.y * view.k + view.y;
+
+  function trace(c, shape, x, y, r) {
+    c.beginPath();
+    if (shape === "circle") c.arc(x, y, r, 0, 2 * Math.PI);
+    else if (shape === "square") c.rect(x - r * 0.88, y - r * 0.88, r * 1.76, r * 1.76);
+    else {
+      const sides = { diamond: 4, triangle: 3, hexagon: 6 }[shape];
+      const start = shape === "triangle" ? -Math.PI / 2 : 0, R = r * (shape === "triangle" ? 1.3 : 1.15);
+      for (let k = 0; k < sides; k++) {
+        const a = start + k * 2 * Math.PI / sides;
+        if (k) c.lineTo(x + R * Math.cos(a), y + R * Math.sin(a)); else c.moveTo(x + R * Math.cos(a), y + R * Math.sin(a));
+      }
+      c.closePath();
+    }
+  }
+
+  function inFocus() {               // the pages that stay bright: a selection and its neighbours, else what was found
+    if (selected) {
+      const set = new Set([selected]);
+      for (const e of selected.out) set.add(e.t);
+      for (const e of selected.inn) set.add(e.s);
+      return set;
+    }
+    return matches;
+  }
+
+  function draw() {
+    const dpr = window.devicePixelRatio || 1, focus = inFocus(), k = scale();
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, width, height);
+    ctx.lineWidth = 1;
+    for (const lit of [false, true]) {   // the links of the selection are drawn over the others
+      ctx.beginPath();
+      for (const e of edges) {
+        if (!visible(e.s) || !visible(e.t)) continue;
+        if ((selected !== null && (e.s === selected || e.t === selected)) !== lit) continue;
+        ctx.moveTo(sx(e.s), sy(e.s)); ctx.lineTo(sx(e.t), sy(e.t));
+      }
+      ctx.strokeStyle = lit ? ink["--text-secondary"] : ink["--muted"];
+      ctx.globalAlpha = lit ? 0.9 : (focus ? 0.14 : 0.45);
+      ctx.stroke();
+    }
+    for (const n of nodes) {
+      if (!visible(n)) continue;
+      const x = sx(n), y = sy(n), r = n.r * k;
+      if (x < -40 || y < -40 || x > width + 40 || y > height + 40) continue;
+      ctx.globalAlpha = focus && !focus.has(n) ? 0.16 : 1;
+      trace(ctx, n.shape, x, y, r);
+      ctx.fillStyle = ink[HUE[n.stage]]; ctx.fill();
+      ctx.lineWidth = 2; ctx.strokeStyle = ink["--surface"]; ctx.stroke();   // a ring of the surface between marks
+      if (n === selected || n === hover) {
+        ctx.globalAlpha = 1;
+        trace(ctx, n.shape, x, y, r + 3.5);
+        ctx.lineWidth = n === selected ? 2 : 1.25; ctx.strokeStyle = ink["--text-primary"]; ctx.stroke();
+      }
+    }
+    ctx.globalAlpha = 1;
+    labels(focus, k);
+  }
+
+  function labels(focus, k) {        // a few names, never all: the selection and what it touches, else the hubs
+    const wanted = [];
+    if (selected) wanted.push(selected);
+    if (hover && hover !== selected) wanted.push(hover);
+    if (focus) for (const n of byDegree) { if (focus.has(n) && n !== selected && n !== hover) wanted.push(n); }
+    const sure = wanted.length, budget = focus ? 60 : Math.min(90, Math.round(14 * Math.max(1, view.k * view.k)));
+    if (!focus) for (const n of byDegree) { if (n.deg > 1 && n !== hover) wanted.push(n); }
+    ctx.font = "12px system-ui, -apple-system, 'Segoe UI', sans-serif";
+    ctx.textBaseline = "middle"; ctx.lineJoin = "round";
+    const marks = [];                // where a name must not sit: on another page's mark
+    for (const n of nodes) {
+      const x = sx(n), y = sy(n), r = n.r * k + 2;
+      if (visible(n) && x > -r && y > -r && x < width + r && y < height + r) marks.push([n, x - r, y - r, x + r, y + r]);
+    }
+    const placed = [];
+    const free = (box) => box[0] >= 4 && box[1] >= 4 && box[2] <= width - 4 && box[3] <= height - 4
+      && !placed.some((b) => box[0] < b[2] && box[2] > b[0] && box[1] < b[3] && box[3] > b[1]);
+    const clear = (box, own) => free(box)
+      && !marks.some((m) => m[0] !== own && box[0] < m[3] && box[2] > m[1] && box[1] < m[4] && box[3] > m[2]);
+    let shown = 0;
+    for (let j = 0; j < wanted.length && shown < budget; j++) {
+      const n = wanted[j];
+      if (!visible(n)) continue;
+      const x = sx(n), y = sy(n), r = n.r * k + 5;
+      if (x < 0 || y < 0 || x > width || y > height) continue;
+      const text = n.title.length > 42 ? n.title.slice(0, 41) + "\u2026" : n.title, w = ctx.measureText(text).width;
+      // to the right of the mark, else to its left, below it, above it; the first place that is free
+      const spots = [[x + r, y], [x - r - w, y], [x - w / 2, y + r + 8], [x - w / 2, y - r - 8]];
+      let spot = spots.find(([lx, ly]) => clear([lx - 2, ly - 8, lx + w + 2, ly + 8], n));
+      // The pages that matter most are named even where marks crowd: over a mark, never over another name.
+      if (!spot && j < sure + 8) spot = spots.find(([lx, ly]) => free([lx - 2, ly - 8, lx + w + 2, ly + 8]));
+      if (!spot && j === 0 && sure) spot = spots[0];   // the selected page is always named
+      if (!spot) continue;
+      placed.push([spot[0] - 2, spot[1] - 8, spot[0] + w + 2, spot[1] + 8]); shown++;
+      ctx.lineWidth = 3.5; ctx.strokeStyle = ink["--surface"]; ctx.strokeText(text, spot[0], spot[1]);
+      ctx.fillStyle = j < sure ? ink["--text-primary"] : ink["--text-secondary"]; ctx.fillText(text, spot[0], spot[1]);
+    }
+  }
+
+  function fit() {
+    const shown = nodes.filter(visible);
+    if (!shown.length || !width) return;
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (const n of shown) { x0 = Math.min(x0, n.x); y0 = Math.min(y0, n.y); x1 = Math.max(x1, n.x); y1 = Math.max(y1, n.y); }
+    view.k = Math.min(2.2, (width - 120) / Math.max(1, x1 - x0), (height - 90) / Math.max(1, y1 - y0));
+    view.k = Math.max(view.k, 0.02);
+    view.x = width / 2 - view.k * (x0 + x1) / 2; view.y = height / 2 - view.k * (y0 + y1) / 2;
+    fitted = true;
+  }
+
+  function resize() {
+    const box = $("figure").getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+    if (!box.width || !box.height) return;
+    width = box.width; height = box.height;
+    canvas.width = Math.round(width * dpr); canvas.height = Math.round(height * dpr);
+    if (fitted) fit();
+    draw();
+  }
+
+  // ---- small pieces of page ----
+  function el(tag, text, cls) {      // every name here comes from a page: it goes in as text, never as markup
+    const node = document.createElement(tag);
+    if (text !== undefined) node.textContent = text;
+    if (cls) node.className = cls;
+    return node;
+  }
+  function swatch(type) {            // the legend's mark for a type: its shape, in its stage's hue
+    const kind = KINDS[type] || ["other", "circle"];
+    const mark = el("span", undefined, "mark " + kind[1] + " s-" + kind[0]);
+    mark.setAttribute("aria-hidden", "true");
+    return mark;
+  }
+  const meta = (n) => [n.type, n.status, n.deg === 1 ? "1 link" : n.deg + " links"].filter(Boolean).join(" · ");
+
+  function legend() {
+    const counts = {};
+    for (const n of nodes) counts[n.type] = (counts[n.type] || 0) + 1;
+    for (const [stage, name] of STAGES) {
+      const types = Object.keys(counts).filter((t) => (KINDS[t] || ["other"])[0] === stage)
+        .sort((a, b) => Object.keys(KINDS).indexOf(a) - Object.keys(KINDS).indexOf(b) || (a < b ? -1 : 1));
+      if (!types.length) continue;
+      const group = el("div", undefined, "group");
+      group.appendChild(el("span", name));
+      for (const type of types) {
+        const chip = el("button", undefined, "chip");
+        chip.type = "button"; chip.setAttribute("aria-pressed", "true");
+        chip.append(swatch(type), el("span", type, "label"), el("span", String(counts[type]), "n"));
+        chip.addEventListener("click", () => {
+          if (hidden.has(type)) hidden.delete(type); else hidden.add(type);
+          chip.setAttribute("aria-pressed", String(!hidden.has(type)));
+          if (selected && !visible(selected)) select(null);
+          find($("search").value);
+        });
+        group.appendChild(chip);
+      }
+      $("legend").appendChild(group);
+    }
+  }
+
+  function tip(n, x, y) {
+    const box = $("tip");
+    if (!n) { box.hidden = true; return; }
+    box.textContent = "";
+    box.append(el("strong", n.title), el("div", meta(n), "meta"));
+    if (n.summary) box.appendChild(el("p", n.summary));
+    box.hidden = false;
+    const w = box.offsetWidth, h = box.offsetHeight;
+    box.style.left = Math.max(8, Math.min(width - w - 8, x + 16)) + "px";
+    box.style.top = (y + 18 + h > height - 8 ? Math.max(8, y - h - 12) : y + 18) + "px";
+  }
+
+  function linkList(title, links, other) {
+    const shown = links.filter((e) => visible(other(e)));
+    if (!shown.length) return [];
+    const list = el("ul");
+    for (const e of shown.sort((a, b) => (other(a).title < other(b).title ? -1 : 1))) {
+      const item = el("li"), go = el("button");
+      go.type = "button";
+      go.append(swatch(other(e).type), el("span", other(e).title));
+      if (e.rel) go.appendChild(el("span", e.rel, "rel"));
+      go.addEventListener("click", () => select(other(e), true));
+      item.appendChild(go); list.appendChild(item);
+    }
+    return [el("h3", title + " (" + shown.length + ")"), list];
+  }
+
+  function select(n, centre) {
+    selected = n;
+    const panel = $("panel");
+    panel.textContent = "";
+    panel.hidden = !n;
+    if (n) {
+      const close = el("button", "×");
+      close.id = "close"; close.type = "button"; close.setAttribute("aria-label", "Close");
+      close.addEventListener("click", () => select(null));
+      panel.append(close, el("h2", n.title), el("div", meta(n), "meta"), el("code", n.id));
+      if (n.summary) panel.appendChild(el("p", n.summary));
+      panel.append(...linkList("Links to", n.out, (e) => e.t), ...linkList("Linked from", n.inn, (e) => e.s));
+      if (centre) {                  // to the middle of what the panel leaves free
+        const free = panel.offsetHeight > height * 0.7 ? width - panel.offsetWidth - 12 : width;
+        view.x = free / 2 - n.x * view.k; view.y = height / 2 - n.y * view.k; fitted = false;
+      }
+    }
+    tip(null);
+    draw();
+  }
+
+  function find(text) {
+    const q = text.trim().toLowerCase();
+    matches = q ? new Set(nodes.filter((n) => visible(n) && (n.title.toLowerCase().includes(q) || n.id.toLowerCase().includes(q)))) : null;
+    $("found").textContent = matches ? (matches.size === 1 ? "1 page" : matches.size + " pages") : "";
+    if (!$("sheet").hidden) sheet();
+    draw();
+  }
+
+  function sheet() {                 // the same pages as text: what the picture shows, readable without it
+    const box = $("sheet"), table = el("table"), head = el("tr"), body = el("tbody");
+    box.textContent = "";
+    const rows = nodes.filter((n) => visible(n) && (!matches || matches.has(n))).sort((a, b) => (a.title.toLowerCase() < b.title.toLowerCase() ? -1 : 1));
+    table.appendChild(el("caption", rows.length + " pages. Select a title to see it in the graph."));
+    for (const [name, cls] of [["Page", ""], ["Type", ""], ["Links to", "num"], ["Linked from", "num"], ["What it holds", ""]]) {
+      const th = el("th", name, cls); th.scope = "col"; head.appendChild(th);
+    }
+    table.appendChild(el("thead")).appendChild(head);
+    for (const n of rows) {
+      const row = el("tr"), name = el("td"), go = el("button", n.title), kind = el("td", undefined, "kind");
+      go.type = "button";
+      go.addEventListener("click", () => { showTable(false); select(n, true); });
+      name.appendChild(go);
+      kind.append(swatch(n.type), document.createTextNode(n.type + (n.status ? ", " + n.status : "")));
+      row.append(name, kind, el("td", String(n.out.length), "num"), el("td", String(n.inn.length), "num"), el("td", n.summary));
+      body.appendChild(row);
+    }
+    table.appendChild(body); box.appendChild(table);
+  }
+  function showTable(on) {
+    $("table").setAttribute("aria-pressed", String(on));
+    $("table").textContent = on ? "Graph" : "Table";
+    $("sheet").hidden = !on; $("figure").hidden = on;
+    for (const id of ["in", "out", "fit"]) $(id).hidden = on;
+    if (on) { $("panel").hidden = true; sheet(); } else { $("panel").hidden = !selected; resize(); }
+  }
+
+  // ---- the pointer and the keys ----
+  function nearest(px, py) {         // the page closest to the pointer, within reach: nobody has to hit a dot
+    let best = null, reach = 14;
+    const k = scale();
+    for (const n of nodes) {
+      if (!visible(n)) continue;
+      const d = Math.hypot(sx(n) - px, sy(n) - py) - n.r * k;
+      if (d < reach) { reach = d; best = n; }
+    }
+    return best;
+  }
+  function zoom(factor, px, py) {
+    const k = Math.max(0.02, Math.min(8, view.k * factor));
+    view.x = px - (px - view.x) * k / view.k; view.y = py - (py - view.y) * k / view.k; view.k = k;
+    fitted = false; draw();
+  }
+  let down = null;
+  const at = (e) => { const box = canvas.getBoundingClientRect(); return [e.clientX - box.left, e.clientY - box.top]; };
+  canvas.addEventListener("pointerdown", (e) => {
+    const [x, y] = at(e);
+    down = { x, y, moved: false };
+    canvas.setPointerCapture(e.pointerId);
+  });
+  canvas.addEventListener("pointermove", (e) => {
+    const [x, y] = at(e);
+    if (down) {
+      if (!down.moved && Math.hypot(x - down.x, y - down.y) < 4) return;
+      down.moved = true; fitted = false;
+      view.x += x - down.x; view.y += y - down.y; down.x = x; down.y = y;
+      canvas.className = "moving"; hover = null; tip(null); draw();
+      return;
+    }
+    const n = nearest(x, y);
+    canvas.className = n ? "over" : "";
+    if (n !== hover) { hover = n; draw(); }
+    tip(n, x, y);
+  });
+  canvas.addEventListener("pointerup", (e) => {
+    const [x, y] = at(e);
+    if (down && !down.moved) select(nearest(x, y));
+    down = null; canvas.className = "";
+  });
+  canvas.addEventListener("pointercancel", () => { down = null; canvas.className = ""; });
+  canvas.addEventListener("pointerleave", () => { if (!down && hover) { hover = null; tip(null); draw(); } });
+  canvas.addEventListener("wheel", (e) => {
+    e.preventDefault();
+    const [x, y] = at(e);
+    zoom(Math.exp(-e.deltaY * (e.ctrlKey ? 0.01 : 0.0015)), x, y);
+  }, { passive: false });
+  canvas.addEventListener("keydown", (e) => {
+    const move = { ArrowLeft: [40, 0], ArrowRight: [-40, 0], ArrowUp: [0, 40], ArrowDown: [0, -40] }[e.key];
+    if (move) { view.x += move[0]; view.y += move[1]; fitted = false; draw(); }
+    else if (e.key === "+" || e.key === "=") zoom(1.25, width / 2, height / 2);
+    else if (e.key === "-") zoom(0.8, width / 2, height / 2);
+    else if (e.key === "0") { fit(); draw(); }
+    else if (e.key === "Escape") select(null);
+    else return;
+    e.preventDefault();
+  });
+  $("in").addEventListener("click", () => zoom(1.25, width / 2, height / 2));
+  $("out").addEventListener("click", () => zoom(0.8, width / 2, height / 2));
+  $("fit").addEventListener("click", () => { fit(); draw(); });
+  $("table").addEventListener("click", () => showTable($("sheet").hidden));
+  $("search").addEventListener("input", (e) => find(e.target.value));
+  $("search").addEventListener("keydown", (e) => {
+    if (e.key !== "Enter" || !matches || !matches.size) return;
+    showTable(false);
+    select(byDegree.find((n) => matches.has(n)), true);
+  });
+
+  // ---- start ----
+  readInk();
+  legend();
+  window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { readInk(); draw(); });
+  new ResizeObserver(resize).observe($("figure"));
+  $("empty").hidden = nodes.length > 0;
+  let alpha = 1;
+  const settle = (steps) => { for (let i = 0; i < steps && alpha > 0.02; i++) { tick(alpha); alpha *= 0.985; } };
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    settle(Infinity);                // no movement to watch: the settled picture at once
+    resize();
+  } else {
+    const frame = () => {
+      settle(nodes.length > 1500 ? 2 : 5);
+      if (fitted) fit();
+      draw();
+      if (alpha > 0.02) requestAnimationFrame(frame);
+    };
+    resize();
+    requestAnimationFrame(frame);
+  }
+})();
+</script>
+</body>
+</html>

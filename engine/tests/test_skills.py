@@ -69,8 +69,8 @@ class SkillWiring(unittest.TestCase):
         # Scanning and counting on the smallest, writing from one input on the middle one, judging and
         # synthesis on the session's own. A cheaper model saves quota and time, not context.
         expected = {"curator": "haiku", "graph-analyst": "haiku", "watcher": "haiku", "encoder": "sonnet",
-                    "reviewer": "sonnet", "consolidator": "inherit", "critic": "inherit", "researcher": "inherit",
-                    "resolver": "inherit", "gatekeeper": "inherit"}
+                    "reviewer": "sonnet", "scout": "sonnet", "consolidator": "inherit", "critic": "inherit",
+                    "researcher": "inherit", "resolver": "inherit", "gatekeeper": "inherit"}
         found = {}
         for name in sorted(os.listdir(os.path.join(ENGINE, "agents"))):
             with open(os.path.join(ENGINE, "agents", name), encoding="utf-8") as fh:
@@ -90,7 +90,7 @@ class SkillWiring(unittest.TestCase):
     def test_the_agents_a_skill_hands_to_exist_and_the_split_skills_point_at_each_other(self):
         agents = {name[:-3] for name in os.listdir(os.path.join(ENGINE, "agents"))}
         for skill, agent in (("maintain", "resolver"), ("export", "gatekeeper"), ("ingest", "encoder"),
-                             ("tend", "consolidator"), ("ask", "researcher")):
+                             ("ingest", "scout"), ("tend", "consolidator"), ("ask", "researcher")):
             self.assertIn(agent, agents)
             self.assertIn(f"`{agent}` agent", self.skill(skill), skill)
         # The review of a decision is a skill of its own, and `decide` is the shorter for it.

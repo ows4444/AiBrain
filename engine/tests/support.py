@@ -25,6 +25,41 @@ def run_brain(root, *args, env=None, **kw):
     return subprocess.run([sys.executable, BRAIN, *args], capture_output=True, text=True, env=env, **kw)
 
 
+def tool(folder, name, body):
+    """An executable `name` in `folder` that runs `body` as Python: a stand-in for a system tool on the PATH."""
+    os.makedirs(folder, exist_ok=True)
+    with open(os.path.join(folder, name + ".py"), "w", encoding="utf-8") as fh:
+        fh.write(body)
+    with open(os.path.join(folder, name), "w", encoding="utf-8") as fh:
+        fh.write(f"#!/bin/sh\nexec '{sys.executable}' '{os.path.join(folder, name)}.py' \"$@\"\n")
+    os.chmod(os.path.join(folder, name), 0o755)
+    return folder
+
+
+# What `pdftotext FILE -` and `tesseract FILE stdout` do, as far as the engine relies on it: the text of the
+# file on stdout, a form feed after each page. Here the "PDF" is its own text; BROKEN and SILENT are files
+# the tool fails on, with and without a word on stderr. Arguments it does not expect are an error.
+READER = """import os, sys
+args = sys.argv[1:]
+right = args[:4] + args[5:] == ["-enc", "UTF-8", "-eol", "unix", "-"] if "NAME" == "pdftotext" else args[1:] == ["stdout"]
+if not right:
+    sys.exit("unexpected arguments: " + " ".join(args))
+data = open(next(a for a in args if os.path.isfile(a)), "rb").read()
+if data.startswith(b"BROKEN"):
+    sys.exit("Syntax Error: Couldn't read xref table\\nand more of the same")
+if data.startswith(b"SILENT"):
+    sys.exit(3)
+sys.stdout.buffer.write(data)
+"""
+
+
+def readers(folder):
+    """A folder for the PATH holding stand-ins for the two tools `brain extract` calls."""
+    for name in ("pdftotext", "tesseract"):
+        tool(folder, name, READER.replace("NAME", name))
+    return folder
+
+
 def ago(days):
     return (TODAY - datetime.timedelta(days=days)).isoformat()
 

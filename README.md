@@ -15,6 +15,10 @@ whole brain also opens in Obsidian or any editor.
 - git
 - [Claude Code](https://claude.com/claude-code) (`claude`)
 
+Optional: `pdftotext` (from poppler) and `tesseract`. With them
+`brain extract` turns a PDF or a picture of text into an input without Claude
+reading the file; without them Claude reads it, as before.
+
 ## Install
 
 ```sh
@@ -96,6 +100,8 @@ brain search QUERY    # pages by their words
 brain recall QUERY    # words, then associations along links
 brain since 2026-09-01
 brain capture "a line" # keep it for later: a note in inbox/, which /ingest encodes
+brain inbox           # what waits in inbox/, sorted: ready, duplicate, credential, not text
+brain extract FILE    # a PDF's or an image's text into senses/, if pdftotext or tesseract is installed
 brain fit senses/FILE # what an input bears on, before it is encoded; /ingest runs it
 brain import obsidian VAULT   # every note of a vault into senses/, once; --dry-run to look first
 brain restore PAGE    # bring a faded page back from dormant/; the move is logged
@@ -104,6 +110,7 @@ brain tend --check    # everything that needs you, in one read-only digest
 brain mcp             # a read-only MCP server for other programs: search, recall, since, gaps
 brain log recall "a question" --pages a-page   # one checked line in the log; skills run it
 brain index           # rewrite the index's listing from the pages and their summaries
+brain graph --format html   # the pages and their links as one page for a browser; no network, no server
 brain test            # the engine's own tests
 brain cache           # the search cache: size; --rebuild or --clear
 brain errors          # what the hooks swallowed or refused, counted by source

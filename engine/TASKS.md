@@ -269,15 +269,17 @@ Not ordered: pick any whose tags are met. Each is smaller once 12 is done.
   - [x] Picks the importer, writes to `senses/`, hands off to `/ingest`. `skills/import/SKILL.md`: a dry run and the owner's yes first, the import, `brain check --guard` over what landed before any of it is encoded, then `/ingest` in archive batches; one `ingest` log line for the import itself
   - [ ] Done when: the skill passes `test_skills.py` and one real import ends in episodes. The first half holds. The second is yours: one vault imported in the real brain and taken through `/ingest`
 - [ ] **38. Ingestion scout agent** (ROADMAP A3, score 6, M)
-  - [ ] Sonnet; sorts `inbox/` before `/ingest`: duplicates by fingerprint, secrets by `brain check --guard`, items that need a person
-  - [ ] Done when: `/ingest` on a mixed inbox encodes only what the scout passed
+  - [x] Sonnet; sorts `inbox/` before `/ingest`: duplicates by fingerprint, secrets by `brain check --guard`, items that need a person. In two parts. `brain inbox` (`lib/inbox.py`, read-only, on the allow-list) decides what a rule can: each note is ready, a duplicate (the hash of an input or of an earlier note), forgotten, holding a credential (the scanner `check --guard` uses; the kind and the line, never the value), empty or not text; a PDF or an image is passed on to `brain extract` (39), which moves it itself. `agents/scout.md` (sonnet; Read, Glob, Grep, Bash) starts from that list, reads the ready notes, and holds the ones that need you: a fragment, a task that belongs to `/remind`, a note that gives the reader orders, another person's detail
+  - [x] `/ingest` step 1 runs `brain inbox` before anything is moved, hands a large or mixed inbox to the scout, moves only what passed, and reports the rest under `Held:`. Why before, not after: nothing in `senses/` is edited again, so a credential that lands stays
+  - [ ] Done when: `/ingest` on a mixed inbox encodes only what the scout passed. The rule half is tested (`tests/test_inbox.py`: of fourteen notes, two are ready and one PDF and one image go to `brain extract`) and the wiring is held by `test_skills.py`. The run itself is yours: a session loads the plugin from the other folder, so the scout cannot be started from here
 
 ### Reach
 
-- [ ] **39. Engine-side extraction** (ROADMAP F5, score 6, M)
-  - [ ] PDF text and image text through an optional dependency or a system tool
-  - [ ] Falls back to the model when the tool is absent
-  - [ ] Done when: a PDF lands in `senses/` as text without the model reading the file
+- [x] **39. Engine-side extraction** (ROADMAP F5, score 6, M)
+  - [x] PDF text and image text through an optional dependency or a system tool. `brain extract FILE` (`lib/extract.py`): a PDF through `pdftotext` (poppler), an image through `tesseract`. System tools, so the engine still imports nothing outside the standard library. The text lands in `senses/` with `transcribed_from`, `extracted_with`, `pages`, `extracted`; the original goes to `senses/assets/` (copied from outside, moved from `inbox/`), or stays where it is when it was already in `senses/`, with its text beside it as `<file>.md`. `unencoded()` counts such a pair once, and `brain forget` removes both
+  - [x] Falls back to the model when the tool is absent: exit 1 with the reason and nothing written; the PDF and Image rows of `/ingest` say what the model does then. The same exit for a scan (under 8 words a page), text the tool could not decode, a file it cannot open, and a file extracted before
+  - [x] Done when: a PDF lands in `senses/` as text without the model reading the file. Tried here with the real `pdftotext` 26.08 on a two-page PDF: 56 words landed and the PDF moved from `inbox/` to `senses/assets/`. The tests use stand-ins for both tools, so CI needs neither (`tests/test_extract.py`, 10 tests). `tesseract` is not on this machine: the image path has run against the stand-in only
+  - Not on the allow-list: it writes into `senses/`, as `brain fetch` does
 - [ ] **40. Audio and video transcription** (ROADMAP F6, score 6, M, after 35)
   - [ ] An external tool or an API
   - [ ] The transcript lands in `senses/` as text, with its source named
@@ -327,14 +329,15 @@ Not ordered: pick any whose tags are met. Each is smaller once 12 is done.
   - [x] Check every parser that assumes `LOG_LINE` in `vault_model.py`: the events (`time`, `""` on a line without one), the briefing's last activity, the recall sensor (a literal line in an edit, and a line a shell built with today's date), and what `brain check` and `eval --from-log` reprint, which is now the line as it was written. A time that is none (`25:99`) is not read as one: the line is listed as an unknown operation
   - [x] Events are read in the order they happened, by date and then time: a line with no time comes before the timed ones of its day, and keeps the file's order. So a log merged from two copies of a brain reads right, and a rehearsal's rows are in the order of the day, where a miss was always put before a pass
   - [x] Done when: two operations on one day sort by time, and old lines still parse (`TimeOfDay` in `test_log.py`; the fixture's and every test's untimed logs read as before)
-- [ ] **51. Visual interface** (ROADMAP F8, score 5, L)
-  - [ ] A static HTML graph from `brain graph`; no server
-  - [ ] Done when: the file opens from `motor/graph/` with no network
+- [x] **51. Visual interface** (ROADMAP F8, score 5, L)
+  - [x] A static HTML graph from `brain graph`; no server. `brain graph --format html` fills `templates/graph.html` and writes `motor/graph/graph.html`: one file with its own styles and script. Pages are marks (the hue is the stage of memory: sources, memory, purpose; the shape is the type, so no two types differ by colour alone), sized by their links; a search, the types as switches, a page's summary and links on selection, pan and zoom, and the same pages as a table. The layout is computed in the browser and comes out the same every time. Light and dark, and no animation for a reader who asked for none
+  - [x] Done when: the file opens from `motor/graph/` with no network. Its own policy (`default-src 'none'`) refuses every request, and a test holds that it names no address. Opened in headless Chrome with name lookups blocked, on the fixture (21 pages) and a synthetic brain (300 pages, 760 links): the only request was the file, and the script threw nothing through a search, a selection, a followed link, a drag, a zoom, a type switched off, the table and both themes
+  - The file holds every page's title and summary: it is the brain in one file. `motor/graph/` is already ignored by git
 - [x] **52. Backup and sync** (ROADMAP F10, score 4, S)
   - [x] Document a git remote; `git push` stays denied to a session on purpose (README > Backup and a second machine: a private remote, pushed by the owner; clone, `./install.sh`, `brain check` on the other machine)
   - [x] Added for the second machine: `.gitattributes` merges the three append-only files by union, so lines both copies added are both kept, with no conflict; with 50 the log then reads in the order things happened. `install.sh --new` now gives a new brain this file and `.gitignore`, which it did not (its `.cache/` was not ignored)
   - [x] Done when: the README says how, and a second clone passes `brain check` (a test makes two copies of a brain log on the same day, merges them and runs `brain check`; CI runs it on a fresh clone at every push)
-- [ ] **53. Windows support** (ROADMAP F13, score 4, M)
+- [ ] **53. Windows support** (ROADMAP F13, score 4, M). Skipped on your word, 2026-10-10: not built
   - [ ] Paths, the `python3` name, symlinks
   - [ ] Done when: `brain test` passes on Windows in CI
 - [ ] **54. `/share`** (ROADMAP S10, score 3, M)

@@ -16,8 +16,10 @@
     brain cache [--rebuild|--clear]       the search cache (.cache/search.sqlite): size, rebuild, clear
     brain capture TEXT                    one line kept for later: a note in inbox/, which /ingest encodes
     brain fetch URL [--name SLUG]         a web page cut down to its readable text, saved in senses/
+    brain extract FILE [--name SLUG]      a PDF's or an image's text into senses/, read by pdftotext or tesseract
     brain fit senses/FILE                 what an input bears on: the pages its own words reach, the held ideas it names
     brain import obsidian VAULT           notes kept in another tool into senses/, one input a note; never overwrites
+    brain inbox                           what waits in inbox/, sorted: ready, duplicate, credential, forgotten, not text
     brain new TYPE [--from senses/FILE]   a page from its template, frontmatter filled in from the input
     brain mcp                             a read-only MCP server on stdin and stdout, for other programs: search, recall, since, gaps
     brain chats EXPORT OUT [...]          a Claude or ChatGPT export, one file per conversation

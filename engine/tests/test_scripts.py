@@ -218,6 +218,67 @@ class Scripts(TempBrain):
         with open(out, encoding="utf-8") as fh:
             self.assertIn('<data key="relation">supports</data>', fh.read())
 
+    def graph_page(self):
+        """(the written page without its data, the data): what `brain graph --format html` made."""
+        r = run_brain(self.root, "graph", "--format", "html")
+        out = os.path.join(self.root, "motor", "graph", "graph.html")
+        self.assertEqual((r.returncode, r.stderr), (0, ""))
+        self.assertEqual(r.stdout.replace(self.root, "ROOT"), "3 nodes, 2 edges -> ROOT/motor/graph/graph.html\n"
+                         "  open it in a browser: it needs no network, and holds every page's title and summary\n")
+        with open(out, encoding="utf-8") as fh:
+            text = fh.read()
+        before, rest = text.split('<script type="application/json" id="graph-data">', 1)
+        data, after = rest.split("</script>", 1)
+        return before + after, json.loads(data)
+
+    def test_the_graph_as_one_page_holds_every_page_and_link_as_data(self):
+        """Done when: the file opens from motor/graph/ with no network."""
+        hostile = 'A </script><script>alert(1)</script> title & "quoted" words'
+        self.write("cortex/concepts/a.md", page("concept", "(supports:: [[c]]) and [[e]].\n", title=hostile,
+                                                status="established", summary="What <b>a</b> holds.",
+                                                created="2026-01-01", updated="2026-01-01"))
+        self.write("cortex/concepts/c.md", page("concept", **VALID))
+        self.write("cortex/episodes/e.md", page("episode", title="An episode", created="2026-01-01", updated="2026-01-01"))
+        shell, data = self.graph_page()
+        self.assertEqual(data["title"], os.path.basename(os.path.realpath(self.root)) + ": the graph")
+        self.assertEqual(data["made"], datetime.date.today().isoformat())
+        self.assertEqual(data["nodes"][0], {"id": "cortex/concepts/a.md", "title": hostile, "type": "concept",
+                                            "summary": "What <b>a</b> holds.", "status": "established"})
+        self.assertEqual([(n["id"], n["type"], n["status"]) for n in data["nodes"][1:]],
+                         [("cortex/concepts/c.md", "concept", VALID.get("status", "")), ("cortex/episodes/e.md", "episode", "")])
+        self.assertEqual(data["edges"], [[0, 1, "supports"], [0, 2, ""]])
+        # A page's words are data: nothing in a title can end the block they sit in or become markup.
+        self.assertEqual(shell.count("<script"), 1)
+        self.assertNotIn("alert(1)", shell)
+        self.assertIn("<title>" + data["title"] + "</title>", shell)
+
+    def test_the_graph_page_asks_the_network_for_nothing(self):
+        self.write("cortex/concepts/c.md", page("concept", "See [[d]] and [[e]].\n", **VALID))
+        self.write("cortex/concepts/d.md", page("concept", **VALID))
+        self.write("cortex/concepts/e.md", page("concept", **VALID))
+        shell, _ = self.graph_page()
+        # Its own policy refuses every request, so the browser holds it to this whatever the script does.
+        self.assertIn("""<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src """
+                      """'unsafe-inline'; script-src 'unsafe-inline'">""", shell)
+        for asked in ("://", " src=", " href=", "url(", "@import", "fetch(", "XMLHttpRequest", "WebSocket",
+                      "sendBeacon", "import(", "innerHTML", "document.write", "eval("):
+            self.assertNotIn(asked, shell, asked)
+        for token in ("--series-1", "--series-2", "--series-3", "prefers-color-scheme: dark", "prefers-reduced-motion",
+                      'id="table"', "textContent"):
+            self.assertIn(token, shell, token)
+
+    @unittest.skipUnless(shutil.which("node"), "node is not installed: the page's script is not parsed here")
+    def test_the_script_of_the_graph_page_parses(self):
+        self.write("cortex/concepts/c.md", page("concept", "See [[d]] and [[e]].\n", **VALID))
+        self.write("cortex/concepts/d.md", page("concept", **VALID))
+        self.write("cortex/concepts/e.md", page("concept", **VALID))
+        shell, _ = self.graph_page()
+        script = os.path.join(self.root, "graph.js")
+        with open(script, "w", encoding="utf-8") as fh:
+            fh.write(shell.split("<script>", 1)[1].rsplit("</script>", 1)[0])
+        r = subprocess.run(["node", "--check", script], capture_output=True, text=True)
+        self.assertEqual((r.returncode, r.stderr), (0, ""))
+
 
 class Export(TempBrain):
     def test_export_keeps_internal_links_and_flattens_private_ones(self):

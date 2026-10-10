@@ -28,10 +28,19 @@ from the owner, in the conversation.
 ## Workflow
 
 1. **Land the input** in `senses/` if it is not there yet (see Input types).
-   Notes waiting in `inbox/` are moved (not copied) to
-   `senses/inbox/<YYYY-MM-DD>-<name>`, the date they were swept. Never edit a
-   file already in `senses/`. Then run `brain fingerprint`, which records a
-   hash of each new input so `brain check` catches any later edit.
+   Notes waiting in `inbox/` are sorted first, because nothing in `senses/`
+   is edited again: `brain inbox` lists each as ready, a duplicate, holding
+   a credential, forgotten, empty or not text. More than five notes, or any
+   that is not ready: hand the inbox to the `scout` agent, which also reads
+   the ready ones and returns `Pass:` and `Hold:` lines. Where no agent can
+   be started, pass only what `brain inbox` lists as ready or as a PDF or an
+   image to extract. A note that passed is moved (not copied) to
+   `senses/inbox/<YYYY-MM-DD>-<name>`, the date it was swept; a PDF or an
+   image that passed goes to `brain extract` (Input types), which moves it
+   itself. What is held stays in `inbox/` and goes to the owner under `Held:`.
+   Never edit a file already in `senses/`. Then run `brain fingerprint`,
+   which records a hash of each new input so `brain check` catches any later
+   edit.
 2. **Read it completely** before writing. Pages built from the introduction
    are built from the least specific part.
 3. **Check fit.** `brain fit senses/<file>` lists the pages the input bears
@@ -78,8 +87,8 @@ from the owner, in the conversation.
 | Input | Before step 2 |
 |---|---|
 | URL | `brain fetch <url>` saves the page's readable text to `senses/` with url, title, author and date, and prints the path and sizes. Read that file only; never fetch the page into the conversation. It exits 1 on a paywall, a fragment or a page built by JavaScript: report that, do not encode it. If the saved text is plainly missing part of the page, say so and ask the owner for a copy. |
-| PDF | Extract text, check its quality; scans need OCR. Figures that carry the argument go to `senses/assets/`. |
-| Image (photo, screenshot, whiteboard, diagram) | Copy it to `senses/assets/`, never edit it. Read it and write what it shows to `senses/<YYYY-MM-DD>-<slug>.md`: its text word for word, then its structure (table, boxes and arrows, what points at what), with `transcribed_from: assets/<file>` in the frontmatter. Mark what you cannot read as `[illegible]`; never guess a word or a number. Encode that file; the episode says in its first line that it is the model's transcription of an image, and is tagged `unverified` if anything was illegible. A picture with no text or structure to carry: say so and encode nothing. |
+| PDF | `brain extract <file>` saves its text to `senses/`, keeps the PDF (in `senses/assets/`, or where it already was in `senses/`), and prints the path, the pages and the words. Read that file only; check that it reads as the document does (columns in order, tables whole) and say so when it does not. The text has no title: `brain new episode --from <text> --title "<title>"`. It exits 1 with the reason when `pdftotext` is not installed, the PDF is a scan, or the text came out damaged: then read the PDF yourself and write what it says to `senses/<YYYY-MM-DD>-<slug>.md` with `transcribed_from: assets/<file>`, by the rules for an image. Figures that carry the argument go to `senses/assets/`. |
+| Image (photo, screenshot, whiteboard, diagram) | A picture of plain prose (a page, a screenshot of text): `brain extract <file>` reads it with `tesseract` where that is installed; the episode says in its first line that the text is a tool's reading of an image, and is tagged `unverified`. It exits 1 without the tool or when it finds no text. Then, and for anything with structure: copy it to `senses/assets/`, never edit it. Read it and write what it shows to `senses/<YYYY-MM-DD>-<slug>.md`: its text word for word, then its structure (table, boxes and arrows, what points at what), with `transcribed_from: assets/<file>` in the frontmatter. Mark what you cannot read as `[illegible]`; never guess a word or a number. Encode that file; the episode says in its first line that it is the model's transcription of an image, and is tagged `unverified` if anything was illegible. A picture with no text or structure to carry: say so and encode nothing. |
 | Paper | Episode built around question, method, result with real numbers, sample size, stated limitations. |
 | Video, podcast, voice | Clean the transcript first (below), save it to `senses/`, split by topic if it covers several. |
 | Highlights | One episode per book; candidates are ideas, not quotes. Keep quotes short. |
@@ -99,6 +108,7 @@ say so and ask for a better copy.
 
 ```
 Encoded: <input> -> [[episode]]
+Held: <none | inbox/<note>: why it did not land>
 Linked to: <existing pages>
 Candidates: <names>, (<n> already named by other episodes)
 Salience: <none | n: why>
