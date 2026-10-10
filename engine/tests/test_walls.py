@@ -173,7 +173,8 @@ class ShellAgainstSenses(TempBrain):
 class OneProcessForEachEvent(TempBrain):
     """gate.py runs every wall of an event in turn, and says what each would have said on its own."""
 
-    PRE = (("protect_senses.py",), ("protect_log.py",), ("protect_expected.py",), ("validate_page.py", "--pre"))
+    PRE = (("protect_senses.py",), ("protect_log.py",), ("protect_policy.py",), ("protect_expected.py",),
+           ("validate_page.py", "--pre"))
     POST = (("validate_page.py",), ("scan_secrets.py",))
 
     def setUp(self):
@@ -284,20 +285,21 @@ class OneProcessForEachEvent(TempBrain):
             self.assertEqual((r.returncode, r.stdout), (1, ""), args)  # wired wrongly: it says so, it refuses nothing
             self.assertIn("usage: gate.py pre | post", r.stderr)
 
-    def test_a_shell_command_loads_the_senses_wall_and_no_other(self):
-        self.assertEqual([name for name, _ in gate.walls("pre", "Bash")], ["protect_senses"])
-        self.assertEqual([name for name, _ in gate.walls("pre", "NotebookEdit")], ["protect_senses"])
+    def test_a_shell_command_loads_the_two_walls_that_read_one_and_no_other(self):
+        # The two walls that read a shell command: what is never edited, and the page only the owner writes.
+        self.assertEqual([name for name, _ in gate.walls("pre", "Bash")], ["protect_senses", "protect_policy"])
+        self.assertEqual([name for name, _ in gate.walls("pre", "NotebookEdit")], ["protect_senses", "protect_policy"])
         self.assertEqual([name for name, _ in gate.walls("pre", "Edit")],
-                         ["protect_senses", "protect_log", "protect_expected", "validate_page"])
+                         ["protect_senses", "protect_log", "protect_policy", "protect_expected", "validate_page"])
         self.assertEqual([name for name, _ in gate.walls("post", "")], ["validate_page", "scan_secrets"])
-        loaded = "import sys, gate; gate.main(['pre']); print(sorted(set(sys.modules) & {%r, %r, %r, %r, %r}))" % (
-            "protect_senses", "protect_log", "protect_expected", "validate_page", "vaultlib")
+        loaded = "import sys, gate; gate.main(['pre']); print(sorted(set(sys.modules) & {%r, %r, %r, %r, %r, %r}))" % (
+            "protect_senses", "protect_log", "protect_policy", "protect_expected", "validate_page", "vaultlib")
         for tool, tool_input, modules in (
-                ("Bash", {"command": "ls"}, ["protect_senses"]),
+                ("Bash", {"command": "ls"}, ["protect_policy", "protect_senses"]),
                 ("Write", {"file_path": os.path.join(self.root, "motor", "x.md"), "content": "x"},  # no page: no library
-                 ["protect_expected", "protect_log", "protect_senses", "validate_page"]),
+                 ["protect_expected", "protect_log", "protect_policy", "protect_senses", "validate_page"]),
                 ("Write", {"file_path": self.good, "content": page("concept", **VALID)},
-                 ["protect_expected", "protect_log", "protect_senses", "validate_page", "vaultlib"])):
+                 ["protect_expected", "protect_log", "protect_policy", "protect_senses", "validate_page", "vaultlib"])):
             r = subprocess.run([sys.executable, "-c", loaded], input=json.dumps({"tool_name": tool, "tool_input": tool_input}),
                                capture_output=True, text=True, cwd=HOOKS, env=dict(os.environ, CLAUDE_PROJECT_DIR=self.root))
             self.assertEqual(r.stdout.strip(), str(modules), r.stderr)

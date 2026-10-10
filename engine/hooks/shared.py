@@ -46,7 +46,9 @@ STATUS = re.compile(r"^status:\s*[\"']?(\w+)", re.M)
 EXPECTED = re.compile(r"^## Expected\s*\n(.*?)(?=^## |\Z)", re.S | re.M)
 # The folder itself, not a name that only contains the word (`senses-old`, `senses.md`).
 SENSES_WORD = re.compile(r"(?<![\w.-])senses(?![\w.-])", re.I)
-IRREVERSIBLE = ("senses" + os.sep, os.path.join("cortex", "decisions", ""))  # what is written there is never undone
+# What is written there is never undone, or (the policy page) decides what may run with nobody there.
+IRREVERSIBLE = ("senses" + os.sep, os.path.join("cortex", "decisions", ""), os.path.join("hippocampus", "policy.md", ""))
+POLICY_WORD = re.compile(r"(?<![\w.-])policy\.md(?![\w.-])", re.I)
 
 # block: the call is refused. ask: the owner is asked. `kind` is the rule that refused, for
 # the error log (None: nothing more to log); `detail` is what the log keeps, when it is not the message.
@@ -136,14 +138,15 @@ def ask(source, reason):
 
 
 def irreversible(data):
-    """True when the call writes where nothing can be undone: senses/ or cortex/decisions/.
+    """True when the call writes where nothing can be undone, senses/ or cortex/decisions/, or the policy page.
 
-    A shell command counts when it names senses, the one folder a wall reads commands for.
+    A shell command counts when it names senses or the policy page, which are what a wall reads commands for.
     """
     args = data.get("tool_input")
     args = args if isinstance(args, dict) else {}
     if data.get("tool_name") == "Bash":
-        return bool(SENSES_WORD.search(str(args.get("command", ""))))
+        command = str(args.get("command", ""))
+        return bool(SENSES_WORD.search(command) or POLICY_WORD.search(command))
     path = str(args.get("file_path") or args.get("notebook_path") or "")
     return bool(path) and fold(from_root(path) + os.sep).startswith(IRREVERSIBLE)
 
@@ -162,8 +165,9 @@ def judge(walls, data):
             verdict = None
             if irreversible(data):
                 verdict = block(source, None, f"Blocked: {source} failed before it could check this call, and nothing "
-                                              "goes into senses/ or cortex/decisions/ unchecked: neither can be "
-                                              "undone. `brain errors` shows what failed.")
+                                              "goes into senses/ or cortex/decisions/ unchecked, nor into the "
+                                              "policy page: none of it can be taken back by the run that wrote it. "
+                                              "`brain errors` shows what failed.")
         if verdict is not None:
             verdicts.append(verdict)
     return verdicts

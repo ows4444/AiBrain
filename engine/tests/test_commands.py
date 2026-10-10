@@ -24,6 +24,8 @@ SUMMARY = ["avg_degree", "awaiting_consolidation", "broken_links", "by_type", "c
            "orphan_rate", "pages", "projects", "stale_concept_rate", "tuning", "verdicts"]
 # label -> (command, its arguments, the keys of what it returns). {root} is the brain, {tmp} a folder beside it.
 KEYS = {
+    "act": ("act", [], ["actions", "allowed", "policy"]),
+    "act NAME": ("act", ["feel"], ["action", "failed", "line", "ran", "said", "tier", "why"]),
     "check": ("check", [], [
         "ambiguous", "avg_degree", "broken", "claims", "gaps", "history", "links", "log", "log_unread", "log_unresolved",
         "near_duplicates", "no_summary", "not_in_index", "orphans", "pages", "personal", "relations", "schema",

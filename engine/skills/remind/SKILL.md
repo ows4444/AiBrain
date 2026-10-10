@@ -36,8 +36,20 @@ a `when` that could never come (`2026-02-30`, `every fortnight`).
 `brain log remind "<what>" --result hippocampus/intentions.md`, with `<what>`
 in the words of the line: a repeat is counted from that log line.
 
+**Add one the brain carries out itself.** When what is to be done is one of
+the brain's own actions (`brain act` lists them: rewriting the index's
+listing, a day's metrics, a check), the line ends with it in backticks, and
+may say what must hold once it is done: `- keep the listing current when
+every day 07:00 do `index``, `... do `index` until `check``. Only a day, a
+time or a repeat can start one, never an event. An action that changes the
+brain runs with nobody there only when `hippocampus/policy.md` allows it:
+say so, and show the owner the line to add there (`- index (why)`). Never
+write that page; a wall refuses it.
+
 **List.** `brain introspect --remind`: what is due and since when, what waits
-on an event, what repeats and its next round, and how the closed ones ended.
+on an event, what repeats and its next round, how the closed ones ended, and
+for each one the brain carries out itself where it stands (scheduled, ready,
+started, finished, failed, waiting) with the steps the log holds of it.
 
 **Close.** Ask what happened, in one line. End the line with
 `(done <today>: <what happened>)` or `(dropped <today>: <why>)`. A repeat is

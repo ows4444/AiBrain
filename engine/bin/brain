@@ -32,6 +32,7 @@
     brain resume                          write where the work stands to the active project's process/resume.md
     brain statusline [--bar]              the queues and context fill on one line; --bar is the short form for Claude Code's row
     brain tend --check [--notify]         everything that needs the owner, in one read-only digest; --notify shows it on the screen
+    brain act [NAME] [--dry-run]          run one action of the brain's own if hippocampus/policy.md allows it now; alone, list them
     brain schedule [--set | --remove]     have this machine run that every few minutes with no session open (a launchd job)
     brain eval [--from-log] [--set N=V]   the answer test set, or with --from-log every question in the log replayed; --set tries a threshold
     brain synth OUT [--pages N]           a synthetic brain of any size, for testing the engine

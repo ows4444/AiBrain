@@ -28,6 +28,7 @@ from shared import WRITES
 EVENTS = {
     "pre": (("protect_senses", "check", WRITES + ("NotebookEdit", "Bash")),
             ("protect_log", "check", WRITES),
+            ("protect_policy", "check", WRITES + ("NotebookEdit", "Bash")),
             ("protect_expected", "check", WRITES),
             ("validate_page", "before", WRITES)),
     "post": (("validate_page", "written", None),

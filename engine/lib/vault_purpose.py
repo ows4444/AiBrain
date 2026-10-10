@@ -5,7 +5,7 @@ Mixed into vaultlib.Vault; relies on its pages, edges, goals, tuning and resolve
 import datetime
 import os
 
-from vault_intentions import SPAN, clock, next_round, read_intentions
+from vault_intentions import SPAN, STEP, clock, next_round, read_course, read_intentions, words
 
 LAST_MINUTE = datetime.time(23, 59)  # a log line with no time of day: the end of its day
 
@@ -29,12 +29,35 @@ class PurposeMixin:
         if "_reminded_kept" not in self.__dict__:
             last = {}
             for e in self.events:
-                if e.op == "remind" and e.day:
-                    words = e.what.lower().split()
-                    words = words[1:] if words[:1] in (["done"], ["dropped"]) else words
-                    last[" ".join(words)] = datetime.datetime.combine(e.day, clock(e.time) if e.time else LAST_MINUTE)
+                step = STEP.match(e.what) if e.op == "act" else None
+                if e.day and (e.op == "remind" or (step and step.group(1) == "finished")):
+                    said = (step.group(2) if step else e.what).lower().split()
+                    said = said[1:] if not step and said[:1] in (["done"], ["dropped"]) else said
+                    last[" ".join(said)] = datetime.datetime.combine(e.day, clock(e.time) if e.time else LAST_MINUTE)
             self._reminded_kept = last
         return self._reminded_kept
+
+    def standing(self, intention):
+        """Where a reminder the brain carries out itself stands: {state, attempt, attempts, course}; None for one
+        that only reminds.
+
+        Read from the log alone (vault_intentions.read_course). `state` is scheduled (its
+        time has not come), ready (it has, and nothing was done), or the last step said of
+        it: started, finished, failed, waiting. A repeat that finished is over for that
+        round and stands by what was said since; a dated one that finished is done.
+        `attempt` names the last one started, `attempts` counts them, and `course` is the
+        steps that count, each (day, time, step, attempt, note).
+        """
+        if not intention.get("do"):
+            return None
+        course = read_course(self.events).get(words(intention["text"]), [])
+        ends = [n for n, step in enumerate(course) if step[2] == "finished"]
+        if intention["every"] and ends:
+            course = course[ends[-1] + 1:]  # an earlier round, done with
+        due = (self.next_round(intention) if intention["every"] else intention["at"]) <= self.now
+        state = course[-1][2] if course else "ready" if due else "scheduled"
+        started = [step[3] for step in course if step[2] == "started"]
+        return {"state": state, "attempt": started[-1] if started else None, "attempts": len(started), "course": course}
 
     def next_round(self, intention):
         """When an open repeat next comes round, counted from the last log line naming it; one never logged is due."""
@@ -48,9 +71,14 @@ class PurposeMixin:
         out = []
         for i in self.intentions():
             since = i["at"] or (self.next_round(i) if i["every"] else None)
-            if not i["ended"] and since and since <= self.now:
-                out.append(dict(i, since=since))
+            stands = self.standing(i) if since else None
+            if not i["ended"] and since and since <= self.now and not (stands and stands["state"] == "finished"):
+                out.append(dict(i, since=since, stands=stands))
         return sorted(out, key=lambda i: i["since"])
+
+    def carried_out(self):
+        """Open reminders the brain carries out itself, each with `stands`: where it is, from the log."""
+        return [dict(i, stands=self.standing(i)) for i in self.intentions() if not i["ended"] and i["do"]]
 
     def waiting_intentions(self):
         """Open intentions waiting on an event rather than a date."""

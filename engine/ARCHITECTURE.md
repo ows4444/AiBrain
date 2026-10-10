@@ -42,7 +42,7 @@ scans live in code and run as hooks or `brain` commands.
 | `cortex/entities/` | people, organisations, products, tools | `/sleep` | what it is and why it is here |
 | `cortex/insights/` | what no single episode said | `/sleep` | agreements, conflicts, patterns |
 | `cortex/decisions/` | choices: options, frozen `## Expected`, outcome | `/decide`, `/review-decision` (the outcome) | `## Expected` never rewritten once decided |
-| `hippocampus/` | `index.md`, `log.md`, `metrics.md`, `fingerprints.md`, `intentions.md`, `tuning.md` | skills (the log only through `brain log`, the index's listing through `brain index`) and `brain fingerprint` | the log is append-only; the index's listing is rewritten every run, its Gaps kept by hand; `tuning.md` holds the thresholds this brain keeps at its own value |
+| `hippocampus/` | `index.md`, `log.md`, `metrics.md`, `fingerprints.md`, `intentions.md`, `tuning.md`, `policy.md` | skills (the log only through `brain log`, the index's listing through `brain index`) and `brain fingerprint` | the log is append-only; the index's listing is rewritten every run, its Gaps kept by hand; `tuning.md` holds the thresholds this brain keeps at its own value; `policy.md` says what may run with nobody there, and only the owner writes it |
 | `prefrontal/<name>/` | projects, one goal each (`CLAUDE.md` is page `[[name]]`) | `/focus` | pages linked from live goals and active projects never fade |
 | `dormant/` | faded pages: out of index and graph, still searchable | `/maintain` | moved only on approval; `/restore` moves one back |
 | `motor/` | reports, drafts, exports for use outside | `/write`, `brain export` | `publish: true` is opt-in |
@@ -58,13 +58,15 @@ Page contract: frontmatter `title`, `summary` (one sentence, max 200 chars), `ty
 
 ### 4.1 The model: `engine/lib/vaultlib.py`
 
-One `Vault` class, composed from five mixins over five base modules, so every script and hook reports the
+One `Vault` class, composed from five mixins over six base modules, so every script and hook reports the
 same numbers.
 
 ```
 vault_model.py      constants, field registry, page parsing, Page          (no brain walk)
 vault_tuning.py     every threshold: default, range, what it does; a brain's own values
-vault_intentions.py a reminder's line: a day, a time, a repeat or an event; how it closes
+vault_policy.py     every action the brain may be asked to do to itself, its tier, and what a brain allows
+vault_intentions.py a reminder's line: a day, a time, a repeat or an event; how it closes; the action one may
+                    name, and the steps by which it is carried out
 vault_events.py     hippocampus/log.md parsed once into typed events
         │
 vaultlib.Vault = GraphMixin + MemoryMixin + PurposeMixin + RetrievalMixin + AffectMixin
@@ -113,7 +115,7 @@ the dict with `--json`, which every command takes. Another program makes the sam
 | Record | `log` (the one writer of log lines: it checks the operation and every page name), `index` (rewrites the index's listing from the pages) |
 | Output | `export` (clean copies of chosen pages; it stops on a credential), `graph` (the links as CSV or GraphML, or with `--format html` one page that opens from the disk and asks the network for nothing) |
 | Remove and continue | `forget` (remove an input), `restore` (a faded page back from `dormant/`), `resume` (write where the work stands) |
-| Operate | `statusline`, `tend --check` (everything that needs the owner, read-only, what is felt most first: what a scheduled run sends; `--notify` puts it on the screen, each thing once a day), `schedule` (a launchd job that runs it every few minutes with no session open), `mcp` (the read-only server for other hosts), `character` (what `CHARACTER.md` says: who the brain is to its owner), `cache`, `errors`, `synth`, `bench`, `test` |
+| Operate | `act` (the one way an action of the brain's own runs with nobody there: it asks `hippocampus/policy.md` each time, runs what only reads, runs what changes the brain only where the owner's line allows it, and refuses what reaches outside or cannot be undone), `statusline`, `tend --check` (everything that needs the owner, read-only, what is felt most first: what a scheduled run sends; `--notify` puts it on the screen, each thing once a day), `schedule` (a launchd job that runs it every few minutes with no session open), `mcp` (the read-only server for other hosts), `character` (what `CHARACTER.md` says: who the brain is to its owner), `cache`, `errors`, `synth`, `bench`, `test` |
 
 ### 4.3 The hooks: `engine/hooks/` (six events, one command each)
 
@@ -121,7 +123,7 @@ the dict with `--json`, which every command takes. Another program makes the sam
 |-------|------|--------------|-----------|
 | SessionStart | `wake_up.py` | briefing: owner, the brain's character when it has a page for it, queues, the mood and what is felt most, last activity, engine drift; before it counts `inbox/`, it moves in what waits at the door (`brain door`) | no |
 | UserPromptSubmit | `prompt_recall.py` | adds matching page summaries to a question (off unless `BRAIN_PROMPT_RECALL=1`) | no |
-| PreToolUse (write, edit, bash) | `gate.py pre` | runs the walls in turn: `protect_senses.py` (edits to existing inputs; `brain forget --yes` is an "ask"), then for a write `protect_log.py` (the log written only by `brain log`), `protect_expected.py` (a frozen `## Expected`) and `validate_page.py` (schema before the write) | yes |
+| PreToolUse (write, edit, bash) | `gate.py pre` | runs the walls in turn: `protect_senses.py` (edits to existing inputs; `brain forget --yes` is an "ask"), `protect_policy.py` (the policy page is the owner's to write, by hand), then for a write `protect_log.py` (the log written only by `brain log`), `protect_expected.py` (a frozen `## Expected`) and `validate_page.py` (schema before the write) | yes |
 | PostToolUse (write, edit) | `gate.py post` | `validate_page.py` (schema of the file as written), `scan_secrets.py` (credentials) | feedback |
 | PreCompact | `save_resume.py` | writes the "where the work stood" note | no |
 | Stop | `check_recall.py` | a turn that recalled but logged nothing is asked to log once | yes |
@@ -130,10 +132,10 @@ A wall is a function of one tool call that returns nothing, a block or an ask. E
 runs on its own; `gate.py` calls every wall of an event in one process (a write used to start six) and says
 what each would have said. What they share is `shared.py`: finding the brain, the text an edit would leave, a
 decision's `## Expected` and `status`, and how a wall answers Claude Code. It uses the standard library only and
-nothing from `lib/`, so a broken import there cannot open `protect_senses.py`, `protect_log.py` or
-`protect_expected.py`, the three walls over what can never be undone. `validate_page.py` and `scan_secrets.py`
+nothing from `lib/`, so a broken import there cannot open `protect_senses.py`, `protect_log.py`,
+`protect_expected.py` or `protect_policy.py`, the four walls over what can never be undone or given away. `validate_page.py` and `scan_secrets.py`
 load the engine's library when a call names a page. A wall that raises, or cannot be loaded, is logged; the call is
-then blocked when it writes into `senses/` or `cortex/decisions/` and let through anywhere else, where
+then blocked when it writes into `senses/`, `cortex/decisions/` or the policy page and let through anywhere else, where
 `brain check` at the commit gate still catches the page. `lib/` keeps its own copies of what `shared.py` holds,
 and a test holds the two to the same answers. Hooks that must never block (`prompt_recall`, `save_resume`,
 `statusline`, `check_recall`) fail silent; both kinds write one line to `.cache/errors.log` (`brain errors`) so a
@@ -281,8 +283,10 @@ The brain also works as plain Markdown in Obsidian (the folder is its own vault)
 ## 9. Limits that follow from this design
 
 - Search is word-based plus link spreading; there is no embedding search.
-- Nothing writes unless a session is open. `brain tend --check` can run on a schedule (cron, or the watcher
-  agent) and say what is waiting; encoding, sleep and rehearsal still wait for the owner.
+- Nothing writes unless a session is open, with one exception the owner opens line by line: `brain act NAME`
+  runs an action that changes the brain when `hippocampus/policy.md` names it (rewriting the index's listing,
+  a day's metrics). `brain tend --check` can run on a schedule and say what is waiting; encoding, sleep and
+  rehearsal still wait for the owner.
 - The model does the extraction from PDFs, images and transcripts; the engine has no extractor.
 - One owner; a page's dates carry no time of day. Log lines do, so the events of one day are read in the
   order they happened, also in a log merged from two copies of the brain.

@@ -38,6 +38,7 @@ from vault_model import find_brain, is_brain  # noqa: E402
 
 # command -> (its module, whether it works on a brain, arguments it always has)
 COMMANDS = {
+    "act": ("act", True, {}),
     "check": ("link_check", True, {}),
     "introspect": ("introspect", True, {}),
     "search": ("search", True, {"mode": "search"}),

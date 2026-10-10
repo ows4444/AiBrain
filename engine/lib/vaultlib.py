@@ -6,6 +6,7 @@ so every script reports the same numbers. The parts live in their own modules:
 
     vault_model      constants, the field registry, parsing, Page
     vault_tuning     the thresholds, and a brain's own values for them (hippocampus/tuning.md)
+    vault_policy     the actions, and which a brain allows with nobody there (hippocampus/policy.md)
     vault_events     the log, parsed once into typed events
     vault_graph      links, orphans, components, hubs, bridges, clusters, near-duplicates
     vault_memory     recall strength, the sleep queue, evidence, confidence, decay, calibration
@@ -30,6 +31,7 @@ from vault_model import *  # noqa: E402,F401,F403
 from vault_model import (DORMANT_DIR, MEMORY_DIRS, PROJECTS_DIR, Page, as_list, owner_file,  # noqa: E402
                          owner_goals, owner_text,
                          parse_frontmatter, schema_problems, summary_problems, tag_vocabulary)
+from vault_policy import ACTIONS, POLICY_PATH, decide, policy_of, policy_problems, read_policy  # noqa: E402,F401
 from vault_purpose import PurposeMixin  # noqa: E402
 from vault_retrieval import RetrievalMixin  # noqa: E402
 from vault_tuning import (CHARACTER_FILE, THRESHOLDS, TRAITS, TUNING_PATH, Tuning, character_problems,  # noqa: E402,F401

@@ -18,12 +18,41 @@ What looks like a day or a repeat and is neither (`2026-02-30`, `every fortnight
 would wait for ever as an event nothing reports, so it is a problem of the page:
 `brain check` fails on it and the page hook refuses the write that would leave it.
 
-No dependencies, and nothing here reads a file: the page's text is handed in.
+A reminder may be one the brain carries out itself. Its line then ends with the
+action, in backticks, and may say what must hold once it is done:
+
+    - keep the listing current when every day 07:00 do `index`
+    - see the listing is whole when 2026-11-01 do `index` until `check`
+
+The action is one of the brain's own (vault_policy) that can run with nobody
+there, and `until` names one that only reads and gives a verdict. Only a day, a
+time or a repeat can start one: nothing but a reader can tell that an event has
+come. Whether the action is allowed is the policy page's to say at the moment it
+would run, not this line's. How one was carried out is lines in the log, one a
+step (`act started <the reminder's words> -> a1: index, due since ...`), and
+where it stands is read from them: NEXT is every step that may follow another.
+
+Nothing here reads a file: the page's text is handed in. It knows the actions
+by vault_policy, which has no dependencies either.
 """
 import datetime
+import difflib
 import re
 
+from vault_policy import ACTIONS, CHANGES, READS
+
 LINE = re.compile(r"^[-*]\s+(.+?)\s+when\s+(.+?)\s*$")
+# ... do `index`, and then: until `check`. The names are in backticks, so prose that holds the word `do` is not one.
+DO = re.compile(r"\s+do\s+`([^`]*)`(?:\s+until\s+`([^`]*)`)?\s*$")
+BARE = re.compile(r"\s+do\s+([a-z]+)(?:\s+until\s+[a-z]+)?\s*$")  # the same without them: said, not guessed at
+# How an intention with an action is carried out: each step is one `act` line of the log.
+VERBS = ("started", "finished", "failed", "waiting")
+STEP = re.compile(r"^(started|finished|failed|waiting)\s+(.+)$")
+ATTEMPT = re.compile(r"^(a\d+)(?::\s*(.*))?$")
+# Where one stands -> the steps that may follow. Nothing follows `waiting` but a start, so a
+# worker that finds it waiting again writes no second line: the log holds each thing once.
+NEXT = {"scheduled": (), "ready": ("started", "waiting"), "started": ("finished", "failed"),
+        "failed": ("started", "waiting"), "waiting": ("started",), "finished": ()}
 # `(done)`, `(done 2026-11-03)`, `(dropped: no longer needed)`, `(done 2026-11-03: confirmed)`; goals end the same way.
 END = re.compile(r"\s*\((done|dropped)(?:\s+(\d{4}-\d{2}-\d{2}))?(?:\s*:\s*([^)]*?))?\s*\)", re.I)
 DAY = re.compile(r"^(\d{4}-\d{1,2}-\d{1,2})(?:\s+(.+))?$")
@@ -71,10 +100,13 @@ def read_when(text):
 
 
 def read_intentions(body):
-    """[{text, when, at, due, every, time, timed, event, ended, closed, outcome, problem}] for the lines of the page.
+    """[{text, when, at, due, every, time, timed, event, do, until, ended, closed, outcome, problem}] for the
+    lines of the page.
 
     `at` is the moment a dated one is due and `due` its day; `every` and `time` are a
-    repeat's round; `event` is what any other waits on. `ended` is `done` or `dropped`,
+    repeat's round; `event` is what any other waits on. `do` is the action of one the brain
+    carries out itself and `until` what must hold after it, both None for a reminder that
+    only reminds; `when` is the line's `when` without them. `ended` is `done` or `dropped`,
     `closed` the day the closing mark gives (None when it gives none) and `outcome` what it
     says happened.
     """
@@ -88,11 +120,62 @@ def read_intentions(body):
                 closed = datetime.date.fromisoformat(closed) if closed else None
             except ValueError:
                 closed = None
-            said = read_when(m.group(2))
-            out.append(dict(said, text=m.group(1), when=m.group(2), due=said["at"].date() if said["at"] else None,
+            when, do, until, wrong = read_do(m.group(2))
+            said = read_when(when)
+            if do and said["event"] and not said["problem"]:
+                do, wrong = None, (f"'{when}' is an event, and an event cannot start `{do}`: only a day, a time or a "
+                                   "repeat can, since nothing but a reader can tell that an event has come")
+            out.append(dict(said, text=m.group(1), when=when, due=said["at"].date() if said["at"] else None,
                             ended=end.group(1).lower() if end else None, closed=closed,
-                            outcome=(end.group(3) or "").strip() if end else ""))
+                            outcome=(end.group(3) or "").strip() if end else "",
+                            do=None if said["problem"] else do, until=until, problem=wrong or said["problem"]))
     return out
+
+
+def words(text):
+    """A reminder's words as the log is matched by them: whatever their case and spacing."""
+    return " ".join(text.lower().split())
+
+
+def read_do(when):
+    """(the `when` without its action, the action, what must hold after it, what is wrong) from what follows `when`.
+
+    The action is one that can run with nobody there, a reading or a changing one; `until`
+    is one that only reads. A name that is neither, and an action written without its
+    backticks where that leaves no `when` to read, are said as a problem and nothing is done.
+    """
+    m = DO.search(when)
+    if not m:
+        bare = BARE.search(when)
+        if bare and bare.group(1) in ACTIONS and read_when(when)["problem"]:
+            return when[:bare.start()].strip(), None, None, (
+                f"'{when}': an action is written in backticks, do `{bare.group(1)}`, so that prose is never taken for one")
+        return when, None, None, None
+    rest, do, until = when[:m.start()].strip(), m.group(1).strip(), (m.group(2) or "").strip() or None
+    for name, tiers, what in ((do, (READS, CHANGES), "can be done with nobody there"), (until, (READS,), "only reads")):
+        if name is not None and (name not in ACTIONS or ACTIONS[name].tier not in tiers):
+            close = difflib.get_close_matches(name, [n for n, a in ACTIONS.items() if a.tier in tiers], n=1)
+            return rest, None, None, (f"`{name}` is no action that {what}" + (f" (closest: {close[0]})" if close else "")
+                                      + "; `brain act` lists them")
+    return rest, do, until, None
+
+
+def read_course(events):
+    """{a reminder's words: [(day, time, step, attempt, note)]} from the log's `act` lines that say a step of one.
+
+    `act started keep the listing current -> a1: index, due since 2026-10-12` is such a
+    line; `act index -> index: 12 pages listed`, which `brain act index` leaves, is not.
+    """
+    course = {}
+    for e in events:
+        m = STEP.match(e.what) if e.op == "act" and e.day else None
+        if m:
+            after = " ".join(e.rest.partition("->")[2].split())
+            after = "" if after == "none" else after  # what the log writes for a line with no result
+            said = ATTEMPT.match(after)
+            course.setdefault(words(m.group(2)), []).append(
+                (e.day, e.time, m.group(1), said.group(1) if said else None, (said.group(2) or "") if said else after))
+    return course
 
 
 def intention_problems(body):

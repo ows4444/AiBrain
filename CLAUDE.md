@@ -18,7 +18,8 @@ senses/          input as it arrived; never edited after it lands (assets/: imag
 hippocampus/     index.md (every page; read first), log.md (every operation and
                  recall), metrics.md, fingerprints.md (a hash of every input),
                  intentions.md (remind me when ...), tuning.md (thresholds
-                 this brain holds at its own value)
+                 this brain holds at its own value), policy.md (what may run
+                 with nobody there)
 cortex/          long-term memory
   episodes/      one page per input: what that one item said
   concepts/      one idea per page, built only from repeated evidence
@@ -71,7 +72,8 @@ someone who never saw the episodes. An insight says what no single episode
 did. A decision's fields, its frozen `## Expected` and its line tags are in
 `.claude/rules/decisions.md`, which loads when a decision page is read.
 System types (`index`, `log`, `metrics`, `fingerprints`, `intentions`,
-`tuning`) belong to their one file in `hippocampus/`, never to a memory page.
+`tuning`, `policy`) belong to their one file in `hippocampus/`, never to a
+memory page.
 
 ## Rules
 
@@ -90,6 +92,10 @@ System types (`index`, `log`, `metrics`, `fingerprints`, `intentions`,
 - Count and find with the instruments, never by hand: `brain check`,
   `brain introspect` (`--help` lists its views), `brain search`,
   `brain recall`, `brain since`, `brain export`.
+- Nothing changes the brain with nobody there unless `hippocampus/policy.md`
+  names it. `brain act` is the one way such an action runs, and it asks the
+  page each time. The page is the owner's to write: show them the line to
+  add, never write it.
 
 ## Disagreement
 
@@ -106,7 +112,7 @@ One line per operation in `hippocampus/log.md`, newest last:
 `DATE HH:MM <operation> <what> -> <result>` (lines from before the time was
 written have none). Operations: `ingest`, `recall`,
 `sleep`, `explore`, `decide`, `review`, `write`, `focus`, `maintain`,
-`health`, `guard`, `rehearse`, `rollback`, `owner`, `engine`, `remind`, `forget`.
+`health`, `guard`, `rehearse`, `rollback`, `owner`, `engine`, `remind`, `forget`, `act`.
 Write each line with `brain log <operation> <what> --pages <page> ... --result <text>`:
 it checks the operation and every page name and sets the date and time. Never
 write the file by hand. Every skill that answers or writes from pages (ask, brief, feel,

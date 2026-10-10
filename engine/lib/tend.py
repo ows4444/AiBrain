@@ -5,7 +5,8 @@ Usage:
 
 Everything the brain is waiting on, on one screen: input not encoded and notes
 in inbox/, episodes and decisions awaiting sleep, new input that says the
-opposite of a page, pages due for rehearsal, reminders whose date has come,
+opposite of a page, pages due for rehearsal, reminders whose date has come
+(one the brain carries out itself says its action and where it stands),
 decisions to review or to revisit, goals past their date or slipping, and the
 questions asked and not answered (`brain introspect --gaps`). A line is printed
 only when there is something on it, with how many and the first five; when
@@ -61,7 +62,9 @@ def digest(vault):
         "sleep": [p.rel for p in queue],
         "contradictions": [{"episode": a.rel, "page": b.rel} for a, b in vault.contradiction_queue()],
         "rehearse": [p.rel for p in vault.due_for_rehearsal()],
-        "reminders": [{"text": i["text"], "when": i["when"]} for i in vault.due_intentions()],
+        "reminders": [dict({"text": i["text"], "when": i["when"]},
+                           **({"do": i["do"], "state": i["stands"]["state"]} if i["stands"] else {}))
+                      for i in vault.due_intentions()],
         "review": [{"page": p.rel, "review": p.fields["review"]} for p in vault.decisions_due()],
         "revisit": [d["page"] for d in vault.decision_report() if d["triggered"]],
         "late": [{"goal": g["goal"], "state": g["state"], "due": g["due"]} for g in goals
@@ -172,7 +175,8 @@ def lines_in_turn(d):
         ("contradictions", "contradictions", [f"{c['episode']} against {c['page']}" for c in d["contradictions"]],
          "/sleep records both sides"),
         ("rehearse", "due to rehearse", d["rehearse"], "/rehearse: yours alone"),
-        ("reminders", "reminders due", [f"{r['text']} ({r['when']})" for r in d["reminders"]], ""),
+        ("reminders", "reminders due", [f"{r['text']} ({r['when']}" + (f"; do {r['do']}: {r['state']}" if "do" in r else "")
+                                        + ")" for r in d["reminders"]], ""),
         ("review", "to review", [f"{r['page']} ({r['review']})" for r in d["review"]], "/review-decision"),
         ("revisit", "to revisit", d["revisit"], "the event the decision named has come"),
         ("late", "goals past date", [f"{g['goal']} ({g['due']})" for g in d["late"]], "close, re-date or drop"),

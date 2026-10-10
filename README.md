@@ -112,6 +112,7 @@ brain ground FILE     # a draft: links, numbers and quotations with no page behi
 brain feel            # what the record gives the brain to feel, each feeling with its causes; none is stored
 brain character       # who the brain is to you: what CHARACTER.md says it holds to and how it speaks
 brain tend --check    # everything that needs you, in one read-only digest
+brain act             # the brain's own actions, and which may run with nobody there; `brain act NAME` runs one
 brain schedule        # have this machine run that every few minutes, with no session open
 brain mcp             # a read-only MCP server for other programs: search, recall, since, gaps, waiting, character
 brain log recall "a question" --pages a-page   # one checked line in the log; skills run it

@@ -10,6 +10,7 @@ import re
 import sys
 
 from vault_intentions import END as GOAL_END, intention_problems
+from vault_policy import policy_problems
 from vault_tuning import CHARACTER_FILE, Tuning, character_problems, tuning_problems  # noqa: F401
 
 LINK =re.compile(r"\[\[([^\]|#]+)(?:#[^\]|]*)?(?:\|[^\]]*)?\]\]")
@@ -46,7 +47,7 @@ PROJECTS_DIR = "prefrontal"
 # Faded pages: out of the index and the graph, but an episode that named one
 # still does, so a link to a dormant page is a known state, not a broken link.
 DORMANT_DIR = "dormant"
-SYSTEM_TYPES = ("index", "log", "metrics", "fingerprints", "intentions", "tuning", "project")
+SYSTEM_TYPES = ("index", "log", "metrics", "fingerprints", "intentions", "tuning", "policy", "project")
 # A system type names one fixed file. Declared anywhere else it would exempt a
 # memory page from every check, so there it is a schema problem, and the page
 # is treated as an ordinary (untyped) page. Projects get theirs from their folder.
@@ -57,6 +58,7 @@ SYSTEM_PATHS = {
     "fingerprints": "hippocampus/fingerprints.md",
     "intentions": "hippocampus/intentions.md",
     "tuning": "hippocampus/tuning.md",
+    "policy": "hippocampus/policy.md",
 }
 STATUSES = ("emerging", "established")
 # A decision is weighed (open), made with a date to check how it went
@@ -137,7 +139,7 @@ PRIVATE_FIELDS = frozenset(k for k, f in FIELDS.items() if f.get("private"))
 # Operations a log line may record (CLAUDE.md > Log). `recall` lines are what
 # strengthen pages; `engine` records changes to the engine itself.
 OPS = ("ingest", "recall", "sleep", "explore", "decide", "review", "write", "focus",
-       "maintain", "health", "guard", "rehearse", "rollback", "owner", "engine", "remind", "forget")
+       "maintain", "health", "guard", "rehearse", "rollback", "owner", "engine", "remind", "forget", "act")
 
 # Graded salience: `salience: 1-5` (`high` is 5). From SALIENT up, a page never
 # fades and one episode is enough for a concept, as `high` always was; below it,
@@ -341,7 +343,8 @@ def schema_problems(text, vocabulary=None, page_type=None, stem=None, rel=None):
     kind = fields.get("type", "")
     if system_type_at(kind, rel):
         # The two system pages with a contract of their own: a threshold that is none, a reminder that cannot fire.
-        return {"tuning": tuning_problems, "intentions": intention_problems}.get(kind, lambda _: [])(body)
+        return {"tuning": tuning_problems, "intentions": intention_problems,
+                "policy": policy_problems}.get(kind, lambda _: [])(body)
     if kind in SYSTEM_TYPES:
         where = SYSTEM_PATHS.get(kind, "prefrontal/<name>/CLAUDE.md, where the folder sets it")
         return [f"type '{kind}' belongs only to {where}; a memory page here is one of {', '.join(PAGE_TYPES)}"]

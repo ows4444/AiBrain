@@ -37,7 +37,10 @@ are the defaults, and the text prints the brain's own.
              each, goals with nothing behind them, and goals at risk (due
              within 30 days with nothing edited or recalled in 28)
   --remind   intentions (hippocampus/intentions.md) whose date has come, and
-             those waiting on an event
+             those waiting on an event; the ones the brain carries out
+             itself (a line ending do `action`), each with where it stands
+             (scheduled, ready, started, finished, failed, waiting) and
+             the steps the log holds of it
   --links    pairs of pages not linked that probably should be: shared
              neighbours (Adamic-Adar) and pages recalled together
   --projects each project in prefrontal/: status, goal, the pages it uses,
@@ -108,6 +111,7 @@ from vaultlib import CHARACTER_FILE, TUNING_PATH, Tuning, Vault, shown, verdicts
 
 TOP = 10
 GAP_QUESTIONS = 3  # wordings of one gap printed; --json has them all
+COURSE_STEPS = 4   # steps of one reminder's course printed; --json has them all
 METRICS = os.path.join("hippocampus", "metrics.md")
 SNAPSHOT_LINE = re.compile(r"^(\d{4}-\d{2}-\d{2}) (\{.*\})$")
 SNAPSHOT_KEYS = ("pages", "links", "avg_degree", "orphan_rate", "components", "main_component_share",
@@ -283,6 +287,11 @@ def _intentions(r):
             "waiting": [{"text": i["text"], "when": i["when"]} for i in v.waiting_intentions()],
             "repeating": [{"text": i["text"], "when": i["when"], "next": stamp(i["next"], i["timed"])}
                           for i in v.repeating_intentions()],
+            "carried": [{"text": i["text"], "when": i["when"], "do": i["do"], "until": i["until"],
+                         "state": i["stands"]["state"], "attempts": i["stands"]["attempts"],
+                         "course": [{"date": day.isoformat(), "time": time, "step": step, "attempt": attempt, "note": note}
+                                    for day, time, step, attempt, note in i["stands"]["course"]]}
+                        for i in v.carried_out()],
             "closed": v.reminder_record()}
 
 
@@ -433,6 +442,14 @@ def gap_line(g):
             + (f"\n        start with: {'; '.join(start)}" if start else ""))
 
 
+def carried_line(i):
+    """One reminder with an action: what it does and when, where it stands, and the last steps said of it."""
+    steps = i["course"][-COURSE_STEPS:]
+    return (f"{i['state']:<9} {i['text']}  (when {i['when']}: do {i['do']}" + (f" until {i['until']}" if i["until"] else "")
+            + ")" + "".join(f"\n        {' '.join(filter(None, (s['date'], s['time'], s['step'], s['attempt'])))}"
+                            + (f": {s['note']}" if s["note"] else "") for s in steps))
+
+
 def listed(title, rows):
     return [f"\n{title}: {len(rows)}"] + [f"  {row}" for row in rows]
 
@@ -539,6 +556,9 @@ def render(r, args):
         if r["intentions"]["repeating"]:
             out += listed("reminders that repeat", [f"{i['when']}  {i['text']}  (next {i['next']})"
                                                     for i in r["intentions"]["repeating"]])
+        if r["intentions"]["carried"]:
+            out += listed("reminders the brain carries out itself (where each stands, then its last steps, from the log)",
+                          [carried_line(i) for i in r["intentions"]["carried"]])
         closed = r["intentions"]["closed"]
         if closed["done"] or closed["dropped"]:
             late = closed["late"]
