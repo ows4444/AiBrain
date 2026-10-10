@@ -4,7 +4,7 @@ Usage:
     brain mcp                 serve on stdin and stdout until stdin closes
 
 Another host (a desktop client, an editor, a script) starts this as a
-subprocess and gets six tools, each one a `brain` command called in this
+subprocess and gets eight tools, each one a `brain` command called in this
 process (lib/commands.py), its text returned as it would print:
 
     search   pages by their words
@@ -13,6 +13,8 @@ process (lib/commands.py), its text returned as it would print:
     gaps     what was asked and not answered
     waiting  what needs the owner: reminders and rehearsals due, queues, decisions, goals
     character  who the brain is to its owner: what it holds to and how it speaks, to answer in that voice
+    handed   what is for another program to carry out and not reported on yet, each with its name
+    feel     what the record gives the brain to feel, each feeling with its causes
 
 No tool writes: no page, no index, and no line in the log, so a page read this
 way does not count as used. The brain is $BRAIN_ROOT, else the nearest one at
@@ -51,7 +53,8 @@ INSTRUCTIONS = ("Read-only access to one person's knowledge base (an AiBrain). `
                 "a question and is the place to start; `search` finds pages by exact words; `since` lists what "
                 "changed in a period; `gaps` lists what was asked and never answered; `waiting` lists what the brain is "
                 "waiting on its owner for; `character` says how this brain speaks and what it holds to: read it "
-                "before answering for it. Answer from the pages and name them. Nothing here writes: a page read this "
+                "before answering for it; `handed` lists what is for another program to carry out, and `feel` what "
+                "the record gives the brain to feel. Answer from the pages and name them. Nothing here writes: a page read this "
                 "way leaves no trace in the brain's log.")
 TTL_MS = 3600000  # the tool list and the server's description do not change while it runs
 PARSE_ERROR, INVALID_REQUEST, NO_METHOD, INVALID_PARAMS, INTERNAL, UNSUPPORTED = -32700, -32600, -32601, -32602, -32603, -32022
@@ -103,6 +106,17 @@ TOOLS = {
                   "before answering for this brain, and answer in that voice. It yields to the brain's rules: "
                   "answer from the pages, name them, and say when nothing covers the question.",
                   schema(), lambda a: ["character"]),
+    "handed": ("The reminders this brain hands to another program, since it touches nothing outside itself: each "
+               "with the program it is for, how it is known to be done, and a name of seven characters. A runtime "
+               "that takes one on does the work its own way, under its own approvals, and reports by leaving a "
+               "Markdown note in the brain's inbox/ that begins with `handed: <the name>` in its frontmatter. The "
+               "brain starts nothing and reads what comes back.",
+               schema(), lambda a: ["handover"]),
+    "feel": ("What the record gives this brain to feel, the strongest first, each feeling with the events behind "
+             "it: a rehearsal missed, a question still unanswered, a goal past its date, work of its own that "
+             "failed or waits. It orders attention; it says nothing of what is true.",
+             schema(about={"type": "string", "description": "Only what is felt toward a target holding these words"}),
+             lambda a: ["feel", *(a.get("about") or "").split()]),
 }
 
 

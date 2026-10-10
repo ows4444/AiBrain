@@ -41,7 +41,10 @@ are the defaults, and the text prints the brain's own.
              itself (a line ending do `action`, or several for a plan),
              each with where it stands (scheduled, ready, started, passed,
              finished, failed, waiting), how many parts of a plan have
-             passed, and the steps the log holds of it
+             passed, and the steps the log holds of it; and the ones
+             handed to another program (a line ending for `program`), each
+             scheduled, handed, or returned with the episode that reports
+             on it
   --links    pairs of pages not linked that probably should be: shared
              neighbours (Adamic-Adar) and pages recalled together
   --projects each project in prefrontal/: status, goal, the pages it uses,
@@ -294,6 +297,8 @@ def _intentions(r):
                          "course": [{"date": day.isoformat(), "time": time, "step": step, "attempt": attempt, "note": note}
                                     for day, time, step, attempt, note in i["stands"]["course"]]}
                         for i in v.carried_out()],
+            "handed": [{"name": h["name"], "text": h["text"], "when": h["when"], "for": h["hand"], "until": h["hand_until"],
+                        "state": h["state"], "episode": h["episode"]} for h in v.handed_over()],
             "closed": v.reminder_record()}
 
 
@@ -562,6 +567,12 @@ def render(r, args):
         if r["intentions"]["carried"]:
             out += listed("reminders the brain carries out itself (where each stands, then its last steps, from the log)",
                           [carried_line(i) for i in r["intentions"]["carried"]])
+        if r["intentions"]["handed"]:
+            out += listed("reminders handed to another program (`brain handover` has what waits, for the program to read)",
+                          [f"{h['state']:<9} {h['text']}  (when {h['when']}: for {h['for']}"
+                           + (f" until {h['until']}" if h["until"] else "") + f"; {h['name']})"
+                           + (f"\n        reported on by {h['episode']}" if h["episode"] else "")
+                           for h in r["intentions"]["handed"]])
         closed = r["intentions"]["closed"]
         if closed["done"] or closed["dropped"]:
             late = closed["late"]

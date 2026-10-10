@@ -62,6 +62,7 @@ COMMANDS = {
     "import": ("importer", True, {}),
     "inbox": ("inbox", True, {}),
     "ground": ("ground", True, {}),
+    "handover": ("handover", True, {}),
     "new": ("new_page", True, {}),
     "chats": ("chat_export_to_md", False, {}),
     "resume": ("save_resume", True, {}),
@@ -75,6 +76,7 @@ COMMANDS = {
     "eval": ("eval", False, {}),
     "synth": ("synth", False, {}),
     "bench": ("bench", False, {}),
+    "drill": ("drill", False, {}),
 }
 TEST_FLAGS = ("-v", "-q", "-f", "-b")
 

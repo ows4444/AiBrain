@@ -16,7 +16,8 @@ about what is true (confidence is from the evidence only), and nothing about exp
                   that failed, or began and has no end
     curiosity     a question no page answers, each time it is asked
     satisfaction  a rehearsal passed; a decision that turned out as expected or better; a
-                  reminder done by its day, or one the brain carried out itself
+                  reminder done by its day, one the brain carried out itself, or one handed
+                  to another program that reported back
     worry         a goal at risk or past its date; a decision past its review; a reminder due,
                   or one of its own that waits for the owner
 
@@ -84,6 +85,10 @@ class AffectMixin:
                     out.append(("frustration" if kind == "failed" else "satisfaction", "reminder", written.get(said, said),
                                 day, 1.0, ("its action failed" if kind == "failed" else "carried out")
                                 + (f": {note}" if note else "")))
+        for h in self.handed_over():  # what another program did for it, come back as an input
+            if h["episode"]:
+                out.append(("satisfaction", "reminder", h["text"], h["reported"], 1.0,
+                            f"what was handed to {h['hand']} came back: {h['episode']}"))
         for i in self.due_intentions():
             if i["stands"] and i["stands"]["state"] == "waiting":  # its worry is the wait, counted from when it began
                 day, _, _, _, note = i["stands"]["course"][-1]

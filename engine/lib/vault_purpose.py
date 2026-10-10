@@ -5,7 +5,9 @@ Mixed into vaultlib.Vault; relies on its pages, edges, goals, tuning and resolve
 import datetime
 import os
 
-from vault_intentions import SPAN, STEP, clock, next_round, plan_said, read_course, read_intentions, words
+from vault_intentions import (SPAN, STEP, clock, handover, next_round, plan_said, read_course, read_intentions,
+                              words)
+from vault_model import parse_date
 from vault_policy import proposal, yes_of
 
 LAST_MINUTE = datetime.time(23, 59)  # a log line with no time of day: the end of its day
@@ -90,12 +92,34 @@ class PurposeMixin:
     def due_intentions(self):
         """Open intentions whose time has come, the longest due first; `since` is when each came due."""
         out = []
+        back = {h["text"] for h in self.handed_over() if h["state"] == "returned"}  # reported on: it waits on no one
         for i in self.intentions():
             since = i["at"] or (self.next_round(i) if i["every"] else None)
             stands = self.standing(i) if since else None
-            if not i["ended"] and since and since <= self.now and not (stands and stands["state"] == "finished"):
+            if (not i["ended"] and since and since <= self.now and not (stands and stands["state"] == "finished")
+                    and i["text"] not in back):
                 out.append(dict(i, since=since, stands=stands))
         return sorted(out, key=lambda i: i["since"])
+
+    def handed_over(self):
+        """Open reminders that are for another program: each with `name`, `state` and the `episode` that reports on it.
+
+        `name` is what a report must say it is about (vault_intentions.handover). `state` is
+        scheduled (its time has not come), handed (it has, and no report is here) or
+        returned: an encoded input carries its name (`handed:` on the episode, which `brain
+        new` takes from the note), and that episode is the evidence it is closed on. The
+        brain does nothing about one but say it and read what comes back.
+        """
+        reports = {p.fields["handed"]: p for p in self.of_type("episode") if p.fields.get("handed") and not p.generated}
+        out = []
+        for i in self.intentions():
+            if not i["ended"] and i["hand"]:
+                name = handover(words(i["text"]), i["hand"], i["hand_until"], i["when"])
+                report = reports.get(name)
+                state = "returned" if report else "handed" if i["at"] <= self.now else "scheduled"
+                out.append(dict(i, name=name, state=state, since=i["at"], episode=report.rel if report else None,
+                                reported=(parse_date(report.fields.get("created", "")) or report.updated) if report else None))
+        return out
 
     def carried_out(self):
         """Open reminders the brain carries out itself, each with `stands`: where it is, from the log."""

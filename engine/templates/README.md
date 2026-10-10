@@ -43,6 +43,7 @@ table in step with that registry. Lists may be inline, `[a, b]`, or one
 | `url`, `author`, `published` | any | text | yes | Where the content came from; episodes sharing a `url` (or `input`) are one source for the concept bar |
 | `consolidated` | episode, decision | YYYY-MM-DD | no | Set by sleep once replayed |
 | `origin` | episode | generated | no | Written by `/explore`, not encoded from input; never evidence |
+| `handed` | episode | text | no | The name of a reminder that was handed to another program, on the episode of the note that reports on it (`brain handover`). `brain new` takes it from the note; that episode is the evidence the reminder is closed on |
 | `kind` | entity | person, org, product, tool | yes | What sort of thing it is |
 | `review` | decision | YYYY-MM-DD | no | When to check the outcome; required once decided |
 | `outcome` | decision | as-expected, better, worse, mixed | no | How it turned out against `## Expected`; required once reviewed |

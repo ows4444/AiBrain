@@ -38,11 +38,24 @@ step that may follow another. A part of a plan that is done is `passed`, and
 the plan `finished` with its last; so one that was interrupted is taken up at
 the part it had reached.
 
+A reminder may also be one for another program to carry out, since nothing
+outside the brain is touched from here. Its line ends with that program's name,
+in backticks, and may say in words how it is known to be done:
+
+    - fix the login redirect when 2026-11-01 for `acline` until the page loads after sign-in
+
+The brain does nothing about such a one but list it, with a name of seven
+characters made from everything about it (`brain handover`, and the MCP tool a
+runtime reads). What came of it comes back as an input like any other: a note
+that begins `handed: <that name>`, whose episode is the evidence it is closed
+on. Only a day or a time starts one; a repeat cannot be handed over yet.
+
 Nothing here reads a file: the page's text is handed in. It knows the actions
 by vault_policy, which has no dependencies either.
 """
 import datetime
 import difflib
+import hashlib
 import re
 
 from vault_policy import ACTIONS, CHANGES, READS
@@ -53,6 +66,9 @@ LINE = re.compile(r"^[-*]\s+(.+?)\s+when\s+(.+?)\s*$")
 PART = r"`([^`]*)`(?:\s+until\s+`([^`]*)`)?"
 DO = re.compile(rf"\s+do\s+({PART}(?:\s*,\s*{PART})*)\s*$")
 BARE = re.compile(r"\s+do\s+([a-z]+)(?:\s+until\s+[a-z]+)?\s*$")  # the same without them: said, not guessed at
+# ... for `acline`, and then: until <how it is known to be done, in words>. A program outside the brain carries it out.
+FOR = re.compile(r"\s+for\s+`([^`]*)`(?:\s+until\s+(.+?))?\s*$")
+PROGRAM = re.compile(r"^[a-z][a-z0-9-]*$")
 # How an intention with an action is carried out: each step is one `act` line of the log.
 VERBS = ("started", "passed", "finished", "failed", "waiting")
 STEP = re.compile(r"^(started|passed|finished|failed|waiting)\s+(.+)$")
@@ -111,13 +127,14 @@ def read_when(text):
 
 
 def read_intentions(body):
-    """[{text, when, at, due, every, time, timed, event, do, until, ended, closed, outcome, problem}] for the
-    lines of the page.
+    """[{text, when, at, due, every, time, timed, event, do, until, steps, hand, hand_until, ended, closed, outcome,
+    problem}] for the lines of the page.
 
     `at` is the moment a dated one is due and `due` its day; `every` and `time` are a
     repeat's round; `event` is what any other waits on. `do` is the action of one the brain
     carries out itself and `until` what must hold after it, both None for a reminder that
-    only reminds; `when` is the line's `when` without them. `ended` is `done` or `dropped`,
+    only reminds; `steps` is its whole plan. `hand` is the program one is handed to, and
+    `hand_until` how it is known to be done, in words. `when` is the line's `when` without them. `ended` is `done` or `dropped`,
     `closed` the day the closing mark gives (None when it gives none) and `outcome` what it
     says happened.
     """
@@ -131,18 +148,45 @@ def read_intentions(body):
                 closed = datetime.date.fromisoformat(closed) if closed else None
             except ValueError:
                 closed = None
-            when, steps, wrong = read_do(m.group(2))
+            when, hand, shown, unfit = read_for(m.group(2))
+            when, steps, wrong = read_do(when)
             said = read_when(when)
-            if steps and said["event"] and not said["problem"]:
-                steps, wrong = [], (f"'{when}' is an event, and an event cannot start `{steps[0]['do']}`: only a day, a "
-                                    "time or a repeat can, since nothing but a reader can tell that an event has come")
-            steps = [] if said["problem"] else steps
+            if steps and hand:
+                steps, hand, wrong = [], None, (f"'{m.group(2)}': a reminder is carried out by the brain (`do`) or handed "
+                                                "to another program (`for`), not both")
+            elif (steps or hand) and said["event"] and not said["problem"]:
+                what = f"start `{steps[0]['do']}`" if steps else f"be when it is handed to `{hand}`"
+                wrong = (f"'{when}' is an event, and an event cannot {what}: only a day, a time or a repeat can, since "
+                         "nothing but a reader can tell that an event has come")
+                steps, hand = [], None
+            elif hand and said["every"]:
+                hand, wrong = None, f"'{when}' is a repeat, and a repeat cannot be handed over yet: give it a day"
+            keep = not said["problem"]
             out.append(dict(said, text=m.group(1), when=when, due=said["at"].date() if said["at"] else None,
                             ended=end.group(1).lower() if end else None, closed=closed,
-                            outcome=(end.group(3) or "").strip() if end else "", steps=steps,
-                            do=", ".join(s["do"] for s in steps) or None, until=steps[0]["until"] if len(steps) == 1 else None,
-                            problem=wrong or said["problem"]))
+                            outcome=(end.group(3) or "").strip() if end else "", steps=steps if keep else [],
+                            do=(", ".join(s["do"] for s in steps) or None) if keep else None,
+                            until=steps[0]["until"] if keep and len(steps) == 1 else None,
+                            hand=hand if keep else None, hand_until=shown if keep and hand else None,
+                            problem=wrong or unfit or said["problem"]))
     return out
+
+
+def read_for(when):
+    """(the `when` without it, the program it is for, how it is known to be done, what is wrong) from what follows `when`."""
+    m = FOR.search(when)
+    if not m:
+        return when, None, None, None
+    rest, program = when[:m.start()].strip(), m.group(1).strip()
+    if not PROGRAM.match(program):
+        return rest, None, None, (f"`{program}` is no name of a program to hand it to: lower-case letters, digits and "
+                                  "hyphens, as in `acline`")
+    return rest, program, (m.group(2) or "").strip() or None, None
+
+
+def handover(said, program, shown, when):
+    """The name of one thing handed over: seven characters that are others once anything about it changes."""
+    return hashlib.sha256("\n".join((said, program, shown or "", when)).encode("utf-8")).hexdigest()[:7]
 
 
 def plan_said(steps):

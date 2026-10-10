@@ -50,6 +50,15 @@ and show the owner the lines to add there (`- index (why)`), or the name to
 say yes to for this once (`brain tend --check` gives it). Never write that
 page; a wall refuses it.
 
+**Add one for another program.** Work outside the brain (code to change, a
+message to send) is not the brain's to do. Its line ends with the program it
+is for, in backticks, and may say in words how it is known to be done:
+`- fix the login redirect when 2026-11-01 for `acline` until the page loads
+after sign-in`. Only a day or a time, never a repeat or an event. The brain
+lists it with a name (`brain handover`, which a runtime reads through `brain
+mcp`); the program's report returns as a note in `inbox/` that begins
+`handed: <that name>`, and the episode `/ingest` makes of it closes it.
+
 **List.** `brain introspect --remind`: what is due and since when, what waits
 on an event, what repeats and its next round, how the closed ones ended, and
 for each one the brain carries out itself where it stands (scheduled, ready,

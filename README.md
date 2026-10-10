@@ -114,8 +114,10 @@ brain character       # who the brain is to you: what CHARACTER.md says it holds
 brain tend --check    # everything that needs you, in one read-only digest
 brain act             # the brain's own actions, and which may run with nobody there; `brain act NAME` runs one
 brain work            # one round: carry out the reminders that name an action, are due and are allowed; then say what waits
+brain drill           # the acting loop on made-up cases: what it did rightly, without leave, twice; run after a change to it
 brain schedule        # have this machine run that every few minutes, with no session open
-brain mcp             # a read-only MCP server for other programs: search, recall, since, gaps, waiting, character
+brain handover        # what is handed to another program and not reported on yet, each with its name
+brain mcp             # a read-only MCP server for other programs: search, recall, since, gaps, waiting, character, handed, feel
 brain log recall "a question" --pages a-page   # one checked line in the log; skills run it
 brain index           # rewrite the index's listing from the pages and their summaries
 brain graph --format html   # the pages and their links as one page for a browser; no network, no server

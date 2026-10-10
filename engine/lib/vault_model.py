@@ -115,6 +115,7 @@ FIELDS = {
     "published":     dict(),
     "consolidated":  dict(on=("episode", "decision"), date=True, private=True),
     "origin":        dict(on=("episode",), values=(GENERATED,), private=True),
+    "handed":        dict(on=("episode",), private=True),
     "kind":          dict(on=("entity",), values=("person", "org", "product", "tool")),
     "review":        dict(on=("decision",), date=True, private=True),
     "outcome":       dict(on=("decision",), values=OUTCOMES, private=True),

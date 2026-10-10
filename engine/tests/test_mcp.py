@@ -1,4 +1,4 @@
-"""The read-only MCP server: another program lists the brain's five tools and calls them. Run: brain test"""
+"""The read-only MCP server: another program lists the brain's tools and calls them. Run: brain test"""
 import io
 import json
 import os
@@ -48,7 +48,7 @@ class AnotherClient(TempBrain):
     def modern(request_id, method, **params):
         return {"id": request_id, "method": method, "params": dict(params, _meta=MODERN)}
 
-    def test_it_lists_the_six_tools_and_calls_each(self):
+    def test_it_lists_its_tools_and_calls_each(self):
         discover, listing, *called = self.talk(
             self.modern("d", "server/discover"), self.modern(1, "tools/list"),
             self.modern(2, "tools/call", name="search", arguments={"query": "spacing", "limit": 3}),
@@ -65,7 +65,7 @@ class AnotherClient(TempBrain):
         self.assertIn("Read-only", discover["result"]["instructions"])
         tools = listing["result"]["tools"]
         self.assertEqual([t["name"] for t in tools],
-                         ["search", "recall", "since", "gaps", "waiting", "character"])  # the same order every time
+                         ["search", "recall", "since", "gaps", "waiting", "character", "handed", "feel"])  # the same order
         self.assertIn("`character` says how this brain speaks", discover["result"]["instructions"])
         self.assertEqual((listing["result"]["resultType"], listing["result"]["ttlMs"], listing["result"]["cacheScope"]),
                          ("complete", 3600000, "public"))
@@ -161,8 +161,8 @@ class AnotherClient(TempBrain):
         answers = self.talk(*(self.modern(n, "tools/call", name=name, arguments=arguments) for n, (name, arguments) in
                               enumerate((("search", {"query": "spacing"}), ("recall", {"query": "spacing"}),
                                          ("since", {"start": "2026-01"}), ("gaps", {}), ("waiting", {}),
-                                         ("character", {})))))
-        self.assertEqual([a["result"]["isError"] for a in answers], [False] * 6)
+                                         ("character", {}), ("handed", {}), ("feel", {"about": "spacing"})))))
+        self.assertEqual([a["result"]["isError"] for a in answers], [False] * 8)
         self.assertEqual(on_disk(), before)  # no page, no index, and no recall line in the log
 
     def test_where_there_is_no_brain_it_starts_and_offers_nothing(self):
@@ -173,7 +173,7 @@ class AnotherClient(TempBrain):
         self.assertEqual(listing["result"]["tools"], [])
         self.assertEqual((called["result"]["isError"], called["result"]["content"][0]["text"][:14]), (True, "No brain here:"))
         inside = os.path.join(self.root, "cortex")  # started in a folder of the brain: it is found from there
-        self.assertEqual(len(self.talk(self.modern(1, "tools/list"), root=None, cwd=inside)[0]["result"]["tools"]), 6)
+        self.assertEqual(len(self.talk(self.modern(1, "tools/list"), root=None, cwd=inside)[0]["result"]["tools"]), 8)
 
     def test_a_request_that_breaks_the_server_does_not_end_it(self):
         out = io.StringIO()

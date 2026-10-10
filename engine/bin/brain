@@ -24,7 +24,7 @@
     brain import obsidian VAULT           notes kept in another tool into senses/, one input a note; never overwrites
     brain inbox                           what waits in inbox/, sorted: ready, duplicate, credential, forgotten, not text
     brain new TYPE [--from senses/FILE]   a page from its template, frontmatter filled in from the input
-    brain mcp                             a read-only MCP server on stdin and stdout, for other programs: search, recall, since, gaps, waiting, character
+    brain mcp                             a read-only MCP server on stdin and stdout, for other programs: search, recall, since, gaps, waiting, character, handed, feel
     brain chats EXPORT OUT [...]          a Claude or ChatGPT export, one file per conversation
     brain session [TRANSCRIPT]            what the owner typed in this conversation, for /ingest session
     brain forget SOURCE [--yes]           what rests on one input; with the owner's yes, remove it and its episodes
@@ -34,15 +34,17 @@
     brain tend --check [--notify]         everything that needs the owner, in one read-only digest; --notify shows it on the screen
     brain act [NAME] [--dry-run]          run one action of the brain's own if hippocampus/policy.md allows it now; alone, list them
     brain work [--notify] [--dry-run]     one round: carry out the reminders that are due and allowed, a step each, then say what waits
+    brain handover                        what is handed to another program and not reported on yet, each with its name; read-only
     brain schedule [--set | --remove]     have this machine run that every few minutes with no session open (a launchd job)
     brain eval [--from-log] [--set N=V]   the answer test set, or with --from-log every question in the log replayed; --set tries a threshold
     brain synth OUT [--pages N]           a synthetic brain of any size, for testing the engine
     brain bench [--pages N] [--json]      how long each instrument takes on a synthetic brain: run before and after a change
+    brain drill [--json]                  the acting loop on made-up cases: what it did rightly, without leave, twice; run after a change to it
     brain test [-v] [-k PATTERN]          the engine's own test suite
 
 The brain is the nearest folder at or above the working directory that holds
 both cortex/ and hippocampus/ (or $BRAIN_ROOT). A command works from that folder.
-`eval`, `synth`, `bench` and `chats` need no brain: they run on the engine's fixture or on the paths given.
+`eval`, `synth`, `bench`, `drill` and `chats` need no brain: they run on the engine's fixture or on the paths given.
 `mcp` starts without one too, and then offers no tools.
 Every command takes --json: what it found or did as data, in place of the text.
 Another program calls a command the same way, without a process: see lib/commands.py.

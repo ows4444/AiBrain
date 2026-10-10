@@ -28,7 +28,7 @@ from vaultlib import parse_frontmatter, schema_problems, tag_vocabulary  # noqa:
 TEMPLATES = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "templates")
 FOLDERS = {"episode": "episodes", "concept": "concepts", "entity": "entities", "insight": "insights",
            "decision": "decisions"}
-COPIED = ("url", "author", "published")
+COPIED = ("url", "author", "published", "handed")  # `handed`: the name of what a runtime reports on (brain handover)
 
 
 def slug(text):

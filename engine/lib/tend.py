@@ -64,7 +64,8 @@ def digest(vault):
         "contradictions": [{"episode": a.rel, "page": b.rel} for a, b in vault.contradiction_queue()],
         "rehearse": [p.rel for p in vault.due_for_rehearsal()],
         "reminders": [dict({"text": i["text"], "when": i["when"]},
-                           **({"do": i["do"], "state": i["stands"]["state"]} if i["stands"] else {}))
+                           **({"do": i["do"], "state": i["stands"]["state"]} if i["stands"] else {}),
+                           **({"for": i["hand"]} if i["hand"] else {}))
                       for i in vault.due_intentions()],
         "review": [{"page": p.rel, "review": p.fields["review"]} for p in vault.decisions_due()],
         "revisit": [d["page"] for d in vault.decision_report() if d["triggered"]],
@@ -178,7 +179,8 @@ def lines_in_turn(d):
          "/sleep records both sides"),
         ("rehearse", "due to rehearse", d["rehearse"], "/rehearse: yours alone"),
         ("reminders", "reminders due", [f"{r['text']} ({r['when']}" + (f"; do {r['do']}: {r['state']}" if "do" in r else "")
-                                        + ")" for r in d["reminders"]], ""),
+                                        + (f"; for {r['for']}, not reported on" if "for" in r else "") + ")"
+                                        for r in d["reminders"]], ""),
         ("proposals", "wait for a yes", [f"{p['text']} (do {p['do']}; yes {p['yes']})" for p in d["proposals"]],
          "yours alone: `- <yes> <today>` under `## Once` in hippocampus/policy.md runs one once"),
         ("review", "to review", [f"{r['page']} ({r['review']})" for r in d["review"]], "/review-decision"),
