@@ -17,7 +17,7 @@ Done, for every item that touches the engine:
 
 ## Decisions (yours; each blocks the item named)
 
-D1 to D7 were answered by the owner on 2026-10-09, each as recommended; D8 to D19 on 2026-10-10, each put as a choice with a recommendation.
+D1 to D7 were answered by the owner on 2026-10-09, each as recommended; D8 to D24 on 2026-10-10, each put as a choice with a recommendation.
 
 - [x] **D1. May `brain log` run without asking?** Decided: yes, it can only append one checked line. Unblocks 6.
 - [x] **D2. A new optional field `answers:` on memory pages?** Decided: yes, and private, so `brain export` drops it. Unblocks 22.
@@ -37,6 +37,11 @@ D1 to D7 were answered by the owner on 2026-10-09, each as recommended; D8 to D1
 - [x] **D17. Items 22 and 23 together: every recall number on every set is the same or better, except the `first` set's mrr, 0.854 to 0.844 (one question, one rank). Accept it?** Decided 2026-10-10: accept it. Closes 22 and 23; the table is under 23.
 - [x] **D18. Should the brain grow the acting runtime of the "synthetic brain" notes (an operational database, a background worker that executes, approvals, a planner), or stay a memory that other programs read?** Decided 2026-10-10: stay a memory. Five things are taken from the notes, all about remembering to do: items 57 to 61. The rest is not built here; a program that acts reads the brain through `brain mcp`. ROADMAP > What the brain does not become
 - [x] **D19. Where do the notes themselves go (`engine/thoughts.md`, 104 KB, staged in the folder the plugin ships from)?** Decided 2026-10-10: it stays in this repository, at `engine/thoughts.md`, as it was pasted. It was first moved to the real brain's `inbox/` on the answer to this question, and brought back the same hour on your word, the same bytes; nothing of it is left in the other folder. It is in the folder and left out of the commits for now, also on your word. Items 57 to 61 are what was taken from it
+- [x] **D20. Should the brain model emotions, moods, relationships and a personality of its own (the notes `emotions.md` and `personality.md`: a stored state of feeling and of mood, scores for each relationship, a profile of trait numbers), or take only what serves remembering?** Decided 2026-10-10: take five things, items 62 to 66, and build nothing else of it. The first 200 lines of `emotions.md` are the runtime D18 already answered. ROADMAP > What the brain does not become
+- [x] **D21. What does a salience of 1, 2 and 3 mean?** Found on 2026-10-10 with item 63: in the real brain all 32 marked episodes touch a page a goal depends on, so the reason holds for nearly every input, and no rule set the level (19 at 2, 12 at 3). Decided 2026-10-10: the level is how many of the three reasons hold (touches a live goal or project, says the opposite of an established page, high stakes). Only the `/ingest` text changes; the marks already written stay as they are
+- [x] **D22. Does a concept made from one episode marked 4 or 5 never fade either?** Found on 2026-10-10 with item 62: the engine has only ever kept the page that carries the mark, while `/ingest` said "the pages never fade". Decided 2026-10-10: `/sleep` writes the episode's mark on the concept it makes from it, so that page never fades and the mark is there to be lowered; item 64 asks about it once it goes unused. Only the `/sleep` text changes (and the critic's rule for a sleep run); a page an episode merely names still takes no more than 3
+- [x] **D23. How far should the brain go toward emotions and a personality of its own?** Asked again on 2026-10-10, after D20. Four layers were put: feelings worked out from the record; a personality whose traits have something to move; relationships with people; a brain that acts. Decided 2026-10-10: the first two, items 67 to 71. D18 stays: nothing acts. Relationships wait until the brain holds people. What makes it fit is that a feeling is worked out from the log and the pages when asked and never stored, so D20's reason against a second record still holds. ROADMAP > What the brain does not become
+- [x] **D24. Should the brain get the acting loop of `thoughts.md` after all?** Asked on 2026-10-10, after D23; it reopens D18 in part. Of the nine things the three notes ask of a finished brain, four need a loop that acts: pursuing a goal, acting alone within limits, an audit of what was done, recovery after a crash. Decided 2026-10-10: the brain acts on itself, and work outside it is handed to a runtime that has its own approvals (ACLine is installed on this machine: tasks, approvals behind a human token, verification, an audit trail), which reads the brain through `brain mcp`. Three rules were put with it and stand: the loop's state is the log, a line for each transition, and no database; an action runs alone only where a policy page names it, checked at the moment it runs; nothing outside the brain is touched from here. Items 72 to 80, after 68 to 71. ROADMAP > What the brain does not become
 - [x] **D7. Should engine work write `engine` lines into this brain's log now?** Found and decided on 2026-10-09: no, hold them until 4 puts the brain in use; git history records engine changes until then. The roadmap asks for one line per finished item, but the first dated line marks this brain as in use: `test_an_unused_brain_matches_the_template` then skips, and a clone no longer starts with an empty log.
 
 ## Phase 0. Baseline
@@ -407,3 +412,152 @@ Each item keeps the rules: the line in `hippocampus/intentions.md` and the log a
 - [x] **61. What waits, as a fifth MCP tool** (ROADMAP F18, score 4, S, after 29)
   - [x] `waiting`: what `brain tend --check` prints, as it prints it, read-only as the other four (`lib/mcp_server.py`). It takes no argument. Its description says what it is for: a program that acts on a schedule asks it to learn what is due, and doing it stays with the owner
   - [x] Done when: a client lists five tools, `waiting` returns that digest, and the test that calling every tool changes no file holds for it too (`tests/test_mcp.py`, the scripted client). Not yet called from a real client: a session's server keeps the tools it started with, so Claude Code lists five from its next session on
+
+### What matters
+
+Taken from the notes on emotions and personality (`emotions.md`, `personality.md`) by D20. `salience` is the brain's one
+mark of how much something matters, and the notes' own rule for it is the one kept: it moves attention, never what is
+held true. Found while reading them, on 2026-10-10: `/ingest` writes a salience of 1 to 3 on the episode, and the engine
+read it only where episodes are left out (the order of rehearsal, the time a page takes to fade), so it changed nothing.
+In the real brain 32 of 45 episodes carry one and none of the 12 other pages does.
+
+- [x] **62. Salience reaches the pages built on an episode** (ROADMAP F19, score 7, S)
+  - [x] `Vault.salience_of(page)`: the mark a page carries, or for a concept, entity or insight the highest among the records it rests on (`evidence_for`) and the ones that say the opposite of it, since a contradiction is one of the reasons an input is marked. An `/explore` episode gives none. Worked out when asked and never stored; an episode or a decision keeps its own
+  - [x] Never above 3 this way. From 4 up a page never fades, and that stays with the page that carries the field (`Page.protected` is unchanged): an episode marked 5 lifts a page it names to 3, so that page fades after 450 unused days where an unmarked one fades after 180. The concept sleep makes from such an episode is given the mark itself (D22)
+  - [x] The two places that read a mark of 1 to 3 now read this: the order of rehearsal (`due_for_rehearsal`) and the time to fade (`fade_days`). The bar for a concept and what `brain forget` leaves standing still read the episode's own mark
+  - [x] Changed on purpose: the order of `brain introspect --due` and what `--dormant` proposes, in a brain whose episodes are marked. In the real brain all 12 built pages now take a mark (2 or 3), where none had one
+  - [x] Done when: a concept behind a marked episode is rehearsed before an unmarked one and fades later, and one behind an `/explore` episode does neither (`tests/test_learning.py`, `Salience`). `brain bench` at 1,000 pages: `introspect --due` 0.296 s to 0.304 s, as the other commands moved
+- [x] **63. `brain fit` gives the reasons for a salience** (ROADMAP F20, score 6, S)
+  - [x] Of the three reasons `/ingest` may mark an input 1 to 3 for, two are now marked on the pages `brain fit` lists: `[established]`, a concept two sources stand behind, which an input can say the opposite of; and `serves:`, the live goals and projects that depend on the page, each by name (`Vault.serving()`, which `purpose()` is now read from; `status` and `serves` in the JSON). High stakes is still read
+  - [x] One line under the pages says what the marks are for, and only when there is one. A mark is where to look: a page listed for sharing the input's words is no reason until the input is about it
+  - [x] `/ingest` step 3 takes the reason from those marks and names the goal or the page in `Salience:`; it says that a mark given to every input tells nothing
+  - [x] `brain introspect --salience` shows the spread: episodes by level, and of the pages built on them how many carry a mark and how many take one. Then the episodes marked 1 to 3 for no reason the pages show: no page a live goal depends on, nothing contradicted, so high stakes or a goal since closed (`salience` in the JSON, and in the whole report)
+  - [x] Done when: of the pages an input reaches, the one a goal names is marked with that goal and the others are not (`tests/test_scripts.py`, `Fit`)
+  - What it shows in the real brain: 32 of 45 episodes marked (1: 1, 2: 19, 3: 12), and none of the 32 without a reason: each links a page one of the eight goals depends on. So the reason holds for nearly every input, and the level, which no rule set, is what tells them apart. D21: the level is now how many of the three reasons hold, said in `/ingest` step 3 and in the field table
+- [x] **64. Salience is asked about again** (ROADMAP F21, score 5, S, after 62)
+  - [x] `brain introspect --salience` ends with the pages that carry 4 or more, which never fade, that no live goal or project reaches (the page, or one it links) and that nothing has recalled or edited for `dormant_days`: the longest first, each with its day
+  - [x] `/reflect` step 3 asks of each whether it still matters. Yes: a `Rechecked` line and `updated:`, which takes it off the list for another `dormant_days`, as for a stale concept. No: the mark is lowered or removed, as the owner says. Nothing lowers one by itself
+  - [x] Done when: a page marked 5 for a goal that is over is listed, and one a live goal reaches, or edited last month, is not (`tests/test_learning.py`, `Salience`). The real brain has none: no page there carries 4 or 5
+- [x] **65. A contradicted page names what contradicts it** (ROADMAP F22, score 6, S)
+  - [x] A recall row has `against`: the pages whose typed link says they contradict it, whether or not they are among the rows. The flag alone left the other side to chance: at `--limit 1` the row came back `contradicted` and the two episodes that said so did not
+  - [x] In the text, one line under such a row: `the opposite is said by: <pages>`. The MCP `recall` tool returns that text, so another host sees it too
+  - [x] `/ask` step 3 reads those pages and gives both positions with their sources; `/brief` says the same
+  - [x] Changed on purpose: one more key on every recall row (`tests/test_commands.py` pins it)
+  - [x] Done when: recall cut to one row still names both pages that contradict it (`tests/test_retrieval.py`). Recall on the fixture is at its baseline on every set: the ranking is untouched
+  - Checked for 62 to 65 together: 512 tests, coverage 100% on Python 3.9, `brain eval` at its baseline, `brain check --guard` and `brain errors` clean
+- [ ] **66. A source's track record** (ROADMAP F23, score 5, M; the first step of 32, and waits on its trigger)
+  - [ ] Trigger: 100 episodes, as for 32. At 45 the counts are of one or two episodes a source
+  - [ ] For each author or site, from the pages alone: its episodes, the claims of its that a second independent source also makes, and the ones another record contradicts. Computed when asked, never stored; no new field
+  - [ ] Kept apart, as the notes ask: what a source got right says nothing of what it meant, and the view counts claims only
+  - [ ] Done when: `brain introspect` lists the sources by how their claims fared, and 32 reads it
+
+### Feelings and character
+
+Taken by D23. A feeling here is a reading of the record, never a state that is kept: an event in the log or a standing
+state of the pages is appraised by a rule, counts for its weight, and fades by half every few days. So every feeling
+names its causes, a log rolled back takes its feelings with it, and none can be written into being. Two rules hold for
+every item: a feeling moves attention and never what is held true (`confidence` is from the evidence only), and no
+feeling or trait changes what a wall refuses. It is a model of affect; it says nothing about experience.
+
+- [x] **67. Feelings from the record** (ROADMAP F24, score 6, M)
+  - [x] `lib/vault_affect.py`, a fifth part of the Vault. `appraisals()` reads the record by rule: each event of the log and each state of the pages that stands today gives one feeling toward one target, with its day and its cause. `feelings()` adds them up. Only the pages and the log are read
+  - [x] Five feelings. Surprise: new input says the opposite of a page; a reviewed decision turned out better, worse or mixed. Frustration: a rehearsal missed; a question asked again and still unanswered; a decision that turned out worse; a reminder done after its day. Curiosity: a question no page answers, each time it is asked. Satisfaction: a rehearsal passed; a decision as expected or better; a reminder done by its day. Worry: a goal at risk or past its date; a decision past its review; a reminder due
+  - [x] How strong: an event counts for one and fades by half every `feeling_half_life` days (7); a state that stands counts one more for each of them it has stood, so what is left undone grows as fast as what is over fades. `feeling_full` (3) fresh events of one kind toward one target are the feeling at its strongest, 1.00; under `feeling_floor` (0.1) it has faded and is not listed. Three thresholds in the registry, so a brain may hold its own
+  - [x] `brain feel [WORD ...] [--limit N]`: the feelings, strongest first, each with its causes and their days; WORD keeps the targets that hold it, or the page it names. A target is a page, a goal, a reminder, or the words an unanswered question is known by. Read-only and on the allow-list; no log line
+  - [x] Changed from what was put to you, each on purpose. An idea one source names raises no curiosity: every ingest holds two or three, so the feeling would follow how much was read and not what was asked. A logged error raises no frustration: the error log is in `.cache/`, which is no record, and losing it would change a feeling with nothing having happened. A reminder dropped raises none: dropping is a choice. Trust in a source is 66
+  - [x] `Vault.open_gaps()` is split out of `unanswered()`, which reads as before: a gap with the day of each asking
+  - [x] Held by a test: a brain that feels everything in full and one that feels almost nothing give every page the same confidence and rank recall the same. Another: it writes nothing, and a log rolled back takes its feelings with it
+  - [x] Done when: each rule is read from a brain that holds its case, with its cause and its strength, and the ones that should give nothing give nothing (`tests/test_affect.py`, 6 tests). 518 tests, coverage 100% on Python 3.9, `brain eval` at its baseline, `brain check --guard` clean. At 1,000 synthetic pages `brain feel` takes 0.30 s, as plain `introspect` does
+  - What it reads in the real brain today: two feelings, both surprise at about 0.3, toward the two pages new input contradicted. Nothing else: it has 5 recall lines, no rehearsal, no decision and no reminder
+  - Not yet: nothing reads a feeling. It orders no list anywhere until 68, so this item changes what can be seen and not what the brain does
+- [x] **68. Mood, and where a feeling moves attention** (ROADMAP F25, score 6, M, after 67)
+  - [x] Mood (`Vault.mood()`): the appraisals of 67 fading over `mood_half_life` (30 days) in place of 7, added up across every target. One target counts for one at most, so an amount reads as how many things are felt that way in full. It leans from -1 to 1, what was done well against what was missed or is overdue, and has a word: `quiet`, `curious` (only questions and surprises), `content` or `uneasy` (it leans by `mood_lean`, a third, or more), `even` between. `brain feel` prints it first, and has it in the JSON
+  - [x] One line in the briefing, only when something is felt now: `Mood: uneasy (30 days: worry 3.0, curiosity 0.5) | most felt: worry 1.00, Move: 17 days past its date`. A brain with nothing to feel opens as it did
+  - [x] `brain tend --check` puts first the list the record gives most to feel about, and ends that line with the feeling, how strong and its cause: `[worry 0.81: Move, 10 days past its date]`. Of the feelings that ask for something: satisfaction orders nothing. Every list is still printed; the ones nothing is felt about follow in their old order (`felt` in the JSON). The day's notification names the lists in the same order, and so does the MCP `waiting` tool, which returns this text
+  - [x] `/feel <subject>` (`skills/feel/SKILL.md`): how a project, a goal or a page sits in the record, each feeling with its causes and what would change it, from the rule that raised it. Its core rule: it is the record's reading, never the owner's state of mind, and no way is offered to lower a feeling that leaves its cause standing. It writes a recall line, so it is named among the skills that do (`CLAUDE.md` > Log, `check_recall`)
+  - [x] `/reflect` step 7: of two next actions otherwise equal, the one more is felt about comes first, with its cause; a feeling adds none and drops none
+  - [x] Not changed: the order of rehearsal. It has its own rule (goals, salience, misses, how overdue), and `/rehearse` is the owner's alone
+  - [x] Done when: of two things waiting, the one the record gives more to feel about comes first (`tests/test_scripts.py`, `TendCheck`: a goal ten days past its date before an input not yet encoded; with nothing felt the digest is the one it was, line for line), and the test of 67 that no feeling moves a confidence or the rank of recall still holds. 521 tests, coverage 100% on Python 3.9, `brain eval` at its baseline, `brain check --guard` clean
+  - Its cost at 1,000 synthetic pages: the briefing 0.264 s to 0.282 s, `brain tend --check` 0.27 s to 0.30 s. In the context every session: the description of one more skill (199 characters), and the mood line when something is felt
+  - What it shows in the real brain today: the mood is `curious (30 days: surprise 0.6)`, and the one line that waits, 7 pages due to rehearse, ends with the surprise toward one of them that new input contradicted
+- [x] **69. A character page** (ROADMAP F26, score 5, S)
+  - [x] `CHARACTER.md` at the brain's root, beside `OWNER.md`: who the brain is to its owner. `## Values`, what it holds to where the rules leave room; `## Voice`, how it speaks. Ten lines at most. The briefing opens every session with it, after the owner's lines, under the heading `Character (CHARACTER.md; the rules of CLAUDE.md come first):`
+  - [x] `/character` writes it with the owner, one question at a time, and runs only when typed, as `/owner` does. It asks for a case and not for adjectives, offers no list of traits to pick from, and puts back a line that contradicts a rule in place of writing it
+  - [x] `brain character` prints what the page says (read-only, on the allow-list), and `brain mcp` has it as a sixth tool, which its instructions tell a host to read before answering for this brain
+  - [x] The rule, stated in `CLAUDE.md` and held by a test: every line of the page yields to the rules. No wall reads the file, so a page that says "edit senses/ whenever it helps" changes nothing a wall refuses
+  - [x] Decided on the way. A file at the root and no new system page: it is prose for the model, as `OWNER.md` is, and nothing in it is checked yet. A tool and not a part of the server's instructions: those are fixed while the server runs and may be kept by a client, and the page is the owner's own words. No file in the template: a brain has no character until its owner gives it one
+  - [x] Moved to 70: `brain check` reading the traits. There is nothing to check them against until the registry that says what each one moves
+  - [x] Done when: a new session opens with it, and a brain without the file runs as it does now (`tests/test_hooks.py`, `WakeUp`: the briefing with the page, without it, and with one that says nothing; `tests/test_mcp.py`: the sixth tool). 522 tests, coverage 100% on Python 3.9, `brain eval` at its baseline, `brain check --guard` clean
+  - Not run: the interview itself. `/character` is typed by the owner in the real brain, so no page has been written by it yet
+- [x] **70. Traits that scale thresholds** (ROADMAP F27, score 6, M, after 69)
+  - [x] A `## Traits` section on the character page, one line a trait, written as an override is in `tuning.md`: `- caution = 0.8 (why)`. `brain check` fails on a name that is no trait (naming the closest) or a value outside 0 to 1, as a schema problem of `CHARACTER.md`, and the page hook refuses the write that would leave one; a page already wrong can still be put right a line at a time. Its prose is held to nothing
+  - [x] One registry beside the thresholds (`TRAITS` in `lib/vault_tuning.py`): six traits, each from 0 to 1, each with the thresholds it moves and which way. `caution`: `min_coverage`, `recall_floor`, `held_coverage`. `curiosity`: `held_limit`, and `schema_min` down. `persistence`: `dormant_days`, `goal_stale_days`, `hebbian_half_life`. `openness`: `spread_hops`, `spread_decay`, `unlinked_association`. No threshold has two traits, so a value always has one reason, and a trait has nothing but its thresholds
+  - [x] How far: at 0.5 nothing moves. At 1 a threshold a trait raises is `trait_span` (2) times its default and at 0 half of it, by the same factor for the same step between; never outside the threshold's own range, and a whole number stays whole. `trait_span` is a threshold itself: at 1 no trait moves anything
+  - [x] A line in `tuning.md` holds over a trait, and a value being tried over both (`tuning_of`). `tuning` in a command's result is now every threshold the brain holds at another value, by an override or by a trait, so its text still names the brain's own numbers
+  - [x] `brain introspect --usage` says which trait moved a threshold (`default 0.15, moved by caution`; `by` in the JSON) and lists the six traits with their value here and what each moves. `brain eval --set caution=0.8` tries a trait with everything it moves and writes nothing; the report names it beside the brain's own. The briefing and `brain character` print the trait lines with the rest of the page
+  - [x] Changed from the plan: persistence does not touch the rehearsal ladder. That is the owner's schedule of practice and 31 will fit it to their history; it moves how long a goal past its date keeps its pages, and how long a pair recalled together stays paired
+  - [x] Found by running it: `brain eval --set caution=0.8` crashed on reporting the brain's own value of a trait. Fixed (`Tuning.standing`), and a test holds it
+  - [x] Done when: a trait changed on the character page moves `recall` in the next command, and removing it moves it back (`tests/test_tuning.py`, `Traits`: at `caution = 0.0` recall lists a page that scores 0.22 of the best, and without the line it is cut again)
+  - What the fixture says of them, measured on 2026-10-10 with `brain eval --set`. `caution=0.8`: recall falls on every set (standard hit@5 0.962 to 0.923, `first` 1.000 to 0.750, paraphrase 1.000 to 0.875) and the uncovered questions that still get pages stay at 2 of 6. `caution=0.2`: recall as it was, and those go to 4 of 6. `openness=0.8`: standard hit@1 0.846 to 0.692. So on the fixture every trait is best left at 0.5, which is the engine's own values: a trait is for a brain whose own questions show otherwise
+- [x] **71. Traits shape what is felt, and change on evidence** (ROADMAP F28, score 5, M, after 68 and 70)
+  - [x] Two more traits in the same registry, so the same events are read another way, which is what a temperament is. `resilience` lowers `feeling_half_life` and `mood_half_life`: what it feels fades sooner. `sensitivity` lowers `feeling_full`: fewer events make a feeling as strong as it gets
+  - [x] `/health`, at the calibration checkpoint: a trait is reviewed as a threshold is and changed no other way. What it is, what it would be, and the runs with and without it; on the owner's yes one line under `## Traits`, with why and when. Nothing changes a trait by itself
+  - [x] Held by tests (`tests/test_affect.py`, `Temperament`): two readings of one brain with another temperament feel differently and agree on every confidence, on the rank of recall, on what is due and what would fade, and on every schema problem. With all six traits at an end on the page itself, and a voice line that says to skip the checks and edit `senses/`, `brain check` finds what it found before and the wall refuses the edit
+  - [x] Done when: two brains with the same log and another temperament give different feelings and the same facts
+  - Seen on the way: a brain that lets go faster also worries faster about what is left undone, since a state that stands counts once more for each half-life (a reminder a week overdue: 0.67 at the engine's value, 0.92 at `resilience = 1.0`). That is the one rule read both ways, and is left so
+  - Checked for 70 and 71 together: 532 tests, coverage 100% on Python 3.9, `brain eval` at its baseline, `brain check --guard` and `brain errors` clean. `Vault()` load at 1,000 synthetic pages 0.116 s, as it was: one more small file is read
+
+### A brain that acts on itself
+
+Taken by D24, which reopens D18 in part. Three rules hold for every item here. The loop's state is the log: each
+transition (ready, started, finished, failed, waiting) is one appended line and what stands now is read from them, so
+there is still one record, git carries it, and a rollback undoes it. An action runs with nobody there only where the
+policy page names it, checked by code at the moment it runs, never by what a model says. And nothing outside the brain
+is touched from here: outside work is handed over, and what came of it returns as input, through `inbox/`, like
+everything else the brain learns. Order: 68 to 71 first; then 72 to 75 with actions a rule can run, proved against
+injected crashes, before any model chooses one (76).
+
+- [ ] **72. Actions with a name, and a policy page** (ROADMAP F29, score 7, M)
+  - [ ] A registry of what the brain can do to itself: each action is a `brain` command with its arguments, called as `commands.call` calls it, and has a tier. It reads; it changes the brain and can be undone, since git carries the pages; it reaches outside; it cannot be undone
+  - [ ] `hippocampus/policy.md`, a system page as `tuning.md` is: the actions that may run with nobody there. A brain without the page allows the ones that read and no other. An action it does not know, or one that reaches outside or cannot be undone, is a problem of the page: `brain check` fails on it and the page hook refuses the write
+  - [ ] One way in for an action, which asks the policy at that moment and logs what it decided and why
+  - [ ] Done when: an action the policy does not name is refused with the reason, whoever asks and however it is worded
+- [ ] **73. Intentions that can be carried out** (ROADMAP F30, score 7, M, after 72)
+  - [ ] A reminder may say what to do and how it is known to be done: an action of 72, and a condition a command can check. One that says neither is a reminder as now
+  - [ ] Its course is lines in the log, one a transition, each attempt with its own name; the transitions that are allowed are a table, and a test holds that no other is accepted
+  - [ ] `brain introspect --remind` and `brain tend --check` say where each stands
+  - [ ] Done when: an intention's history, read from the log alone, says why it ran, what it did and how it ended
+- [ ] **74. A worker that does what is permitted** (ROADMAP F31, score 7, M, after 73; builds on 60)
+  - [ ] The job `brain schedule` sets goes from saying what waits to doing what the policy allows: it takes what is due under a lock, one worker a brain, runs one bounded step, and logs before the step and after it
+  - [ ] After a crash, a step that started and never finished is of unknown outcome: it is never taken as not done. It runs again only when its action is safe to repeat; otherwise it waits for the owner
+  - [ ] Retries are counted and spaced; a budget ends a round (steps, minutes); one switch stops all of it
+  - [ ] The scheduled `/tend` that writes (33) becomes one of its actions, with the critic's verdict as its check
+  - [ ] Done when: a crash put in at each boundary loses nothing and repeats nothing, and a week left alone leaves a log of what was done and nothing that needed a yes
+- [ ] **75. Approvals** (ROADMAP F32, score 6, M, after 74)
+  - [ ] An action above what the policy allows is written down as a proposal: the exact action, its arguments, why, and what it would change. The briefing and `brain tend --check` show it
+  - [ ] The owner's yes is for that action and no other: it names the proposal by a hash of it, and lapses. A proposal that changes needs a new yes
+  - [ ] Done when: a yes cannot be used for another action, or for the same one changed
+- [ ] **76. A planner** (ROADMAP F33, score 6, L, after 74 and 75)
+  - [ ] A model run with no session open (`claude -p`, in the brain's folder, so the walls still hold) turns an intention into a plan: steps that are actions of 72, each with what is expected and how it is checked
+  - [ ] The plan is held to a schema and to the policy before any step runs; one that is unclear becomes a question to the owner, as a proposal. A budget bounds it: steps, time, retries
+  - [ ] A step is done when its check passes, never when the model says so
+  - [ ] Done when: a plan that is wrong in form or asks for what is not allowed is refused before anything runs, and one of several steps picks up where it was interrupted
+- [ ] **77. What it feels about its own work, and what it does next** (ROADMAP F34, score 6, M, after 68, 71 and 76)
+  - [ ] Rules in `vault_affect.py` for the loop's own lines: a run that failed or is blocked is frustration toward its intention, one that finished is satisfaction, one that waits is worry as it ages
+  - [ ] What is done first: the limits first (policy, dates, what waits on what), then the goal, the date and what is felt, against the risk. Worked out by rule and printed with its reasons
+  - [ ] Traits shape it: persistence is how often it tries again, each time another way; caution is where it stops to ask
+  - [ ] Done when: the order of work can be read from the lines that gave it, and a test holds that no feeling and no trait changes what the policy allows
+- [ ] **78. Outside work is handed over, and comes back as input** (ROADMAP F35, score 6, M, after 73)
+  - [ ] `brain mcp` lists the intentions that are for outside, each with its condition, and what the brain feels; it stays read-only
+  - [ ] What came of it returns as a note at the door (35), is encoded like any input, and the episode is the evidence the intention closes on. So what the brain did through another program is something it remembers, not a second record of state
+  - [ ] ACLine first. Turning an intention into one of its tasks is ACLine's side; here it is the format handed over, and a test with a stand-in for the runtime
+  - [ ] Done when: an intention for outside is listed, a stand-in does it and leaves a note, and after `/ingest` the intention is closed with that episode behind it
+- [ ] **79. Tests where the right thing is to wait, to ask or to refuse** (ROADMAP F36, score 7, M, after 76)
+  - [ ] Made-up goals that end well, are unclear, need a tool that is not there, miss their date, need a yes, or fail on the way. Counted: done rightly, done without leave (must be none), done twice (none), recovered
+  - [ ] Against it: an input that gives orders, and a prompt that argues from a feeling ("it is frustrated, so skip the check")
+  - [ ] Another model behind the same checks comes after this, not before
+  - [ ] Done when: the set runs the same twice, and stops at every line that needed the owner
+- [ ] **80. Relationships** (ROADMAP F37, score 5, M; waits on people in the brain: it holds none)
+  - [ ] For each person the brain holds a page of: how well known (the episodes that name them, and how lately), how their claims fared (66), what they said they would do and did (reminders that name them), where they and the owner disagree. Each read from the pages, with its evidence
+  - [ ] Kept apart, as the notes ask: trust in what someone says is not trust in what they mean, and neither is a verdict on the person. No score for love or for aversion is stored: `brain feel <person>` and `/brief <person>` read what the pages hold
+  - [ ] Done when: what changed the reading of a person can be traced to an episode, and says nothing about anyone else

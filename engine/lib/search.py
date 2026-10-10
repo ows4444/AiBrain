@@ -12,7 +12,9 @@ recall  search hits seed an activation that spreads along links (typed links
         links from the words can come back. Each page shows how it was
         reached, its confidence (sources behind it) and flags: disputed,
         contradicted, stale (ask the owner whether it still holds), generated,
-        dormant. --project biases toward the pages a project links to.
+        dormant. A contradicted page names the pages that say the opposite
+        (`against`), whether or not they are among the rows: read them too.
+        --project biases toward the pages a project links to.
         --also gives another wording of the same question (repeat it): the
         field's own terms for it, or plainer words. Each wording is searched
         and a page's scores are added up before the spread, the question as
@@ -57,7 +59,7 @@ def recall_rows(vault, query, project=None, limit=10, hops=None, dormant=False, 
     return [{"page": r["page"].rel, "title": r["page"].title, "type": r["page"].type, "score": r["score"],
              "summary": r["page"].summary,
              "hop": r["hop"], "from": r["from"].rel, "confidence": r["confidence"], "flags": r["flags"],
-             "section": r["section"]}
+             "against": [p.rel for p in r["against"]], "section": r["section"]}
             for r in rows]
 
 
@@ -126,6 +128,8 @@ def render(result, args):
             how = "hit" if r["hop"] == 0 else f"{r['hop']} hop{'s' * (r['hop'] > 1)} from {r['from']}"
             conf = f"{r['confidence']['level']}: {r['confidence']['why']}" if r["confidence"] else "dormant"
             line += f"\n           {how}; {conf}" + (f"; {', '.join(r['flags'])}" if r["flags"] else "")
+            if r["against"]:
+                line += f"\n           the opposite is said by: {', '.join(r['against'])}"
             if r["section"]:
                 line += "\n           read first: ## {heading} (lines {line}-{end})".format(**r["section"])
         out.append(line)

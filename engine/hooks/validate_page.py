@@ -11,6 +11,10 @@ Checks the contract in CLAUDE.md > Page contracts (vaultlib.schema_problems).
     PostToolUse         the file as written: catches anything the first
                         pass could not see (an Edit whose old text was not found).
 
+CHARACTER.md, at the brain's root, is no memory page and has no frontmatter:
+only the traits under its `## Traits` are checked (a name that is no trait, a
+value outside 0 to 1), as an override in tuning.md is. Its prose is the owner's.
+
 A page with text and no `summary:` is blocked on the first pass only, and
 only when the write is what leaves it so: a new page, or a scaffold whose
 sections are being filled. Pages from before the field existed stay editable;
@@ -28,7 +32,7 @@ import os
 import sys
 
 import shared
-from shared import MEMORY_DIRS, PROJECTS_DIR, ROOT, fold
+from shared import CHARACTER_FILE, MEMORY_DIRS, PROJECTS_DIR, ROOT, fold
 
 
 def library():
@@ -42,6 +46,8 @@ def target(path):
     """(full path, rel, project?) when the path is a page this hook checks, else None."""
     full = shared.full_path(path)
     parts = os.path.relpath(full, ROOT).split(os.sep)
+    if len(parts) == 1 and fold(parts[0]) == fold(CHARACTER_FILE):
+        return full, CHARACTER_FILE, False  # no memory page: only the traits it names are checked
     # Cortex/ is cortex/ where the file system ignores case; the page is checked either way.
     parts[0] = fold(parts[0])
     rel = os.sep.join(parts)
@@ -52,6 +58,8 @@ def target(path):
 
 
 def problems_in(lib, text, rel, is_project):
+    if rel == CHARACTER_FILE:
+        return lib.character_problems(text)
     parts = rel.split(os.sep)
     return lib.schema_problems(text, lib.tag_vocabulary(ROOT), page_type="project" if is_project else None,
                                stem=parts[1] if is_project else os.path.splitext(parts[-1])[0], rel=rel)
@@ -79,7 +87,7 @@ def before(data):
     was = set(problems_in(lib, was_text, rel, is_project)) if was_text else set()
     after = shared.text_after(tool, args, was_text)
     problems = [p for p in problems_in(lib, after, rel, is_project) if p not in was]
-    if not is_project and not (was_text and lib.summary_problems(was_text)):
+    if not is_project and rel != CHARACTER_FILE and not (was_text and lib.summary_problems(was_text)):
         problems += lib.summary_problems(after)
     return verdict(rel, problems, f"Blocked before writing {rel}")
 

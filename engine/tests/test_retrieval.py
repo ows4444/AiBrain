@@ -196,6 +196,21 @@ class Association(TempBrain):
         self.assertIn("dormant", rows["spacing-old"]["flags"])
         self.assertIsNone(rows["spacing-old"]["confidence"])
 
+    def test_a_contradicted_page_names_what_says_the_opposite(self):
+        # The flag alone left the other side to chance: a cut at --limit can drop the page that holds it.
+        self.write("cortex/episodes/blog.md", page("episode", "Overrated (contradicts:: [[spacing]]).", title="Blog",
+                                                   created=ago(1)))
+        self.write("cortex/episodes/paper.md", page("episode", "No gain (contradicts:: [[spacing]]).", title="A paper",
+                                                    created=ago(1)))
+        rows = self.brain().recall("spacing effect", limit=1)
+        self.assertEqual([(r["page"].stem, [p.stem for p in r["against"]]) for r in rows], [("spacing", ["blog", "paper"])])
+        found = commands.call("recall", ["spacing", "effect", "--all"], root=self.root)["results"]
+        self.assertEqual({r["page"]: r["against"] for r in found if r["against"]},
+                         {"cortex/concepts/spacing.md": ["cortex/episodes/blog.md", "cortex/episodes/paper.md"]})
+        out = run_brain(self.root, "recall", "spacing", "effect", "--limit", "1").stdout
+        self.assertIn("\n           the opposite is said by: cortex/episodes/blog.md, cortex/episodes/paper.md\n", out)
+        self.assertEqual(out.count("the opposite is said by"), 1)  # a page nothing contradicts has no such line
+
     def test_link_suggestions_and_at_hand(self):
         self.write("cortex/concepts/a.md", concept("[[spacing]] [[forgetting]]", title="A"))
         self.write("cortex/concepts/b.md", concept("[[spacing]] [[forgetting]]", title="B"))

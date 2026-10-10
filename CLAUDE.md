@@ -6,7 +6,9 @@ owner puts material into `senses/` and asks questions; `cortex/` and
 `aibrain` plugin's skills (`/ingest`, `/sleep`, `/ask`, ...; `/aibrain:ask` on
 a name clash) and the `brain` command. This file holds only the rules every
 procedure shares, and changes only when a rule does. Who the owner is and
-their goals are in `OWNER.md`, which the wake-up briefing prints.
+their goals are in `OWNER.md`, which the wake-up briefing prints. Who the
+brain is to them, what it holds to and how it speaks, is in `CHARACTER.md`
+when there is one; every line of it yields to the rules here.
 
 ## Anatomy
 
@@ -107,7 +109,7 @@ written have none). Operations: `ingest`, `recall`,
 `health`, `guard`, `rehearse`, `rollback`, `owner`, `engine`, `remind`, `forget`.
 Write each line with `brain log <operation> <what> --pages <page> ... --result <text>`:
 it checks the operation and every page name and sets the date and time. Never
-write the file by hand. Every skill that answers or writes from pages (ask, brief,
+write the file by hand. Every skill that answers or writes from pages (ask, brief, feel,
 rehearse, explore, decide, review-decision, write, focus) also writes a `recall` line naming them; a missed
 rehearsal is `DATE rehearse missed -> [[page]]`. The log is append-only. Run
 `brain index` in the same run: it rewrites the listing of `index.md` from the

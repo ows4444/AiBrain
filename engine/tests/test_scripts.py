@@ -8,7 +8,7 @@ import sys
 import tempfile
 import unittest
 
-from support import ENGINE, TODAY, TempBrain, VALID, ago, page, run_brain, vaultlib
+from support import ENGINE, TODAY, TempBrain, VALID, ago, page, project, run_brain, vaultlib
 
 import capture  # noqa: E402  (support puts engine/lib on the path)
 import commands  # noqa: E402
@@ -442,8 +442,9 @@ class Fit(TempBrain):
         self.assertEqual((found["input"], [p["page"] for p in found["pages"]][0]),
                          ("senses/new.md", "cortex/concepts/spacing.md"))
         self.assertEqual(found["pages"][0], {"page": "cortex/concepts/spacing.md", "title": "Spacing effect",
-                                             "type": "concept", "score": found["pages"][0]["score"],
-                                             "summary": "Spread study lasts."})
+                                             "type": "concept", "status": "established",
+                                             "score": found["pages"][0]["score"],
+                                             "summary": "Spread study lasts.", "serves": []})
         self.assertNotIn("cortex/concepts/layout.md", [p["page"] for p in found["pages"]])
         # The words it is searched by are the ones a page also holds, as the input first spells them, the
         # most telling first: `spacing` three times with `spaced`, `sessions` twice. A word no page holds
@@ -459,8 +460,11 @@ class Fit(TempBrain):
         out = run_brain(self.root, "fit", "senses/new.md").stdout.splitlines()
         self.assertEqual(out[0], "fit: senses/new.md  (searched by: spacing, sessions, fluency, illusion)")
         self.assertEqual(out[1], "  pages it bears on (link the ones it is about; say so where it says the opposite):")
-        self.assertRegex(out[2], r"^  +\d+\.\d{3}  cortex/concepts/spacing\.md$")
+        self.assertRegex(out[2], r"^  +\d+\.\d{3}  cortex/concepts/spacing\.md  \[established\]$")
         self.assertEqual(out[3], "           Spread study lasts.")
+        self.assertRegex(out[4], r"^  +\d+\.\d{3}  cortex/episodes/e1\.md$")  # a record has no mark
+        self.assertEqual(out[6], "  a reason for salience 1 to 3, once the input is about the page: it says the opposite "
+                                 "of one marked [established], or the page serves a live goal or project")
         self.assertEqual(out[-2:], ["  held ideas it names (no page yet: use the same name under ## Candidates):",
                                     "    Illusion of fluency - ease is taken for learning  [cortex/episodes/e1.md; 1 source]"])
         only_held = run_brain(self.root, "fit", "senses/new.md", "--limit", "0").stdout.splitlines()
@@ -470,6 +474,43 @@ class Fit(TempBrain):
                          "fit: senses/odd.md shares no word with any page, and names no held idea: all of it is new here\n")
         r = run_brain(self.root, "fit", "senses/none.md")
         self.assertEqual((r.returncode, r.stderr), (1, "brain fit: no such file: senses/none.md\n"))
+
+    def test_it_gives_the_reasons_for_a_salience_a_rule_can_see(self):
+        # /ingest marks an input 1 to 3 when it touches a live goal or says the opposite of an established
+        # page. Which pages those are was read off by eye; here each is marked, and the goal is named.
+        dates = dict(created="2026-01-01", updated="2026-01-01")
+        self.write("cortex/concepts/sessions.md", page("concept", "How long the sessions run.\n", title="Sessions",
+                                                       status="emerging", summary="Session length.", **dates))
+        self.write("cortex/entities/fluency.md", page("entity", "The fluency illusion, as a term.\n", title="Fluency",
+                                                      kind="tool", **dates))
+        self.write("prefrontal/exam/CLAUDE.md", project("Uses [[spacing]] and [[fluency]]."))
+        self.write("prefrontal/shelved/CLAUDE.md", project("Used [[sessions]].", status="done"))
+        self.write("OWNER.md", "# Owner\n\n## Goals\n\n- Pass the exam by 2027-01-01 -> [[exam]], [[spacing]]\n"
+                               "- Sleep well -> [[spacing]]\n- Last year's by 2025-01-01 -> [[sessions]] (done)\n")
+        pages = {p["page"]: p for p in self.fit("senses/new.md")["pages"]}
+        self.assertEqual({rel: (p["status"], p["serves"]) for rel, p in pages.items()}, {
+            "cortex/concepts/spacing.md": ("established", ["Pass the exam", "Sleep well"]),  # each goal once
+            "cortex/concepts/sessions.md": ("emerging", []),  # a goal that is over and a project that is done
+            "cortex/entities/fluency.md": (None, ["Pass the exam"]),  # through the project the goal names
+            "cortex/episodes/e1.md": (None, [])})
+        out = run_brain(self.root, "fit", "senses/new.md").stdout
+        self.assertIn("cortex/concepts/spacing.md  [established]\n           Spread study lasts.\n"
+                      "           serves: Pass the exam; Sleep well\n", out)
+        self.assertRegex(out, r"cortex/concepts/sessions\.md\n           Session length\.\n  +\d")  # no mark on it
+        self.assertIn("\n           serves: Pass the exam\n", out)
+        self.assertIn("\n           A talk.\n  a reason for salience 1 to 3, once", out)  # said once, after the pages
+        # A live project that no live goal names is said by its own name.
+        self.write("OWNER.md", "# Owner\n\n## Goals\n\n- Sleep well -> [[sessions]]\n")
+        v = vaultlib.Vault(self.root)
+        self.assertEqual({p.stem: names for p, names in v.serving().items()},
+                         {"sessions": ["Sleep well"], "spacing": ["project exam"], "fluency": ["project exam"]})
+        self.assertEqual(v.purpose(), set(v.serving()))
+        # Nothing to mark: no line about salience either.
+        self.write("cortex/concepts/spacing.md", page("concept", "Study sessions spread over days.\n", title="Spacing",
+                                                      status="emerging", summary="Spread study lasts.", **dates))
+        os.remove(os.path.join(self.root, "OWNER.md"))
+        os.remove(os.path.join(self.root, "prefrontal/exam/CLAUDE.md"))
+        self.assertNotIn("salience", run_brain(self.root, "fit", "senses/new.md").stdout)
 
     def waits(self):
         """Three reminders on an event, one on a date and one closed; decisions in force, tagged, open and unfinished."""
@@ -576,20 +617,56 @@ class TendCheck(TempBrain):
             "review": [{"page": "cortex/decisions/raise.md", "review": ago(5)}], "revisit": ["cortex/decisions/hire.md"],
             "late": [{"goal": "Move", "state": "past-due", "due": ago(10)}],
             "at_risk": [{"goal": "Hand in", "days_left": 12}],
-            "gaps": [{"words": ["picasso"], "asked": 2, "last": ago(3)}], "needs": 11})
+            "gaps": [{"words": ["picasso"], "asked": 2, "last": ago(3)}], "needs": 11,
+            # What the record gives to feel about each list: the strongest toward anything on it, with its cause.
+            "felt": {"reminders": {"feeling": "worry", "intensity": 0.43, "target": "Renew the domain",
+                                   "why": f"due since {ago(2)}"},
+                     "review": {"feeling": "worry", "intensity": 0.57, "target": "cortex/decisions/raise.md",
+                                "why": f"its review was due {ago(5)}"},
+                     "late": {"feeling": "worry", "intensity": 0.81, "target": "Move", "why": "10 days past its date"},
+                     "at_risk": {"feeling": "worry", "intensity": 0.33, "target": "Hand in",
+                                 "why": "due in 12 days, and nothing done toward it lately"},
+                     "gaps": {"feeling": "curiosity", "intensity": 0.38, "target": "picasso",
+                              "why": "asked and not answered: when was picasso born"}}})
+        # The most felt first. Every list is still there: the five nothing is felt about follow, in their own order.
         self.assertEqual(tend.render(found, None).splitlines(), [
-            f"tend check, {TODAY.isoformat()}: waiting on you",
+            f"tend check, {TODAY.isoformat()}: waiting on you, what is felt most first",
+            f"  goals past date   1: Move ({ago(10)})  (close, re-date or drop)  [worry 0.81: Move, 10 days past its date]",
+            f"  to review         1: cortex/decisions/raise.md ({ago(5)})  (/review-decision)"
+            f"  [worry 0.57: raise, its review was due {ago(5)}]",
+            f"  reminders due     1: Renew the domain ({ago(2)})  [worry 0.43: Renew the domain, due since {ago(2)}]",
+            "  not answered      1: picasso (2x)  (brain introspect --gaps)"
+            "  [curiosity 0.38: picasso, asked and not answered: when was picasso born]",
+            "  goals at risk     1: Hand in (12 days left)  (nothing done toward them lately)"
+            "  [worry 0.33: Hand in, due in 12 days, and nothing done toward it lately]",
             "  not encoded       1: senses/new.md  (/ingest, or /tend)",
             "  in the inbox      1: note.md  (/ingest moves them into senses/)",
             "  awaiting sleep    1: cortex/episodes/blog.md  (/sleep, or /tend)",
             "  contradictions    1: cortex/episodes/blog.md against cortex/concepts/spacing.md  (/sleep records both sides)",
             "  due to rehearse   1: cortex/concepts/spacing.md  (/rehearse: yours alone)",
-            f"  reminders due     1: Renew the domain ({ago(2)})",
-            f"  to review         1: cortex/decisions/raise.md ({ago(5)})  (/review-decision)",
-            "  to revisit        1: cortex/decisions/hire.md  (the event the decision named has come)",
-            f"  goals past date   1: Move ({ago(10)})  (close, re-date or drop)",
-            "  goals at risk     1: Hand in (12 days left)  (nothing done toward them lately)",
-            "  not answered      1: picasso (2x)  (brain introspect --gaps)"])
+            "  to revisit        1: cortex/decisions/hire.md  (the event the decision named has come)"])
+        # A feeling moves the order and nothing else: with none felt, the digest is the one it always was.
+        calm = tend.digest(vaultlib.Vault(self.root, today=TODAY, tuning={"feeling_floor": 1.0, "feeling_full": 100.0}))
+        self.assertEqual((calm["felt"], {k: v for k, v in calm.items() if k != "felt"}),
+                         ({}, {k: v for k, v in found.items() if k != "felt"}))
+        self.assertEqual([line.split("  ")[1].strip() for line in tend.render(calm, None).splitlines()[1:]],
+                         ["not encoded", "in the inbox", "awaiting sleep", "contradictions", "due to rehearse",
+                          "reminders due", "to review", "to revisit", "goals past date", "goals at risk", "not answered"])
+        self.assertEqual(tend.render(calm, None).splitlines()[0], f"tend check, {TODAY.isoformat()}: waiting on you")
+
+    def test_what_was_done_well_moves_nothing_up(self):
+        # Satisfaction asks for nothing to be done, so it orders no list: only the feelings that call do.
+        self.write("senses/new.md", "not encoded yet\n")
+        self.write("cortex/concepts/spacing.md", page("concept", "Study spread over days.\n", title="Spacing effect",
+                                                      status="established", created=ago(1), updated=ago(1)))
+        self.log(f"{ago(0)} recall rehearse -> [[spacing]]")
+        v = self.brain()
+        self.assertEqual([(r["feeling"], r["target"]) for r in v.feelings()],
+                         [("satisfaction", "cortex/concepts/spacing.md")])
+        found = tend.digest(v)
+        self.assertEqual((found["felt"], found["needs"]), ({}, 1))
+        self.assertEqual(tend.render(found, None).splitlines(), [
+            f"tend check, {TODAY.isoformat()}: waiting on you", "  not encoded       1: senses/new.md  (/ingest, or /tend)"])
 
     def test_it_writes_nothing_and_has_no_form_that_does(self):
         self.fill()

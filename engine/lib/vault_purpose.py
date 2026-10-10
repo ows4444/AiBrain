@@ -93,20 +93,33 @@ class PurposeMixin:
         """Goals that still direct attention: open or only just past their date."""
         return [g for g in self.goals if self.goal_state(g) in ("open", "past-due")]
 
-    def purpose(self):
-        """Knowledge pages the owner's live goals and live projects depend on.
+    def serving(self):
+        """{page: [what it serves]}: each knowledge page a live goal or a live project depends on, and their names.
 
         A goal's links count, and so do the links of any project a goal names or
-        that is still active. Attention goes here first; nothing here fades.
-        Done, dropped and stale goals let go of their pages.
+        that is still active. A goal is named by its words; a live project that no
+        live goal names is `project <name>`. Done, dropped and stale goals let go
+        of their pages.
         """
-        roots = set(self.active_projects())
+        reach, named = [], set()
         for goal in self.live_goals():
-            roots |= {self.resolve(t) for t in goal["links"]} - {None}
-        pages = set()
-        for r in roots:
-            pages |= {r} | (self.links_from(r) if r.type == "project" else set())
-        return {p for p in pages if not p.is_system}
+            for root in sorted({self.resolve(t) for t in goal["links"]} - {None}, key=lambda p: p.rel):
+                reach.append((goal["text"], root))
+                named.add(root)
+        reach += [(f"project {p.stem}", p) for p in self.active_projects() if p not in named]
+        served = {}
+        for name, root in reach:
+            for page in {root} | (self.links_from(root) if root.type == "project" else set()):
+                if not page.is_system and name not in served.setdefault(page, []):
+                    served[page].append(name)
+        return served
+
+    def purpose(self):
+        """Knowledge pages the owner's live goals and live projects depend on (serving() says which).
+
+        Attention goes here first; nothing here fades.
+        """
+        return set(self.serving())
 
     def activity(self, pages, days=None):
         """How much happened to these pages in the last `days` (the brain's activity_days): edits (by `updated:`)

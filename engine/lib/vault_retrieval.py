@@ -310,7 +310,7 @@ class RetrievalMixin:
         return out
 
     def recall(self, query, project=None, limit=10, hops=None, dormant=False, floor=0.0, abstain=False, also=()):
-        """Ranked pages for a question: [{page, score, seed, hop, from, confidence, flags, section}].
+        """Ranked pages for a question: [{page, score, seed, hop, from, confidence, flags, against, section}].
 
         `floor` cuts rows scoring under that share of the best row; `abstain`
         returns nothing when the best search hit holds under min_coverage of
@@ -335,6 +335,8 @@ class RetrievalMixin:
         its own recalls (lift_from_use).
         flags: disputed, contradicted, stale (a concept or insight not updated in
         stale_days: ask whether it still holds), generated (/explore), dormant.
+        against: the pages whose typed link says they contradict this one, whether or
+        not they are among the rows: an answer from a contradicted page reads both.
         section: the part of the page to read first, when one stands out (best_sections).
         """
         t = self.tuning
@@ -372,7 +374,8 @@ class RetrievalMixin:
                 ("dormant", p.rel.startswith(DORMANT_DIR + os.sep) or p.rel.startswith(DORMANT_DIR + "/")),
             ) if on]
             rows.append({"page": p, "score": round(score, 4), "seed": hop == 0, "hop": hop,
-                         "from": seed, "flags": flags})
+                         "from": seed, "flags": flags,
+                         "against": sorted(self.contradicted_by(p), key=lambda q: q.rel)})
         rows.sort(key=lambda r: (-r["score"], r["page"].rel))
         rows = [r for r in rows if r["score"] >= floor * rows[0]["score"]][:limit]
         sections = self.best_sections(" ".join(wordings), [r["page"] for r in rows], dormant)
@@ -463,6 +466,22 @@ class RetrievalMixin:
         the index's Gaps that its questions name: where to start reading. Read from the
         log; nothing is written.
         """
+        in_index = {name: set(tokens(name)) for name in set().union(*(p.gap_targets for p in self.of_type("index")))}
+        out = []
+        for shared, asked in self.open_gaps():
+            questions = list(dict.fromkeys(question for _, question in asked))
+            every = set(tokens(" ".join(questions)))
+            out.append({"words": sorted(shared), "asked": len(asked), "first": asked[0][0], "last": asked[-1][0],
+                        "questions": questions,
+                        "held": list(dict.fromkeys(h["name"] for q in questions for h in self.held_ideas(q))),
+                        "index_gaps": sorted(name for name, named in in_index.items()
+                                             if 2 * len(every & named) >= len(named) > 0)})
+        out.sort(key=lambda g: g["words"])
+        out.sort(key=lambda g: g["last"], reverse=True)  # of two asked as often, the one asked last
+        return sorted(out, key=lambda g: -g["asked"])
+
+    def open_gaps(self):
+        """[(the words all its questions share, [(date, question)] in the order asked)] for each gap still open."""
         docs, _ = self._searchable()
         held_by = Counter(t for tf in docs.values() for t in tf)
         few = self.tuning.rare_word_share * len(docs)
@@ -481,19 +500,7 @@ class RetrievalMixin:
                 nearest[1].append((e.date, e.what))
             elif known_by:
                 gaps.append([known_by, [(e.date, e.what)]])
-        in_index = {name: set(tokens(name)) for name in set().union(*(p.gap_targets for p in self.of_type("index")))}
-        out = []
-        for shared, asked in gaps:
-            questions = list(dict.fromkeys(question for _, question in asked))
-            every = set(tokens(" ".join(questions)))
-            out.append({"words": sorted(shared), "asked": len(asked), "first": asked[0][0], "last": asked[-1][0],
-                        "questions": questions,
-                        "held": list(dict.fromkeys(h["name"] for q in questions for h in self.held_ideas(q))),
-                        "index_gaps": sorted(name for name, named in in_index.items()
-                                             if 2 * len(every & named) >= len(named) > 0)})
-        out.sort(key=lambda g: g["words"])
-        out.sort(key=lambda g: g["last"], reverse=True)  # of two asked as often, the one asked last
-        return sorted(out, key=lambda g: -g["asked"])
+        return [(shared, asked) for shared, asked in gaps]
 
     # -- next links ---------------------------------------------------------
 

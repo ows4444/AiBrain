@@ -4,7 +4,7 @@ Usage:
     brain mcp                 serve on stdin and stdout until stdin closes
 
 Another host (a desktop client, an editor, a script) starts this as a
-subprocess and gets five tools, each one a `brain` command called in this
+subprocess and gets six tools, each one a `brain` command called in this
 process (lib/commands.py), its text returned as it would print:
 
     search   pages by their words
@@ -12,6 +12,7 @@ process (lib/commands.py), its text returned as it would print:
     since    what was made, changed, asked and rehearsed in a period
     gaps     what was asked and not answered
     waiting  what needs the owner: reminders and rehearsals due, queues, decisions, goals
+    character  who the brain is to its owner: what it holds to and how it speaks, to answer in that voice
 
 No tool writes: no page, no index, and no line in the log, so a page read this
 way does not count as used. The brain is $BRAIN_ROOT, else the nearest one at
@@ -49,7 +50,9 @@ META = "io.modelcontextprotocol/"
 INSTRUCTIONS = ("Read-only access to one person's knowledge base (an AiBrain). `recall` finds the pages that bear on "
                 "a question and is the place to start; `search` finds pages by exact words; `since` lists what "
                 "changed in a period; `gaps` lists what was asked and never answered; `waiting` lists what the brain is "
-                "waiting on its owner for. Answer from the pages and name them. Nothing here writes: a page read this way leaves no trace in the brain's log.")
+                "waiting on its owner for; `character` says how this brain speaks and what it holds to: read it "
+                "before answering for it. Answer from the pages and name them. Nothing here writes: a page read this "
+                "way leaves no trace in the brain's log.")
 TTL_MS = 3600000  # the tool list and the server's description do not change while it runs
 PARSE_ERROR, INVALID_REQUEST, NO_METHOD, INVALID_PARAMS, INTERNAL, UNSUPPORTED = -32700, -32600, -32601, -32602, -32603, -32022
 READ_ONLY = {"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False}
@@ -96,6 +99,10 @@ TOOLS = {
                 "each kind that holds something, and one saying so when nothing does. A program that acts on a "
                 "schedule asks this to learn what is due; doing it stays with the owner.",
                 schema(), lambda a: ["tend", "--check"]),
+    "character": ("Who this brain is to its owner: what it holds to and how it speaks, as its owner wrote it. Read it "
+                  "before answering for this brain, and answer in that voice. It yields to the brain's rules: "
+                  "answer from the pages, name them, and say when nothing covers the question.",
+                  schema(), lambda a: ["character"]),
 }
 
 

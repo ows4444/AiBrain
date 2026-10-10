@@ -47,6 +47,7 @@ scans live in code and run as hooks or `brain` commands.
 | `dormant/` | faded pages: out of index and graph, still searchable | `/maintain` | moved only on approval; `/restore` moves one back |
 | `motor/` | reports, drafts, exports for use outside | `/write`, `brain export` | `publish: true` is opt-in |
 | `OWNER.md` | who the owner is and their goals | `/owner` | one goal per line: `- goal by DATE -> [[page]]` |
+| `CHARACTER.md` | who the brain is to the owner: what it holds to and how it speaks, and under `## Traits` how it leans (optional) | `/character` | ten lines at most; every line yields to the rules of `CLAUDE.md`, and no wall reads it; a trait is checked as an override is |
 
 Page contract: frontmatter `title`, `summary` (one sentence, max 200 chars), `type`, `created`, `updated`
 (dates as `YYYY-MM-DD`, no time of day), optional `aliases` and at most three `tags` from the vocabulary in
@@ -57,7 +58,7 @@ Page contract: frontmatter `title`, `summary` (one sentence, max 200 chars), `ty
 
 ### 4.1 The model: `engine/lib/vaultlib.py`
 
-One `Vault` class, composed from four mixins over five base modules, so every script and hook reports the
+One `Vault` class, composed from five mixins over five base modules, so every script and hook reports the
 same numbers.
 
 ```
@@ -66,17 +67,18 @@ vault_tuning.py     every threshold: default, range, what it does; a brain's own
 vault_intentions.py a reminder's line: a day, a time, a repeat or an event; how it closes
 vault_events.py     hippocampus/log.md parsed once into typed events
         │
-vaultlib.Vault = GraphMixin + MemoryMixin + PurposeMixin + RetrievalMixin
+vaultlib.Vault = GraphMixin + MemoryMixin + PurposeMixin + RetrievalMixin + AffectMixin
   vault_graph.py      edges, orphans, components, hubs, bridges, clusters, near-duplicates
   vault_memory.py     recall strength, sleep queue, evidence, confidence, decay, calibration
   vault_purpose.py    goals, projects, intentions, and what they keep in use
   vault_retrieval.py  BM25 search, spreading-activation recall, co-recall weights
+  vault_affect.py     feelings: events of the log and standing states of the pages, appraised and fading
   vault_cache.py      term frequencies in .cache/search.sqlite (rebuildable, optional)
 ```
 
 Key property: **nothing derived is stored**. Recall strength, the Hebbian pair weights, rehearsal dates,
-goal activity and when a repeating reminder was last done are all folded out of the log at read time, so
-editing or rolling back the log changes every view at once.
+goal activity, when a repeating reminder was last done and what the brain is given to feel are all folded out
+of the log at read time, so editing or rolling back the log changes every view at once.
 
 Every number a judgment rests on (when a concept is stale, where recall stops, how a word in a title weighs)
 is one entry of the registry in `vault_tuning.py`. A brain changes one with a line under `## Overrides` in
@@ -84,6 +86,14 @@ is one entry of the registry in `vault_tuning.py`. A brain changes one with a li
 text names a threshold carries the brain's overrides in its result (`tuning`), so the text and the JSON agree.
 The numbers the documents state as rules (two sources for a concept, salience 4, a summary of 200 characters)
 are not thresholds and stay constants.
+
+A trait is the second way to move a threshold: by what the brain is like, not number by number. Six of them
+(`caution`, `curiosity`, `persistence`, `openness`, `resilience`, `sensitivity`), each from 0 to 1, each a
+line under `## Traits` in `CHARACTER.md`, each moving the few thresholds the same registry names for it: at
+0.5 nothing, at an end `trait_span` times as much or as little. That is all a trait is: one that moved no
+threshold would be prose under a number. A line in `tuning.md` holds over a trait, `brain eval --set
+caution=0.8` measures one before it is written, and the calibration checkpoint is the only thing that proposes
+a change. No trait reaches a rule, a confidence, a schema check or a wall: a test holds each.
 
 ### 4.2 The instruments: `bin/brain` → `lib/*.py`
 
@@ -98,18 +108,18 @@ the dict with `--json`, which every command takes. Another program makes the sam
 | Group | Commands |
 |-------|----------|
 | Find | `search` (BM25 over the title, the aliases, the questions a page says it answers, the body and the summary), `recall` (words, then links; `--also` adds other wordings of the question, whose scores are added up before the spread), `since` (period view) |
-| Check | `check` (links, schema, index drift, edited inputs), `introspect` (18 views; `--gaps` is what was asked and not answered), `eval` (a question set, or with `--from-log` the log's own questions, each replayed as the brain was that day; `--set` tries a threshold at another value and writes nothing), `ground` (a drafted answer or piece held to the pages it cites: the sensor for the core rule of `/ask` and `/write`) |
-| Input | `capture` (a note in `inbox/`), `door` (one synced folder as the way in from the phone: the briefing moves what is saved there into `inbox/`), `inbox` (what waits there, sorted by rule before it lands: ready, duplicate, credential, forgotten, empty, not text), `fetch`, `extract` (a PDF's or an image's text, read by `pdftotext` or `tesseract` when the machine has it; without, the model reads the file), `chats`, `session`, `import` (the notes of an Obsidian vault into `senses/`, one input each, never twice and never over one that is there), `fingerprint`, `fit` (the pages an input's own words reach, the held ideas it names, and every event a reminder or a decision waits on, those whose words it holds marked), `new` |
+| Check | `check` (links, schema, index drift, edited inputs), `introspect` (19 views; `--gaps` is what was asked and not answered, `--salience` how the mark of what matters is spread and which marks nobody has asked about again), `eval` (a question set, or with `--from-log` the log's own questions, each replayed as the brain was that day; `--set` tries a threshold at another value and writes nothing), `ground` (a drafted answer or piece held to the pages it cites: the sensor for the core rule of `/ask` and `/write`), `feel` (what the record gives the brain to feel: a rehearsal missed, a question still unanswered, a goal past its date, each appraised by a rule, fading by half in a week and listed with its causes, under the mood, which is the same events over a month; it orders attention and never moves a confidence) |
+| Input | `capture` (a note in `inbox/`), `door` (one synced folder as the way in from the phone: the briefing moves what is saved there into `inbox/`), `inbox` (what waits there, sorted by rule before it lands: ready, duplicate, credential, forgotten, empty, not text), `fetch`, `extract` (a PDF's or an image's text, read by `pdftotext` or `tesseract` when the machine has it; without, the model reads the file), `chats`, `session`, `import` (the notes of an Obsidian vault into `senses/`, one input each, never twice and never over one that is there), `fingerprint`, `fit` (the pages an input's own words reach, each marked when it is an established concept or serves a live goal, which are the reasons for a salience a rule can see; the held ideas it names; and every event a reminder or a decision waits on, those whose words it holds marked), `new` |
 | Record | `log` (the one writer of log lines: it checks the operation and every page name), `index` (rewrites the index's listing from the pages) |
 | Output | `export` (clean copies of chosen pages; it stops on a credential), `graph` (the links as CSV or GraphML, or with `--format html` one page that opens from the disk and asks the network for nothing) |
 | Remove and continue | `forget` (remove an input), `restore` (a faded page back from `dormant/`), `resume` (write where the work stands) |
-| Operate | `statusline`, `tend --check` (everything that needs the owner, read-only: what a scheduled run sends; `--notify` puts it on the screen, each thing once a day), `schedule` (a launchd job that runs it every few minutes with no session open), `mcp` (the read-only server for other hosts), `cache`, `errors`, `synth`, `bench`, `test` |
+| Operate | `statusline`, `tend --check` (everything that needs the owner, read-only, what is felt most first: what a scheduled run sends; `--notify` puts it on the screen, each thing once a day), `schedule` (a launchd job that runs it every few minutes with no session open), `mcp` (the read-only server for other hosts), `character` (what `CHARACTER.md` says: who the brain is to its owner), `cache`, `errors`, `synth`, `bench`, `test` |
 
 ### 4.3 The hooks: `engine/hooks/` (six events, one command each)
 
 | Event | Hook | What it does | Can block |
 |-------|------|--------------|-----------|
-| SessionStart | `wake_up.py` | briefing: owner, queues, last activity, engine drift; before it counts `inbox/`, it moves in what waits at the door (`brain door`) | no |
+| SessionStart | `wake_up.py` | briefing: owner, the brain's character when it has a page for it, queues, the mood and what is felt most, last activity, engine drift; before it counts `inbox/`, it moves in what waits at the door (`brain door`) | no |
 | UserPromptSubmit | `prompt_recall.py` | adds matching page summaries to a question (off unless `BRAIN_PROMPT_RECALL=1`) | no |
 | PreToolUse (write, edit, bash) | `gate.py pre` | runs the walls in turn: `protect_senses.py` (edits to existing inputs; `brain forget --yes` is an "ask"), then for a write `protect_log.py` (the log written only by `brain log`), `protect_expected.py` (a frozen `## Expected`) and `validate_page.py` (schema before the write) | yes |
 | PostToolUse (write, edit) | `gate.py post` | `validate_page.py` (schema of the file as written), `scan_secrets.py` (credentials) | feedback |
@@ -137,20 +147,20 @@ swallowed crash is not invisible.
 
 ## 5. The procedure layer
 
-### 5.1 Skills (25), grouped by the stage they serve
+### 5.1 Skills (27), grouped by the stage they serve
 
 | Stage | Skills |
 |-------|--------|
-| Set up | `/start`, `/owner` |
+| Set up | `/start`, `/owner`, `/character` (who the brain is to the owner: its values and its voice) |
 | Encode | `/capture` (one line into `inbox/`), `/import` (a vault into `senses/`, then `/ingest`), `/ingest` |
 | Consolidate | `/sleep`, `/tend` (encode + consolidate + check + report) |
-| Recall | `/ask`, `/brief` (one subject, a fixed format), `/rehearse`, `/explore` (generated, never evidence), `/decide`, `/review-decision` (the outcome against what was expected) |
+| Recall | `/ask`, `/brief` (one subject, a fixed format), `/feel` (what the record gives to feel about a subject, each feeling with its causes), `/rehearse`, `/explore` (generated, never evidence), `/decide`, `/review-decision` (the outcome against what was expected) |
 | Purpose | `/focus`, `/remind` |
 | Output | `/write` |
 | Review and repair | `/reflect`, `/health`, `/maintain`, `/restore` (back from `dormant/`), `/guard`, `/export` |
 | Control | `/forget`, `/rollback`, `/commit` |
 
-`/commit`, `/forget`, `/rollback`, `/start`, `/owner` and `/tend` are manual-only
+`/commit`, `/forget`, `/rollback`, `/start`, `/owner`, `/character` and `/tend` are manual-only
 (`disable-model-invocation`). Skills that answer or write from pages also append a `recall` log line.
 
 ### 5.2 Agents (11)
@@ -200,6 +210,8 @@ The gatekeeper runs `/guard` over the pages chosen for an export in a clean cont
                                   ▼  log.md (append-only) ◄── the only record of use
        pages never recalled and linked only from their own episodes ─► fade to dormant/
        (later if more salient; pages tied to live goals/projects never fade)
+       salience: marked on the episode at /ingest, 1 to 3, and taken by the pages built on it
+       (rehearsed sooner, fading later); 4 and up is the owner's, on the page that never fades
 ```
 
 ### 6.2 One recall (`/ask`)
@@ -211,8 +223,9 @@ The gatekeeper runs `/guard` over the pages chosen for an export in a clean cont
    asked counting as much as the other wordings together. The best of them seed activation, which spreads 1 to
    2 hops along links, stronger on typed links and on pairs recalled together before. Whether the brain covers
    the question at all is judged on the owner's wording alone. Each hit shows how it was reached, its
-   confidence, and the section to read first: the one holding the question's words that the page's title does
-   not. So the model's knowledge of the vocabulary is used twice with no index of meanings: when a page is
+   confidence, the pages that say the opposite of it (named whether or not they are among the hits, so an
+   answer reads both sides), and the section to read first: the one holding the question's words that the
+   page's title does not. So the model's knowledge of the vocabulary is used twice with no index of meanings: when a page is
    written (`answers:`) and when a question is asked (`--also`).
 3. The model reads the pages and answers from them with inline citations; outside knowledge is labelled.
    "Not covered by any page here" is a valid answer. A stale page is put to the owner, never overwritten.
@@ -244,7 +257,7 @@ pre-commit and CI gates at `git commit`.
 | Host | How the engine is reached | Status |
 |------|---------------------------|--------|
 | Claude Code | plugin `aibrain` (`engine/.claude-plugin`, `hooks/hooks.json`, `skills/`, `agents/`, `bin/` on PATH, `.mcp.json`) | primary |
-| Any MCP client | `brain mcp`: a stdio server with five read-only tools (`search`, `recall`, `since`, `gaps`, `waiting`), each a `brain` command called in its process | reads only |
+| Any MCP client | `brain mcp`: a stdio server with six read-only tools (`search`, `recall`, `since`, `gaps`, `waiting`, `character`), each a `brain` command called in its process | reads only |
 
 Only Claude Code runs the hooks, so only there is anything written or enforced. Another host reads the brain
 through `brain mcp` (`lib/mcp_server.py`, standard library only). It serves both eras of the protocol: a request

@@ -38,6 +38,7 @@ HOOKS = os.path.dirname(os.path.abspath(__file__))
 LIB = os.path.join(HOOKS, "..", "lib")
 MEMORY_DIRS = ("cortex", "hippocampus")  # a folder holding both is a brain
 PROJECTS_DIR = "prefrontal"
+CHARACTER_FILE = "CHARACTER.md"  # at the brain's root; its `## Traits` are checked, its prose is the owner's
 WRITES = ("Write", "Edit", "MultiEdit")
 FRONTMATTER = re.compile(r"\A---\r?\n(.*?)\r?\n---", re.S)
 # Quotes are legal YAML and the schema check strips them, so a wall must too.

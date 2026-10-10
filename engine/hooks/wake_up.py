@@ -3,11 +3,13 @@
 sleep, what is due for rehearsal or an outcome review, what happened last.
 With an OWNER.md, the briefing opens with it: who the owner is, how to talk to
 them and their goals reach every session this way, so the root CLAUDE.md does
-not change when a goal does.
+not change when a goal does. With a CHARACTER.md, who the brain is to them
+follows: what it holds to and how it speaks, under the rules.
 Four lines, every session, and more only when something needs the owner: notes
 waiting in inbox/ (what waited at the door, `brain door`, is brought in first);
 new input contradicting a page; a reminder whose date has come; a goal past
-its date, gone stale, with no pages behind it or slipping;
+its date, gone stale, with no pages behind it or slipping; the mood of the
+last weeks and the one thing the record gives most to feel about (`brain feel`);
 the pages the last questions and live projects point to; the calibration
 checkpoint reached; a note left before a compaction (save_resume.py) that is
 newer than the log; or, in a brain that hosts its own engine, hooks running
@@ -24,8 +26,9 @@ import sys
 
 ROOT = os.environ.get("CLAUDE_PROJECT_DIR", os.getcwd())
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
+import character  # noqa: E402
 import door  # noqa: E402
-from vaultlib import LOG_LINE, LOG_PATH, OWNER_FILE, Vault, find_brain, is_brain  # noqa: E402
+from vaultlib import LOG_LINE, LOG_PATH, OWNER_FILE, Vault, character_lines, find_brain, is_brain  # noqa: E402
 
 # The brain may be above the folder the session started in (prefrontal/<name>/).
 ROOT = find_brain(ROOT) or ROOT
@@ -86,6 +89,16 @@ def attention_lines(vault):
     if hand:
         lines.append("At hand: " + ", ".join(p.stem for p in hand))
     return lines
+
+
+def mood_line(vault):
+    """The mood of the last weeks and the one thing felt most, with its cause; nothing when nothing is felt now."""
+    felt = vault.feelings()
+    if not felt:
+        return ""
+    top = felt[0]
+    return (f"Mood: {vault.mood_said()} | most felt: {top['feeling']} {top['intensity']:.2f}, {top['target']}: "
+            f"{top['causes'][0]['why']} (`brain feel` has the rest)")
 
 
 def checkpoint_line(vault):
@@ -166,7 +179,7 @@ def main():
     vault = Vault(ROOT)
     pending, recent = vault.unencoded(), recent_log()
     more = "…" if len(pending) > SHOW else ""
-    for line in owner_lines():
+    for line in owner_lines() + character.said(character_lines(ROOT)):
         print(line)
     print(f"Today: {datetime.date.today().isoformat()}")
     print(f"Unencoded in senses/: {len(pending)}" + (f" ({', '.join(pending[:SHOW])}{more})" if pending else ""))
@@ -184,8 +197,8 @@ def main():
         names = ", ".join(os.path.splitext(os.path.basename(p))[0] for p in triggered[:SHOW])
         status += f" | decisions to revisit: {len(triggered)} ({names})"
     print(status)
-    for line in (resume_line(), inbox_line(), *attention_lines(vault), purpose_line(vault), checkpoint_line(vault),
-                 engine_line()):
+    for line in (resume_line(), inbox_line(), *attention_lines(vault), purpose_line(vault), mood_line(vault),
+                 checkpoint_line(vault), engine_line()):
         if line:
             print(line)
     print("Last activity:" + ("\n  " + "\n  ".join(recent[-SHOW:]) if recent else " none yet"))

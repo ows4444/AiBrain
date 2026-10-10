@@ -66,6 +66,7 @@ Then, inside Claude Code:
 |--------------|------------------------------------------------------------------|
 | `/start`     | Set up and take the first tour                                   |
 | `/owner`     | Fill in or update who you are, your goals and projects           |
+| `/character` | Say who the brain is to you: what it holds to and how it speaks  |
 | `/ingest`    | Encode new input (files, URLs, PDFs, transcripts, chat exports)  |
 | `/capture`   | Keep one line for later: a note in `inbox/`, encoded by `/ingest` |
 | `/import`    | Bring an Obsidian vault into `senses/`, one input a note         |
@@ -73,6 +74,7 @@ Then, inside Claude Code:
 | `/sleep`     | Consolidate episodes into concepts, entities and insights        |
 | `/ask`       | Answer from your pages, with citations                           |
 | `/brief`     | One page on a person, project or topic, every line cited         |
+| `/feel`      | How a project, goal or page sits in the record, and why          |
 | `/rehearse`  | Quiz yourself on what is due                                     |
 | `/explore`   | Push an idea past what the brain holds                           |
 | `/decide`    | Frame a choice and record what you expect, before the outcome    |
@@ -103,13 +105,15 @@ brain capture "a line" # keep it for later: a note in inbox/, which /ingest enco
 brain door FOLDER     # a synced folder as the way in from the phone: what is saved there comes into inbox/
 brain inbox           # what waits in inbox/, sorted: ready, duplicate, credential, not text
 brain extract FILE    # a PDF's or an image's text into senses/, if pdftotext or tesseract is installed
-brain fit senses/FILE # what an input bears on, before it is encoded; /ingest runs it
+brain fit senses/FILE # what an input bears on, before it is encoded, and the reasons for a salience; /ingest runs it
 brain import obsidian VAULT   # every note of a vault into senses/, once; --dry-run to look first
 brain restore PAGE    # bring a faded page back from dormant/; the move is logged
 brain ground FILE     # a draft: links, numbers and quotations with no page behind them
+brain feel            # what the record gives the brain to feel, each feeling with its causes; none is stored
+brain character       # who the brain is to you: what CHARACTER.md says it holds to and how it speaks
 brain tend --check    # everything that needs you, in one read-only digest
 brain schedule        # have this machine run that every few minutes, with no session open
-brain mcp             # a read-only MCP server for other programs: search, recall, since, gaps
+brain mcp             # a read-only MCP server for other programs: search, recall, since, gaps, waiting, character
 brain log recall "a question" --pages a-page   # one checked line in the log; skills run it
 brain index           # rewrite the index's listing from the pages and their summaries
 brain graph --format html   # the pages and their links as one page for a browser; no network, no server

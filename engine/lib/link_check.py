@@ -30,7 +30,10 @@ near-duplicate pages and undated facts (a count or a status in the present
 tense, on a concept, entity or insight, with no date and no pointer) are
 reported but do not fail. A line in hippocampus/tuning.md that names no
 threshold, or gives one a value outside its range, is a schema problem of that
-page, and fails; `tuning` in the result is the overrides in force.
+page, and fails; so is a line under `## Traits` in CHARACTER.md that names no
+trait or gives one a value outside 0 to 1. `tuning` in the result is the
+thresholds this brain holds at another value than the engine's, by an
+override or by a trait.
 --guard also scans every file for credentials (fails) and personal data
 (listed), naming the file, kind and line, never the value.
 Reads only; never modifies anything.
@@ -43,7 +46,8 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from fingerprint import fingerprint_problems, forgotten  # noqa: E402
 from secret_scan import scan_tree  # noqa: E402
-from vaultlib import Tuning, Vault, owner_file, parse_frontmatter, summary_problems, unread_lines  # noqa: E402
+from vaultlib import (CHARACTER_FILE, Tuning, Vault, character_problems, owner_file, parse_frontmatter,  # noqa: E402
+                      summary_problems, unread_lines)
 
 LIMIT = 40
 APPEND_ONLY = ("hippocampus/log.md", "hippocampus/metrics.md", "hippocampus/fingerprints.md")
@@ -147,6 +151,16 @@ def arguments(ap):
     ap.add_argument("--guard", action="store_true")
 
 
+def character(root):
+    """The character page's problems as one row of `schema`, or none: a trait it does not know, a value out of range."""
+    path = os.path.join(root, CHARACTER_FILE)
+    if not os.path.exists(path):
+        return []
+    with open(path, encoding="utf-8", errors="replace") as fh:
+        problems = character_problems(fh.read())
+    return [{"page": CHARACTER_FILE, "problems": problems}] if problems else []
+
+
 def run(root, args):
     vault = Vault(root)
     pages = vault.knowledge
@@ -161,7 +175,7 @@ def run(root, args):
                   + [{"page": f"{owner_file(root)} > Goals > {g}", "target": t} for g, t in vault.goal_link_problems()],
         "ambiguous": [{"name": n, "pages": [p.rel for p in ps]} for n, ps in clashes.items()],
         "shared_names": [{"name": n, "pages": [p.rel for p in ps]} for n, ps in unused.items()],
-        "schema": [{"page": p.rel, "problems": probs} for p, probs in vault.schema_problems()],
+        "schema": [{"page": p.rel, "problems": probs} for p, probs in vault.schema_problems()] + character(root),
         "relations": [{"page": p.rel, "relation": r} for p, r in vault.relation_problems()],
         "claims": [{"page": p.rel, "claim": c} for p, c in vault.claim_link_problems()],
         "history": history_problems(vault.root) + fingerprint_problems(vault.root),

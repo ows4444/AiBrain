@@ -7,7 +7,8 @@ import sys
 
 from support import DECIDED, HOOKS, TODAY, TempBrain, ago, page, run_brain, vaultlib
 
-import vault_intentions  # noqa: E402  (support puts engine/lib on the path)
+import commands  # noqa: E402  (support puts engine/lib on the path)
+import vault_intentions  # noqa: E402
 
 
 def concept(body="", **fields):
@@ -31,6 +32,77 @@ class Salience(TempBrain):
     def test_salient_candidate_is_marked(self):
         self.write("cortex/episodes/e.md", page("episode", "## Candidates\n- Big idea - x\n", salience="4"))
         self.assertTrue(self.brain().candidate_tally()[0]["salient"])
+
+    def test_an_episode_s_mark_reaches_the_pages_built_on_it(self):
+        # /ingest marks the episode, which is never rehearsed and never fades: the mark is for what it became.
+        old = ago(250)
+        self.write("cortex/episodes/marked.md", page("episode", "About [[built]] and [[tool]].", salience="2", updated=old))
+        self.write("cortex/episodes/loud.md", page("episode", "About [[capped]].", salience="5", updated=old))
+        self.write("cortex/episodes/imagined.md", page("episode", "About [[guessed]].", salience="3", origin="generated",
+                                                       updated=old))
+        self.write("cortex/episodes/against.md", page("episode", "No (contradicts:: [[doubted]]).", salience="3",
+                                                      updated=old))
+        for name in ("built", "capped", "guessed", "doubted", "plain"):
+            self.write(f"cortex/concepts/{name}.md", concept(created=old, updated=old))
+        self.write("cortex/concepts/own.md", concept("From [[marked]].", created=old, updated=old, salience="4"))
+        self.write("cortex/entities/tool.md", page("entity", kind="tool", created=old, updated=old))
+        self.write("cortex/insights/pattern.md", page("insight", "What [[built]] shows.", created=old, updated=old))
+        self.write("cortex/decisions/choice.md", page("decision", "Rests on [[marked]].", status="open", updated=old))
+        v = self.brain()
+        self.assertEqual({p.stem: v.salience_of(p) for p in v.knowledge},
+                         {"marked": 2, "loud": 5, "imagined": 3, "against": 3,  # a record keeps its own
+                          "built": 2, "tool": 2, "pattern": 2,  # an insight through the concept it frames
+                          "capped": 3,  # never above 3 this way: 4 and up is said on the page itself
+                          "guessed": 0, "doubted": 3, "plain": 0, "own": 4, "choice": 0})
+        self.assertEqual((v.resolve("capped").protected, v.fade_days(v.resolve("capped"))), (False, 450))
+        self.assertEqual(v.fade_days(v.resolve("built")), 360)
+        self.assertEqual([p.stem for p in v.dormant_candidates()], ["guessed", "plain"])  # 250 days: only the unmarked
+        self.assertEqual([p.stem for p in v.due_for_rehearsal()],
+                         ["own", "capped", "doubted", "built", "pattern", "guessed", "plain"])
+
+
+    def test_the_view_shows_the_spread_and_the_marks_with_no_reason(self):
+        old, new = ago(250), ago(20)
+        self.write("OWNER.md", "# Owner\n\n## Goals\n\n- Pass the exam by 2027-01-01 -> [[goal-page]]\n")
+        for name in ("goal-page", "doubted", "elsewhere", "kept", "cold", "warm", "near-a-goal"):
+            fields = {"kept": dict(salience="2"), "cold": dict(salience="5"), "warm": dict(salience="4", updated=new),
+                      "near-a-goal": dict(salience="high")}.get(name, {})
+            body = "See [[goal-page]]." if name == "near-a-goal" else ""
+            self.write(f"cortex/concepts/{name}.md", concept(body, **dict(dict(created=old, updated=old), **fields)))
+        for name, body, fields in (
+                ("for-a-goal", "About [[goal-page]].", dict(salience="2")),
+                ("against", "No (contradicts:: [[doubted]]).", dict(salience="3")),
+                ("stakes", "About [[elsewhere]].", dict(salience="1")),
+                ("loud", "About [[elsewhere]].", dict(salience="4")),
+                ("quiet", "About [[elsewhere]].", {}),
+                ("imagined", "About [[elsewhere]].", dict(salience="3", origin="generated"))):
+            self.write(f"cortex/episodes/{name}.md", page("episode", body, **dict(dict(created=old, updated=old), **fields)))
+        self.log(f"{ago(300)} recall an old question -> [[cold]]")
+        found = self.brain().salience_report()
+        self.assertEqual(found, {
+            "episodes": 5,  # an /explore episode is no input: its mark is not counted
+            "marked": {"1": 1, "2": 1, "3": 1, "4": 1, "5": 0},
+            "built": {"pages": 7, "carry": 4, "reach": 3},  # goal-page 2, doubted 3, elsewhere 3 from `loud`
+            "unexplained": ["cortex/episodes/stakes.md"],  # no goal's page, nothing contradicted: stakes, or a goal gone
+            # 4 and up never fades, so it is asked about: the page no goal reaches, unused the longest first.
+            # `warm` was edited 20 days ago; `near-a-goal` links a page a live goal depends on.
+            "unasked": [{"page": "cortex/concepts/cold.md", "salience": 5, "last": old},
+                        {"page": "cortex/episodes/loud.md", "salience": 4, "last": old}]})
+        module, args = commands.prepare("introspect", ["--salience"], self.root)
+        out = module.render(module.report(self.brain(), ["salience"]), args) + "\n"  # as of TODAY, not the clock's day
+        self.assertEqual(json.loads(run_brain(self.root, "introspect", "--json").stdout)["salience"]["marked"],
+                         found["marked"])
+        self.assertIn("\nsalience: 4 of 5 episodes marked (1: 1, 2: 1, 3: 1, 4: 1); of 7 pages built on them, "
+                      "4 carry a mark and 3 take one from an episode\n", out)
+        self.assertIn("nothing contradicted: high stakes, or a goal since closed): 1\n  cortex/episodes/stakes.md\n", out)
+        self.assertIn("unused for 180+ days (ask whether each still matters; only the owner's answer changes it): 2\n"
+                      f"  {old}  cortex/concepts/cold.md  (salience 5)\n  {old}  cortex/episodes/loud.md  (salience 4)\n",
+                      out)
+        empty = TempBrain()
+        empty.setUp()
+        self.addCleanup(empty.tearDown)
+        self.assertIn("\nsalience: 0 of 0 episodes marked; of 0 pages built on them, 0 carry a mark and 0 take one "
+                      "from an episode\n", run_brain(empty.root, "introspect", "--salience").stdout)
 
 
 class RehearsalOrder(TempBrain):
@@ -317,7 +389,7 @@ class Structure(TempBrain):
         self.assertEqual(list(u["thresholds"]), list(vaultlib.THRESHOLDS))
         self.assertEqual(u["thresholds"]["dormant_days"], {
             "value": 180, "default": 180, "low": 1, "high": 3650,
-            "what": "days unlinked, unrecalled and unedited before a page is proposed for dormant/"})
+            "what": "days unlinked, unrecalled and unedited before a page is proposed for dormant/", "by": None})
         text = run_brain(self.root, "introspect", "--usage").stdout
         self.assertIn("\n  rehearsal_days = 1, 3, 7, 14, 30, 60, 120  (1 to 3650): days until the next rehearsal", text)
 

@@ -9,7 +9,13 @@ page also holds, the twelve that mark it most (often in the input, rare in the
 brain) are searched as one question:
 
     pages   the pages those words reach, best first, each with its summary:
-            what to link from the episode, and what the input may contradict
+            what to link from the episode, and what the input may contradict.
+            Two marks are the reasons for a salience of 1 to 3 that a rule
+            can see: `[established]`, a concept two sources or more stand
+            behind, so an input saying the opposite is a prediction error;
+            and `serves:`, the live goals and projects that depend on the
+            page. A mark says where to look: a page listed for sharing the
+            input's words is no reason until the input is about it
     held    ideas other episodes name that have no page yet and that this
             input names too (every word of the idea's name is in it). Use
             that name under ## Candidates: names made of the same words count
@@ -101,7 +107,9 @@ def fit(vault, rel, limit=10):
     words, stems = marking_words(vault, f"{(fields or {}).get('title', '')}\n{body}")
     inside = os.path.relpath(os.path.realpath(path), os.path.realpath(vault.root))
     rel = rel if inside.startswith(os.pardir) else inside  # a file outside the brain keeps the path it was given by
-    pages = [{"page": p.rel, "title": p.title, "type": p.type, "score": round(s, 3), "summary": p.summary}
+    serving = vault.serving()
+    pages = [{"page": p.rel, "title": p.title, "type": p.type, "status": p.fields.get("status") or None,
+              "score": round(s, 3), "summary": p.summary, "serves": serving.get(p, [])}
              for p, s in vault.search(" ".join(words), limit=limit)]
     held = []
     for row in vault.candidate_tally():
@@ -127,6 +135,11 @@ def run(root, args):
         raise Refused(f"brain fit: {why}") from None
 
 
+def established(row):
+    """A concept two sources or more stand behind: what new input can be a prediction error against."""
+    return row["type"] == "concept" and row["status"] == "established"
+
+
 def render(result, args):
     new = "shares no word with any page, and names no held idea: all of it is new here"
     if not result["pages"] and not result["held"] and not result["triggers"]:
@@ -136,8 +149,12 @@ def render(result, args):
         out.append(f"  it {new}")
     if result["pages"]:
         out.append("  pages it bears on (link the ones it is about; say so where it says the opposite):")
-        out += [f"  {p['score']:>7.3f}  {p['page']}\n           {p['summary'] or '(no summary: open the page to judge it)'}"
-                for p in result["pages"]]
+        out += [f"  {p['score']:>7.3f}  {p['page']}" + ("  [established]" if established(p) else "")
+                + f"\n           {p['summary'] or '(no summary: open the page to judge it)'}"
+                + (f"\n           serves: {'; '.join(p['serves'])}" if p["serves"] else "") for p in result["pages"]]
+        if any(established(p) or p["serves"] for p in result["pages"]):
+            out.append("  a reason for salience 1 to 3, once the input is about the page: it says the opposite of one "
+                       "marked [established], or the page serves a live goal or project")
     if result["held"]:
         out.append("  held ideas it names (no page yet: use the same name under ## Candidates):")
         out += [f"    {h['name']}" + (f" - {h['note']}" if h["note"] else "")

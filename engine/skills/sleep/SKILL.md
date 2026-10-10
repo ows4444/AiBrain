@@ -37,7 +37,10 @@ updates earlier pages, never the reverse.
      the episode undercuts gets the same treatment.
    - no page, named by two or more sources (or salient): create it from
      `${CLAUDE_PLUGIN_ROOT}/templates/`; concepts start `established` with two sources, `emerging`
-     with one salient episode. Entities need only one episode. Give the new
+     with one salient episode. A concept made from one salient episode
+     takes that episode's `salience:` on its own page: the owner's call,
+     made on the episode and carried to what it became, so the concept
+     never fades either and the mark is there for them to lower. Entities need only one episode. Give the new
      page its `answers:`: up to five short questions it answers, in the words
      the owner would ask them in before knowing its terms, one `  - question`
      per line; a page that later comes to answer something new gains a line.

@@ -47,7 +47,7 @@ table in step with that registry. Lists may be inline, `[a, b]`, or one
 | `review` | decision | YYYY-MM-DD | no | When to check the outcome; required once decided |
 | `outcome` | decision | as-expected, better, worse, mixed | no | How it turned out against `## Expected`; required once reviewed |
 | `revisit_if` | decision | text, quoted | no | The event that means look again before `review`; required once decided |
-| `salience` | any | 1-5, or high (= 5) | no | How much it matters. 4-5 (the owner's call): one episode makes a concept, never fades. 1-3 (proposed at ingest: contradicts a page, touches a goal, high stakes): fades later, rehearsed sooner |
+| `salience` | any | 1-5, or high (= 5) | no | How much it matters. 4-5 (the owner's call): one episode makes a concept, which sleep marks the same, and a page that carries it never fades. 1-3 (proposed at ingest: how many of three reasons hold, which are contradicts a page, touches a goal, high stakes): fades later, rehearsed sooner. A concept, entity or insight takes the highest mark among the episodes it rests on, up to 3, without carrying the field: `/ingest` marks the episode, and the mark is for what is built on it |
 | `maintained_by` | any | human | no | Never merge, split or rewrite without asking |
 | `publish` | any | true | no | Opted in to `brain export --published` |
 

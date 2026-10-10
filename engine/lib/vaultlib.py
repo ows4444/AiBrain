@@ -11,6 +11,7 @@ so every script reports the same numbers. The parts live in their own modules:
     vault_memory     recall strength, the sleep queue, evidence, confidence, decay, calibration
     vault_purpose    goals, projects and intentions, and what they keep in use
     vault_retrieval  search, co-recall weights, spreading activation, link suggestions
+    vault_affect     what the record gives the brain to feel: events and standing states, appraised
 
 Everything is importable from here, so callers only ever import vaultlib.
 """
@@ -20,6 +21,7 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from vault_affect import CALLING, FEELINGS, AffectMixin  # noqa: E402,F401
 from vault_events import (Event, as_written, is_rehearsal_miss, is_rehearsal_pass, read_events,  # noqa: E402,F401
                           unread_lines)
 from vault_graph import GraphMixin  # noqa: E402
@@ -30,10 +32,11 @@ from vault_model import (DORMANT_DIR, MEMORY_DIRS, PROJECTS_DIR, Page, as_list, 
                          parse_frontmatter, schema_problems, summary_problems, tag_vocabulary)
 from vault_purpose import PurposeMixin  # noqa: E402
 from vault_retrieval import RetrievalMixin  # noqa: E402
-from vault_tuning import THRESHOLDS, TUNING_PATH, Tuning, plain, setting, shown, tuning_of  # noqa: E402,F401
+from vault_tuning import (CHARACTER_FILE, THRESHOLDS, TRAITS, TUNING_PATH, Tuning, character_problems,  # noqa: E402,F401
+                          plain, read_traits, setting, shown, tuning_of)
 
 
-class Vault(GraphMixin, MemoryMixin, PurposeMixin, RetrievalMixin):
+class Vault(GraphMixin, MemoryMixin, PurposeMixin, RetrievalMixin, AffectMixin):
     def __init__(self, root, today=None, tuning=None, now=None):
         """`tuning` ({name: value}) is laid over the brain's own thresholds for this Vault only: a value being tried.
 

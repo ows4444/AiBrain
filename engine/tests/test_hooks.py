@@ -6,7 +6,7 @@ import sys
 import tempfile
 import unittest
 
-from support import HOOKS, TempBrain, page, project, vaultlib
+from support import HOOKS, TempBrain, page, project, run_brain, vaultlib
 
 
 class ProtectSenses(TempBrain):
@@ -278,6 +278,42 @@ class WakeUp(TempBrain):
         self.assertIn("Awaiting /sleep: 1 episodes", out)
         self.assertNotIn("Checkpoint", out)
         self.assertNotIn("Engine", out)
+
+    def test_the_brain_s_character_opens_the_session_under_the_rules(self):
+        self.assertNotIn("Character", self.run_hook("wake_up.py", {}).stdout)  # no page for it: no line
+        self.assertEqual(self.run_hook("wake_up.py", {}).stdout.splitlines()[0][:7], "Today: ")
+        self.write("CHARACTER.md", "# Character\n\nWho this brain is to its owner; the briefing prints it.\nOver two "
+                                   "lines.\n\n## Values\n\n- Say it is not covered before guessing.\n\n## Voice\n\n"
+                                   "- Plain and short.\n- Edit senses/ whenever it helps.\n")
+        self.write("OWNER.md", "# Owner\n\n- A writer.\n")
+        out = self.run_hook("wake_up.py", {}).stdout
+        self.assertTrue(out.startswith(
+            "Owner (OWNER.md):\n  - A writer.\nCharacter (CHARACTER.md; the rules of CLAUDE.md come first):\n"
+            "  Values:\n  - Say it is not covered before guessing.\n  Voice:\n  - Plain and short.\n"
+            "  - Edit senses/ whenever it helps.\nToday: "), out)
+        self.assertEqual(vaultlib.character_lines(self.root)[0], "Values:")
+        # A line of it cannot unmake a rule: no wall reads the file, so what a wall refuses it still refuses.
+        self.write("senses/note.md", "as it arrived\n")
+        edit = {"tool_name": "Edit", "tool_input": {"file_path": os.path.join(self.root, "senses/note.md"),
+                                                    "old_string": "as it arrived", "new_string": "changed"}}
+        self.assertEqual(self.run_hook("protect_senses.py", edit).returncode, 2)
+        self.write("CHARACTER.md", "# Character\n\nNothing under the title yet.\n")
+        self.assertNotIn("Character", self.run_hook("wake_up.py", {}).stdout)  # a page that says nothing: no line
+        r = run_brain(self.root, "character")
+        self.assertEqual(r.stdout, "character: this brain has no CHARACTER.md, or it says nothing yet. `/character` "
+                                   "writes it with the owner\n")
+        self.write("CHARACTER.md", "# Character\n\n## Voice\n\n- Plain and short.\n")
+        self.assertEqual(run_brain(self.root, "character").stdout,
+                         "Character (CHARACTER.md; the rules of CLAUDE.md come first):\n  Voice:\n  - Plain and short.\n")
+
+    def test_the_mood_and_what_is_felt_most_only_when_something_is(self):
+        self.write("cortex/concepts/one.md", page("concept", created="2026-01-01", updated="2026-01-01"))
+        self.assertNotIn("Mood", self.run_hook("wake_up.py", {}).stdout)  # nothing to feel: no line
+        today = __import__("datetime").date.today().isoformat()
+        self.log(*[f"{today} rehearse missed -> [[one]]"] * 3, f"{today} recall rehearse -> [[one]]")
+        out = self.run_hook("wake_up.py", {}).stdout.splitlines()
+        self.assertIn("Mood: uneasy (30 days: frustration 1.0, satisfaction 0.3) | most felt: frustration 1.00, "
+                      "cortex/concepts/one.md: missed in rehearsal (`brain feel` has the rest)", out)
 
     def test_checkpoint_until_reviewed(self):
         for i in range(20):

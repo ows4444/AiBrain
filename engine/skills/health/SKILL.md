@@ -69,6 +69,14 @@ word count are never health signals; both rise whether things improve or not.
      `${CLAUDE_PLUGIN_ROOT}/templates/brain/hippocampus/tuning.md`.
      Removing the line restores the default. Then save the baseline again,
      so the next review starts from the values kept.
+   - A trait is reviewed the same way, and never changed any other: the
+     traits `brain introspect --usage` lists each move a few thresholds
+     together. Say what the trait is now, what it would be, and the
+     evidence (the runs with `--set <trait>=<value>` beside the ones
+     without; for `resilience` and `sensitivity`, what `brain feel` lists
+     with and without). On the owner's yes it is one line under `## Traits`
+     in `CHARACTER.md`, `- name = value (why, date)`. Nothing changes a
+     trait by itself.
    - Record that the review was done, whatever came of it:
      `brain log health calibration --result "<what was kept, or nothing;
      recall hit@5 before and after>"`. The briefing stops asking once the

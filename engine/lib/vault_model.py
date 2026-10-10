@@ -10,7 +10,7 @@ import re
 import sys
 
 from vault_intentions import END as GOAL_END, intention_problems
-from vault_tuning import Tuning, tuning_problems
+from vault_tuning import CHARACTER_FILE, Tuning, character_problems, tuning_problems  # noqa: F401
 
 LINK =re.compile(r"\[\[([^\]|#]+)(?:#[^\]|]*)?(?:\|[^\]]*)?\]\]")
 FRONTMATTER = re.compile(r"\A---\r?\n(.*?)\r?\n---\r?\n?", re.S)
@@ -143,6 +143,8 @@ OPS = ("ingest", "recall", "sleep", "explore", "decide", "review", "write", "foc
 # fades and one episode is enough for a concept, as `high` always was; below it,
 # each level only stretches the time a page takes to fade (salience_stretch).
 # A rule the documents state (CLAUDE.md > How memory forms), so no brain tunes it.
+# A page built on a marked episode takes its mark, never above SALIENT - 1
+# (Vault.salience_of): `Page.salience` is only what the page itself carries.
 SALIENT = 4
 # Owner goals: `- <goal> by YYYY-MM-DD -> [[page]], [[project]]` under
 # `## Goals` in OWNER.md; the date and links are optional. A brain from before
@@ -478,6 +480,22 @@ def owner_text(root):
         return text
     owner = re.search(r"^## Owner\s*\n(.*?)(?=^## |\Z)", text, re.S | re.M)
     return owner.group(1) if owner else ""
+
+
+def character_lines(root):
+    """What CHARACTER.md says, a line each: a heading as `Values:`, the rest as written; [] when it says nothing.
+
+    Who the brain is to its owner: what it holds to and how it speaks. The title and the note
+    under it are left out, as the briefing leaves them out of OWNER.md. A brain without the
+    file has no character of its own: it speaks as the rules have it speak.
+    """
+    path = os.path.join(root, CHARACTER_FILE)
+    if not os.path.exists(path):
+        return []
+    with open(path, encoding="utf-8", errors="replace") as fh:
+        body = re.sub(r"\A# .*?\n(?:(?!^[-#_]).*\n)*", "", fh.read(), flags=re.M)  # the title and the prose under it
+    return [line.lstrip("#").strip() + ":" if line.startswith("#") else line.rstrip()
+            for line in body.splitlines() if line.strip()]
 
 
 def owner_goals(root):

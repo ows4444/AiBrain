@@ -12,6 +12,13 @@ only when there is something on it, with how many and the first five; when
 nothing needs the owner it says so in one line, which is what a scheduled run
 then sends. `needs` in the JSON is how many of the lists hold anything.
 
+What the record gives most to feel about comes first (`brain feel`): a goal
+ten days past its date before an input not yet encoded. Such a line ends with
+the feeling, how strong it is and its cause, in brackets; `felt` in the JSON
+has it for each list. The lists are the same and all of them are printed: a
+feeling moves the order and hides nothing. A line nothing is felt about keeps
+its place among the others like it, after the ones something is.
+
 It reads and never writes: no page, no log line, no index. So it is safe to
 run unattended, on a schedule, by the `watcher` agent or by cron. Encoding and
 consolidating what it lists is `/tend`, the skill, and that is started by the
@@ -21,7 +28,8 @@ this command has no form that writes.
 --notify also puts what waits on the screen, for a run nobody is watching
 (`brain schedule` sets one): a notification through `osascript` on macOS, or
 `notify-send` where there is one. Each thing is said once a day. The day's
-first run says everything that waits in one line; a later run says only a
+first run says everything that waits in one line, in the digest's order, so
+what is felt most is named first; a later run says only a
 reminder that has come due since, which is what a reminder with a time of day
 needs. What was said today is kept in .cache/notified.json, which is not the
 brain's record: lose it and the day's line is said once more.
@@ -34,7 +42,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from commands import Refused  # noqa: E402
-from vaultlib import Vault  # noqa: E402
+from vaultlib import CALLING, Vault  # noqa: E402
 
 SHOWN = 5  # names printed on a line; --json has them all
 NOTIFIED = os.path.join(".cache", "notified.json")  # what --notify has said today
@@ -62,7 +70,36 @@ def digest(vault):
         "gaps": [{"words": g["words"], "asked": g["asked"], "last": g["last"]} for g in vault.unanswered()],
     }
     found["needs"] = sum(1 for key, value in found.items() if key != "date" and value)
+    found["felt"] = felt_about(vault, found)
     return found
+
+
+def felt_about(vault, d):
+    """{list: {feeling, intensity, target, why}}: for each list of the digest, what is felt most toward something on it.
+
+    Of the feelings that ask for something to be done; satisfaction asks for nothing. A
+    list nothing is felt about is not in it.
+    """
+    felt = {}
+    for row in vault.feelings():  # the strongest first, so a target keeps its strongest
+        if row["feeling"] in CALLING:
+            felt.setdefault((row["kind"], row["target"]), row)
+    stands_for = {"contradictions": [("page", c["page"]) for c in d["contradictions"]],
+                  "rehearse": [("page", rel) for rel in d["rehearse"]],
+                  "reminders": [("reminder", r["text"]) for r in d["reminders"]],
+                  "review": [("page", r["page"]) for r in d["review"]],
+                  "revisit": [("page", rel) for rel in d["revisit"]],
+                  "late": [("goal", g["goal"]) for g in d["late"]],
+                  "at_risk": [("goal", g["goal"]) for g in d["at_risk"]],
+                  "gaps": [("gap", ", ".join(g["words"])) for g in d["gaps"]]}
+    out = {}
+    for key, targets in stands_for.items():
+        rows = [felt[t] for t in targets if t in felt]
+        if rows:
+            top = max(rows, key=lambda r: r["intensity"])
+            out[key] = {"feeling": top["feeling"], "intensity": top["intensity"], "target": top["target"],
+                        "why": top["causes"][0]["why"]}
+    return out
 
 
 def some(names):
@@ -122,7 +159,12 @@ def run(root, args):
 
 
 def waiting_lines(d):
-    """(key, label, rows, hint) for each list of the digest, in the order they are printed."""
+    """(key, label, rows, hint) for each list of the digest, in the order they are printed: the most felt first."""
+    return tuple(sorted(lines_in_turn(d), key=lambda line: -d["felt"].get(line[0], {}).get("intensity", 0)))
+
+
+def lines_in_turn(d):
+    """The lists in the order the work goes: what came in, what sleep owes, what is the owner's, what was asked."""
     return (
         ("senses", "not encoded", d["senses"], "/ingest, or /tend"),
         ("inbox", "in the inbox", d["inbox"], "/ingest moves them into senses/"),
@@ -144,7 +186,15 @@ def waiting_lines(d):
 def render(d, args):
     if not d["needs"]:
         return f"tend check, {d['date']}: nothing needs you"
-    out = [f"tend check, {d['date']}: waiting on you"]
-    out += [f"  {label:<16}{len(d[key]):>3}: {some(rows)}" + (f"  ({hint})" if hint else "")
+    out = [f"tend check, {d['date']}: waiting on you" + (", what is felt most first" if d["felt"] else "")]
+    out += [f"  {label:<16}{len(d[key]):>3}: {some(rows)}" + (f"  ({hint})" if hint else "") + felt_said(d["felt"].get(key))
             for key, label, rows, hint in waiting_lines(d) if d[key]]
     return "\n".join(out)
+
+
+def felt_said(felt):
+    """`  [worry 0.81: Move, 10 days past its date]` after a line something is felt about; "" after any other."""
+    if not felt:
+        return ""
+    name = os.path.splitext(os.path.basename(felt["target"]))[0]  # a page by its file name; any other target is its words
+    return f"  [{felt['feeling']} {felt['intensity']:.2f}: {name}, {felt['why']}]"

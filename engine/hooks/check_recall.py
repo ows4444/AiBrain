@@ -27,7 +27,7 @@ import sys
 from shared import ROOT, is_brain, note  # the brain may be above the folder the session started in
 
 # Skills that read pages to produce something; matched with or without the plugin prefix (aibrain:ask).
-RECALL_SKILLS = {"ask", "brief", "rehearse", "explore", "decide", "review-decision", "write", "focus"}
+RECALL_SKILLS = {"ask", "brief", "feel", "rehearse", "explore", "decide", "review-decision", "write", "focus"}
 RECALL_COMMAND = re.compile(r"<command-name>/(?:[\w-]+:)?(?:%s)</command-name>" % "|".join(sorted(RECALL_SKILLS)))
 ANY_COMMAND = re.compile(r"<command-name>/([\w:-]+)</command-name>")
 RECALL_LINE = re.compile(r"\d{4}-\d{2}-\d{2} (?:\d{2}:\d{2} )?(?:recall|rehearse missed) .*->")

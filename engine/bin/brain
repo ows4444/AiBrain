@@ -19,10 +19,12 @@
     brain fetch URL [--name SLUG]         a web page cut down to its readable text, saved in senses/
     brain extract FILE [--name SLUG]      a PDF's or an image's text into senses/, read by pdftotext or tesseract
     brain fit senses/FILE                 what an input bears on: the pages its own words reach, the held ideas it names
+    brain feel [WORD ...]                 what the record gives the brain to feel, each feeling with its causes; none is stored
+    brain character                       who the brain is to its owner: what CHARACTER.md says it holds to and how it speaks
     brain import obsidian VAULT           notes kept in another tool into senses/, one input a note; never overwrites
     brain inbox                           what waits in inbox/, sorted: ready, duplicate, credential, forgotten, not text
     brain new TYPE [--from senses/FILE]   a page from its template, frontmatter filled in from the input
-    brain mcp                             a read-only MCP server on stdin and stdout, for other programs: search, recall, since, gaps
+    brain mcp                             a read-only MCP server on stdin and stdout, for other programs: search, recall, since, gaps, waiting, character
     brain chats EXPORT OUT [...]          a Claude or ChatGPT export, one file per conversation
     brain session [TRANSCRIPT]            what the owner typed in this conversation, for /ingest session
     brain forget SOURCE [--yes]           what rests on one input; with the owner's yes, remove it and its episodes

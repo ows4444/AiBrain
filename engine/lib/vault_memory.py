@@ -58,7 +58,8 @@ class MemoryMixin:
 
         Operations by count and by month; the operations, typed-link relations
         and vocabulary tags never used; progress to the calibration checkpoint;
-        and every threshold with its default, its range and this brain's value.
+        every threshold with its default, its range and this brain's value; and
+        every trait with its value here and the thresholds it moves.
         """
         t = self.tuning
         lines = self.log_lines()
@@ -81,6 +82,7 @@ class MemoryMixin:
                            "reviewed": any(op == "health" and rest.startswith("calibration")
                                            for _, op, rest in lines)},
             "thresholds": t.rows(),
+            "traits": t.trait_rows(),
         }
 
     def _event_pages(self):
@@ -399,8 +401,9 @@ class MemoryMixin:
     def due_for_rehearsal(self):
         """Concepts and insights whose spaced-retrieval interval has passed.
 
-        Pages the owner's goals depend on come first, then the more salient,
-        then those the owner most often misses, then the most overdue.
+        Pages the owner's goals depend on come first, then the more salient
+        (salience_of: a page's own mark, or its episodes'), then those the owner
+        most often misses, then the most overdue.
         """
         due = []
         purpose, ladder = self.purpose(), self.tuning.rehearsal_days
@@ -412,8 +415,58 @@ class MemoryMixin:
             overdue = (self.today - last).days - interval
             if overdue >= 0:
                 due.append((p, overdue))
-        return [p for p, _ in sorted(due, key=lambda t: (t[0] not in purpose, -t[0].salience,
+        return [p for p, _ in sorted(due, key=lambda t: (t[0] not in purpose, -self.salience_of(t[0]),
                                                          -self.miss_risk(t[0])[0], -t[1], t[0].rel))]
+
+    def salience_of(self, page):
+        """How much a page matters, 0 to 5: the mark it carries, or the highest behind it, up to 3.
+
+        /ingest marks the episode, and an episode is never rehearsed and never fades:
+        the mark is meant for what is built on it. So a concept, entity or insight
+        takes the highest salience among the records it rests on and the ones that
+        say the opposite of it (a contradiction is one reason an input is marked);
+        an /explore episode gives none. Never above 3 this way: from 4 up a page
+        never fades, and that call is the owner's, made on the page that carries it.
+        Worked out when asked, like everything derived; a record keeps its own.
+        """
+        if page.is_system or page.type in ("episode", "decision"):
+            return page.salience
+        behind = set(self.evidence_for(page)) | {p for p in self.contradicted_by(page) if not p.generated}
+        return max([page.salience] + [min(p.salience, SALIENT - 1) for p in behind])
+
+    def salience_report(self):
+        """How the mark of what matters is spread: {episodes, marked, built, unexplained, unasked}.
+
+        marked       encoded episodes by the level they carry, 1 to 5
+        built        the pages sleep builds (concepts, entities, insights): how many
+                     carry a mark of their own, and how many take one from an episode
+        unexplained  episodes marked 1 to 3 that link no page a live goal or project
+                     depends on and say the opposite of none. Of the three reasons
+                     for such a mark, high stakes is the one left, or a goal since
+                     closed: when most marks are here, the mark has stopped telling
+        unasked      pages that carry 4 or more, which never fade, that no live goal
+                     or project reaches (the page, or one it links) and that nothing
+                     has recalled or edited for dormant_days: the longest first.
+                     Whether each still matters is the owner's to say
+        """
+        purpose = self.purpose()
+        episodes = [p for p in self.of_type("episode") if not p.generated]
+        built = [p for p in self.knowledge if p.type not in ("episode", "decision")]
+        against = {a for a, rel, _ in self.typed_edges() if rel == "contradicts"}
+
+        def reached(p):
+            return bool(({p} | self.links_from(p)) & purpose)
+
+        unasked = [(p, self.last_touched(p)) for p in self.knowledge if p.salience >= SALIENT and not reached(p)]
+        unasked = sorted(((p, last) for p, last in unasked
+                          if last and (self.today - last).days > self.tuning.dormant_days), key=lambda t: (t[1], t[0].rel))
+        return {"episodes": len(episodes),
+                "marked": {str(level): sum(p.salience == level for p in episodes) for level in range(1, 6)},
+                "built": {"pages": len(built), "carry": sum(p.salience > 0 for p in built),
+                          "reach": sum(self.salience_of(p) > p.salience for p in built)},
+                "unexplained": [p.rel for p in episodes
+                                if 0 < p.salience < SALIENT and p not in against and not reached(p)],
+                "unasked": [{"page": p.rel, "salience": p.salience, "last": last.isoformat()} for p, last in unasked]}
 
     def fade_days(self, page, days=None):
         """How long this page may go untouched before it is proposed for dormant/: longer the more salient.
@@ -421,15 +474,16 @@ class MemoryMixin:
         `days` is the brain's dormant_days unless given.
         """
         days = self.tuning.dormant_days if days is None else days
-        return days * (1 + self.tuning.salience_stretch * min(page.salience, SALIENT - 1))
+        return days * (1 + self.tuning.salience_stretch * min(self.salience_of(page), SALIENT - 1))
 
     def dormant_candidates(self, days=None):
         """Unlinked, unrecalled, untouched for `days` (the brain's dormant_days): what sleep would scale down.
 
         Episodes and decisions are records of what happened, so they never fade;
         nor does anything a goal or a live project depends on. A link from an
-        episode does not count: every page sleep builds has one. Salience 1-3
-        stretches `days` (fade_days); 4 and up never fades.
+        episode does not count: every page sleep builds has one. Salience 1-3,
+        the page's or its episodes', stretches `days` (fade_days); a page that
+        carries 4 or more never fades.
         """
         linked = {b for a, b in self.knowledge_edges() if a.type not in FADE_IGNORES_LINKS_FROM}
         purpose = self.purpose()

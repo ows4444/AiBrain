@@ -61,6 +61,9 @@ class Registry(unittest.TestCase):
                     self.assertIn(member, ("title", "aliases", "answers", "body", "summary"))
                 elif family == "relation":  # read by its prefix: one for each relation of the vocabulary
                     self.assertIn(member, relations)
+                elif name == "trait_span":  # read where the traits are applied, which is the registry's own module
+                    tried = vault_tuning.tuning_of(self.id(), {"trait_span": 3.0, "caution": 0.0})  # no brain there
+                    self.assertEqual(tried.min_coverage, 0.05)  # a third of 0.15, where a span of 2 gives half
                 else:
                     self.assertRegex(source, rf"\.{name}\b")
         self.assertEqual({n.partition("_")[2] for n in vaultlib.THRESHOLDS if n.startswith("relation_")}, relations)
@@ -481,6 +484,19 @@ class TryingAValue(Tuned):
                       "(the brain's own: 2, 6); nothing was written\n", out)
         self.assertNotIn("tried with", run_brain(None, "eval", "--root", self.root, "--questions", self.questions).stdout)
 
+    def test_a_trait_is_tried_the_same_way_with_everything_it_moves(self):
+        # The question's words reach `layout` only weakly: an open, incautious brain lists it, a cautious one does not.
+        self.write("CHARACTER.md", "# Character\n\n## Traits\n\n- caution = 0.2 (as it stands)\n")
+        tried = self.run_eval("--set", "caution=1.0", "--set", "openness=0.75")
+        self.assertEqual(tried["set"], {"caution": {"value": 1.0, "was": 0.2}, "openness": {"value": 0.75, "was": 0.5}})
+        out = run_brain(None, "eval", "--root", self.root, "--questions", self.questions, "--set", "caution=1.0").stdout
+        self.assertIn("\n  tried with caution = 1.0 (the brain's own: 0.2); nothing was written\n", out)
+        with open(os.path.join(self.root, "CHARACTER.md"), encoding="utf-8") as fh:
+            self.assertIn("- caution = 0.2 (as it stands)", fh.read())
+        with self.assertRaises(commands.Refused) as refused:
+            self.run_eval("--set", "caution=2")
+        self.assertEqual(str(refused.exception), "brain eval --set: 'caution = 2' is outside 0 to 1")
+
     def test_a_value_that_cannot_be_tried_is_refused_and_a_baseline_is_never_saved_from_one(self):
         for args, why in ((["--set", "recal_floor=0.2"], "brain eval --set: 'recal_floor' is not a threshold (closest: "
                            "recall_floor); `brain introspect --usage` lists them"),
@@ -494,6 +510,159 @@ class TryingAValue(Tuned):
                     self.run_eval(*args)
                 self.assertEqual((str(refused.exception), refused.exception.code), (why, 1))
         self.assertFalse(os.path.exists(os.path.join(self.root, "motor", "eval-questions-baseline.json")))
+
+
+class Traits(Tuned):
+    """A trait is a number with something to move: the thresholds the registry names for it, and nothing else."""
+
+    def character(self, *traits, voice="- Plain and short."):
+        """Write CHARACTER.md with these trait lines under `## Traits`; none leaves the section out."""
+        return self.write("CHARACTER.md", "# Character\n\nWho this brain is to its owner.\n\n## Voice\n\n" + voice + "\n"
+                          + ("\n## Traits\n\n" + "".join(f"- {line}\n" for line in traits) if traits else ""))
+
+    def test_every_trait_moves_thresholds_that_exist_and_no_threshold_has_two(self):
+        moved = [name for trait in vaultlib.TRAITS.values() for name, _ in trait.moves]
+        self.assertEqual(len(moved), len(set(moved)))  # a value always has one reason
+        self.assertNotIn("trait_span", moved)
+        for name, trait in vaultlib.TRAITS.items():
+            with self.subTest(name):
+                self.assertTrue(trait.what and trait.moves and not trait.what.endswith("."))
+                self.assertFalse(name in vaultlib.THRESHOLDS)
+                for threshold, way in trait.moves:
+                    self.assertIn(threshold, vaultlib.THRESHOLDS)
+                    self.assertIn(way, (1, -1))
+                    self.assertNotIsInstance(vaultlib.THRESHOLDS[threshold].default, tuple)  # a ladder is not scaled
+                self.assertEqual(vault_tuning.moved_by({name: 0.5}, 2.0), ({}, {}))  # at 0.5 it moves nothing
+                for value in (0.0, 0.1, 0.9, 1.0):  # whatever it is, what it moves stays inside its own range
+                    for threshold, to in vault_tuning.moved_by({name: value}, 10.0)[0].items():
+                        self.assertEqual(vault_tuning.value_of(threshold, str(to)), to)
+
+    def test_a_trait_at_one_end_doubles_what_it_raises_and_halves_what_it_lowers(self):
+        moved = lambda **traits: vault_tuning.moved_by(traits, 2.0)[0]  # noqa: E731
+        self.assertEqual(moved(caution=1.0), {"min_coverage": 0.3, "recall_floor": 0.8, "held_coverage": 1.0})
+        self.assertEqual(moved(caution=0.0), {"min_coverage": 0.075, "recall_floor": 0.2, "held_coverage": 0.25})
+        self.assertEqual(moved(curiosity=1.0), {"held_limit": 6, "schema_min": 2})  # it lowers the second
+        self.assertEqual(moved(curiosity=0.0), {"held_limit": 2, "schema_min": 8})  # 1.5 is 2: a whole number stays whole
+        self.assertEqual(moved(persistence=0.75), {"dormant_days": 255, "goal_stale_days": 42, "hebbian_half_life": 127})
+        self.assertEqual(moved(openness=1.0), {"spread_hops": 4, "spread_decay": 1.0, "unlinked_association": 1.0})
+        self.assertEqual(moved(resilience=1.0, sensitivity=0.0),
+                         {"feeling_half_life": 4, "mood_half_life": 15, "feeling_full": 6.0})
+        self.assertEqual(vault_tuning.moved_by({"openness": 1.0}, 10.0)[0]["spread_hops"], 6)  # never past its range
+        self.assertEqual(vault_tuning.moved_by({"caution": 1.0}, 1.0), ({}, {}))  # a span of 1: no trait moves anything
+        self.assertEqual(vault_tuning.moved_by({"caution": 1.0}, 2.0)[1],
+                         dict.fromkeys(("min_coverage", "recall_floor", "held_coverage"), "caution"))
+
+    def test_a_line_is_a_trait_a_value_and_a_note_and_what_cannot_be_used_is_listed(self):
+        text = "# Character\n\n## Traits\n\nHow it leans.\n\n- caution = 0.8 (2026-11-02: fewer weak pages)\n" \
+               "- `openness` = `0.25`\n\n## Voice\n\n- recall_floor = 9 (prose here, not a trait)\n"
+        self.assertEqual(vault_tuning.read_traits(text), ({"caution": 0.8, "openness": 0.25}, []))
+        self.assertEqual(vault_tuning.read_traits("# Character\n\n## Voice\n\n- Plain.\n"), ({}, []))
+        values, problems = vault_tuning.read_traits(
+            "## Traits\n\n- cautoin = 0.8\n- caution = 1.5\n- openness = wide\n- recall_floor = 0.3\n"
+            "- curiosity 0.7\n- persistence = 0.2\n- persistence = 0.9\n- zeal = 1\n")
+        self.assertEqual(values, {"persistence": 0.9})
+        self.assertEqual(problems, [
+            "'cautoin' is not a trait (closest: caution); the traits are caution, curiosity, persistence, openness, "
+            "resilience, sensitivity",
+            "'caution = 1.5' is outside 0 to 1", "'openness = wide' is not a number",
+            "'recall_floor' is a threshold, not a trait: it is set under `## Overrides` in hippocampus/tuning.md",
+            "cannot read '- curiosity 0.7': a trait is `- name = value (why)`",
+            "'persistence' is set twice; the later line is the one used",
+            "'zeal' is not a trait; the traits are caution, curiosity, persistence, openness, resilience, sensitivity"])
+        self.assertEqual(vault_tuning.character_problems(text), [])
+        # And the other way: a trait among the overrides of tuning.md is sent to its own page.
+        self.assertEqual(vault_tuning.tuning_problems("## Overrides\n\n- caution = 0.8\n"),
+                         ["'caution' is a trait, not a threshold: it is set under `## Traits` in CHARACTER.md"])
+        self.assertEqual(vault_tuning.setting("caution = 0.8"), ("caution", 0.8))
+        with self.assertRaisesRegex(ValueError, "'cautoin' is not a threshold \\(closest: caution\\)"):
+            vault_tuning.setting("cautoin=0.8")
+
+    def test_a_trait_on_the_page_moves_recall_in_the_next_command_and_removing_it_moves_it_back(self):
+        self.write("cortex/concepts/alpha.md", concept("Alpha alpha alpha.", title="Alpha", summary="What alpha is."))
+        self.write("cortex/concepts/delta.md", concept("A long page. " + "Filler text. " * 40, title="Delta",
+                                                       summary="It names alpha in passing."))
+
+        def recalled():
+            return [r["page"] for r in json.loads(run_brain(self.root, "recall", "alpha", "--json").stdout)["results"]]
+
+        both = ["cortex/concepts/alpha.md", "cortex/concepts/delta.md"]
+        self.assertEqual(recalled(), both[:1])  # delta scores 0.22 of alpha: under the floor of 0.4, cut
+        self.character("caution = 0.0 (I would rather see the weak pages too)")
+        self.assertEqual(recalled(), both)  # the floor is 0.2 now
+        v = self.brain()
+        self.assertEqual((v.tuning.recall_floor, v.tuning.min_coverage, v.tuning.traits), (0.2, 0.075, {"caution": 0.0}))
+        self.assertEqual(v.tuning.changed(), {"min_coverage": 0.075, "recall_floor": 0.2, "held_coverage": 0.25})
+        self.character("caution = 1.0")
+        self.assertEqual(recalled(), both[:1])
+        self.character()  # the page without the section: the engine's own values again
+        self.assertEqual((recalled(), self.brain().tuning.changed()), (both[:1], {}))
+
+    def test_an_override_holds_over_a_trait_and_a_value_being_tried_over_both(self):
+        self.character("caution = 0.0", "openness = 1.0")
+        self.tune("recall_floor = 0.6 (measured)")
+        t = self.brain().tuning
+        self.assertEqual((t.recall_floor, t.min_coverage, t.spread_hops), (0.6, 0.075, 4))  # the trait starts, the line stands
+        self.assertEqual(t.by, {"min_coverage": "caution", "held_coverage": "caution", "spread_hops": "openness",
+                                "spread_decay": "openness", "unlinked_association": "openness"})
+        tried = self.trying(caution=1.0, spread_hops=1).tuning  # as `brain eval --set caution=1.0 --set spread_hops=1`
+        self.assertEqual((tried.recall_floor, tried.min_coverage, tried.spread_hops, tried.traits["caution"]),
+                         (0.6, 0.3, 1, 1.0))
+        self.assertNotIn("spread_hops", tried.by)
+        self.tune("trait_span = 1.0")  # this brain's traits move nothing
+        self.assertEqual(self.brain().tuning.changed(), {"trait_span": 1.0})
+        self.assertEqual(self.trying(trait_span=4.0).tuning.min_coverage, 0.0375)
+        self.assertEqual(vaultlib.Tuning(self.trying(trait_span=4.0).tuning.changed()).spread_hops, 6)  # as a result carries it
+
+    def test_check_fails_on_a_trait_it_does_not_know_and_the_page_hook_refuses_the_write(self):
+        path = self.character("cautoin = 0.8", "openness = 2", "persistence = 0.9")
+        r = run_brain(self.root, "check", "--json")
+        report = json.loads(r.stdout)
+        self.assertEqual(r.returncode, 1)
+        self.assertEqual(report["schema"], [{"page": "CHARACTER.md", "problems": [
+            "'cautoin' is not a trait (closest: caution); the traits are caution, curiosity, persistence, openness, "
+            "resilience, sensitivity", "'openness = 2' is outside 0 to 1"]}])
+        # What could be read is in force: the pages a persistent brain keeps, kept twice as long, or nearly.
+        self.assertEqual(report["tuning"], {"dormant_days": 313, "goal_stale_days": 52, "hebbian_half_life": 157})
+        self.assertIn("\nschema problems: 1\n  CHARACTER.md: 'cautoin' is not a trait", run_brain(self.root, "check").stdout)
+
+        def hook(*flags, tool="Edit", **tool_input):
+            return subprocess.run([sys.executable, os.path.join(HOOKS, "validate_page.py"), *flags], text=True,
+                                  input=json.dumps({"tool_name": tool, "tool_input": dict(file_path=path, **tool_input)}),
+                                  capture_output=True, env=dict(os.environ, CLAUDE_PROJECT_DIR=self.root))
+
+        self.assertEqual(hook().returncode, 2)  # as it stands on the disk
+        # A page that is already wrong can be put right a line at a time; a new wrong line is refused.
+        self.assertEqual(hook("--pre", old_string="cautoin = 0.8", new_string="caution = 0.8").returncode, 0)
+        bad = hook("--pre", old_string="persistence = 0.9", new_string="persistence = 9")
+        self.assertEqual(bad.returncode, 2)
+        self.assertIn("Blocked before writing CHARACTER.md: 'persistence = 9' is outside 0 to 1", bad.stderr)
+        self.character("caution = 0.8")
+        self.assertEqual((hook().returncode, run_brain(self.root, "check").returncode), (0, 0))
+        # Its prose is the owner's: no frontmatter, no summary, nothing but the traits is held to anything.
+        fresh = hook("--pre", tool="Write", content="# Character\n\n## Voice\n\n- Blunt.\n")
+        self.assertEqual((fresh.returncode, fresh.stderr), (0, ""))
+        os.remove(path)
+        self.assertEqual(json.loads(run_brain(self.root, "check", "--json").stdout)["schema"], [])
+
+    def test_usage_lists_every_trait_and_says_which_one_moved_a_threshold(self):
+        self.character("caution = 0.8 (measured)")
+        self.tune("recall_floor = 0.3")
+        r = json.loads(run_brain(self.root, "introspect", "--usage", "--json").stdout)["usage"]
+        self.assertEqual(list(r["traits"]), list(vaultlib.TRAITS))
+        self.assertEqual((r["traits"]["caution"]["value"], r["traits"]["caution"]["moves"], r["traits"]["openness"]["value"]),
+                         (0.8, ["min_coverage", "recall_floor", "held_coverage"], 0.5))
+        self.assertEqual([(name, row["value"], row["by"]) for name, row in r["thresholds"].items()
+                          if row["value"] != row["default"]],
+                         [("recall_floor", 0.3, None), ("min_coverage", 0.2274, "caution"), ("held_coverage", 0.7579, "caution")])
+        text = run_brain(self.root, "introspect", "--usage").stdout
+        self.assertIn("\n  min_coverage = 0.2274  (default 0.15, moved by caution; 0.0 to 1.0): recall lists nothing", text)
+        self.assertIn("\n  recall_floor = 0.3  (default 0.4; 0.0 to 1.0): recall cuts rows", text)
+        self.assertIn("\ntraits (0 to 1, a line under `## Traits` in CHARACTER.md; 0.5 moves nothing, and an override "
+                      "holds over a trait; `brain eval --set name=value` measures one first): 6\n"
+                      "  caution = 0.8  (moves min_coverage, recall_floor, held_coverage): how sure it must be", text)
+        self.assertIn("\n  sensitivity = 0.5  (moves feeling_full): how much one event counts", text)
+        # The briefing prints the traits with the rest of the page, so the model reads the same line the engine does.
+        self.assertIn("  Traits:\n  - caution = 0.8 (measured)\n", run_brain(self.root, "character").stdout)
 
 
 class TheCacheFollowsTheWeights(Tuned):

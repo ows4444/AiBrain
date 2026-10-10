@@ -31,8 +31,9 @@ KEYS = {
     "introspect": ("introspect", [], SUMMARY),
     "introspect --json": ("introspect", ["--json"], SUMMARY + [
         "candidate_pairs", "candidates", "contradictions", "decisions", "dormant", "due", "encoding", "gaps",
-        "intentions", "open", "queue", "relations", "risk", "stale", "usage"]),
+        "intentions", "open", "queue", "relations", "risk", "salience", "stale", "usage"]),
     "introspect --due": ("introspect", ["--due"], SUMMARY + ["due", "risk"]),
+    "introspect --salience": ("introspect", ["--salience"], SUMMARY + ["salience"]),
     "introspect --graph": ("introspect", ["--graph"], SUMMARY + [
         "bridges", "bridges_estimated", "clusters", "cut_points", "hubs", "schema_candidates", "tags"]),
     "introspect --context": ("introspect", ["--context"], SUMMARY + ["context", "session_bytes"]),
@@ -52,6 +53,7 @@ KEYS = {
     "export": ("export", ["spacing-effect", "--keep-titles", "--out", "{tmp}/exported"],
                ["exported", "out", "personal", "unlinked"]),
     "capture": ("capture", ["a", "line", "to", "keep"], ["bytes", "note"]),
+    "character": ("character", [], ["file", "lines"]),
     "door": ("door", [], ["did", "door", "left", "unreachable", "waiting"]),
     "door --pull": ("door", ["--pull"], ["brought", "did", "door", "left", "unreachable"]),
     "door FOLDER": ("door", ["{tmp}/vault"], ["did", "door", "was"]),
@@ -68,6 +70,7 @@ KEYS = {
         "author", "headings", "part", "path", "published", "raw_bytes", "saved", "saved_bytes", "title", "url",
         "words"]),
     "fit": ("fit", ["senses/cepeda.md"], ["held", "input", "pages", "triggers", "words"]),
+    "feel": ("feel", ["spacing"], ["about", "date", "feelings", "half_life", "mood", "more"]),
     "inbox": ("inbox", [], ["notes", "ready"]),
     "import --dry-run": ("import", ["obsidian", "{tmp}/vault", "--dry-run"], [
         "already", "attachments", "changed", "duplicates", "empty", "forgotten", "from", "imported", "into",
@@ -79,7 +82,7 @@ KEYS = {
     "forget": ("forget", ["cepeda-2006"], ["asset", "candidates", "citing", "episodes", "input", "other_inputs"]),
     "forget --yes": ("forget", ["cepeda-2006", "--yes"], [
         "asset", "candidates", "citing", "episodes", "input", "other_inputs", "removed"]),
-    "tend --check": ("tend", ["--check"], ["at_risk", "contradictions", "date", "gaps", "inbox", "late", "needs",
+    "tend --check": ("tend", ["--check"], ["at_risk", "contradictions", "date", "felt", "gaps", "inbox", "late", "needs",
                                            "notified", "rehearse", "reminders", "review", "revisit", "senses", "sleep"]),
     "schedule": ("schedule", [], ["brain", "cron", "did", "minutes", "plist", "runs", "set"]),
     "eval": ("eval", [], ["problems", "retrieval"]),
@@ -91,7 +94,7 @@ KEYS = {
     "bench": ("bench", ["--pages", "10"], ["commands", "hooks", "links", "log_lines", "pages", "repeat", "seed", "vault"]),
 }
 STATUSLINE = ["context", "decisions", "inbox", "line", "rehearse", "reminders", "senses", "sleep"]
-RECALL_ROW = sorted(ROW + ["confidence", "flags", "from", "hop", "section"])
+RECALL_ROW = sorted(ROW + ["against", "confidence", "flags", "from", "hop", "section"])
 
 
 class Brain(TempBrain):

@@ -48,8 +48,11 @@ in one sentence and stop.
    not reach; stop when new pages stop adding anything.
 3. **Answer in plain prose** with `[[page]]` citations inline, in the mode
    asked for (below). State each cited concept's confidence as `brain recall`
-   gives it (`low`, `medium`, `high`, with its source count), and say when a
-   page is `contradicted` by new input sleep has not weighed yet. A long
+   gives it (`low`, `medium`, `high`, with its source count). A row flagged
+   `contradicted` names the pages that say the opposite (`the opposite is
+   said by:`), whether or not they are among the rows: read them, and give
+   both positions with their sources, saying that sleep has not weighed
+   them yet. An answer from one side of a contradiction is not an answer. A long
    answer (more than a paragraph, or one that gives numbers or quotes a
    page) is checked before it is given: pass it to `brain ground -` on
    stdin, and for each line it lists cite the page, label the sentence

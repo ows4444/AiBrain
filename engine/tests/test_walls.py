@@ -406,7 +406,8 @@ class TheLibraryKeepsItsOwnCopies(TempBrain):
             self.assertEqual((vaultlib.find_brain(start), errlog.brain_of(start)), (found, found), start)
             self.assertEqual(shared.is_brain(start), vaultlib.is_brain(start), start)
         self.assertEqual((shared.find_brain(inside), shared.find_brain(outside)), (os.path.realpath(self.root), None))
-        self.assertEqual((shared.MEMORY_DIRS, shared.PROJECTS_DIR), (vaultlib.MEMORY_DIRS, vaultlib.PROJECTS_DIR))
+        self.assertEqual((shared.MEMORY_DIRS, shared.PROJECTS_DIR, shared.CHARACTER_FILE),
+                         (vaultlib.MEMORY_DIRS, vaultlib.PROJECTS_DIR, vaultlib.CHARACTER_FILE))
 
     def test_the_case_of_a_path(self):
         for platform in ("darwin", "linux"):

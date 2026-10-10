@@ -30,6 +30,13 @@ The `reviewer` agent can run this whole review in its own context.
    (`brain introspect --decisions`). Concepts untouched for 90 days or more
    (`brain introspect --stale`, oldest first): name the oldest few and ask
    whether each still holds; only the owner's answer changes a page.
+   Pages marked `salience: 4` or more never fade, and
+   `brain introspect --salience` lists the ones no live goal reaches and
+   nothing has used for 180 days. Ask of each whether it still matters. Yes: add
+   `- Rechecked (owner, DATE): still matters.` under its last section and
+   set `updated:`. No: lower or remove the mark, as they say. The same view
+   counts the episodes marked 1 to 3 for no reason the pages show; when
+   that is most of them, say so, because a mark on everything tells nothing.
 4. **Decisions:** reviewed in the period and how they compared with what was
    expected. Once five or more are reviewed, say whether the outcomes lean
    `better` or `worse` than expected; that is a calibration signal. So is
@@ -47,7 +54,10 @@ The `reviewer` agent can run this whole review in its own context.
    answered: `brain introspect --gaps` lists them, most asked first, each
    with the held idea or the index gap it names. The one asked most is
    what to read next; say so in Next.
-7. **Next:** three actions, each tied to a page.
+7. **Next:** three actions, each tied to a page. `brain feel` lists what the
+   record gives most to feel about, each with its cause: of two actions
+   that are otherwise equal, the one more is felt about comes first, and its
+   cause is said. A feeling orders the three; it adds none and drops none.
 8. **Schedule** (only if asked): propose cadences from log volume, by default
    `/ingest` when senses/ fills, `/sleep` weekly (proposals only: fading and
    schema pages still wait for a yes), `/reflect save` weekly as the digest,

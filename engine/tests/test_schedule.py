@@ -152,9 +152,10 @@ class WhatItRuns(Unattended):
             self.assertEqual(json.load(fh), {"date": TODAY.isoformat(), "shown": ["Renew the domain"]})
         self.remind(f"Renew the domain when {ago(1)}", f"Call DevOps when {ago(0)} 10:00")
         self.assertEqual(tend.announcements(self.root, self.on(TODAY)), ["Reminder: Call DevOps"])
-        self.assertEqual(tend.announcements(self.root, self.on(tomorrow)), ["in the inbox 1, reminders due 2"])  # a new day
+        # A new day: everything that waits in one line, what is felt most first (a reminder two days due is a worry).
+        self.assertEqual(tend.announcements(self.root, self.on(tomorrow)), ["reminders due 2, in the inbox 1"])
         self.write(tend.NOTIFIED, "not json")  # lost or spoiled: the day's line is said once more
-        self.assertEqual(tend.announcements(self.root, self.on(tomorrow)), ["in the inbox 1, reminders due 2"])
+        self.assertEqual(tend.announcements(self.root, self.on(tomorrow)), ["reminders due 2, in the inbox 1"])
 
     def test_the_line_is_shown_by_what_this_machine_has(self):
         self.remind('Say "hi" \\ now when 2026-01-01')

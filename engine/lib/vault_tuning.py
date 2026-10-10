@@ -15,8 +15,19 @@ Not here: the numbers the documents state as rules (a concept needs two
 sources, salience 4 and up never fades, a summary is at most 200 characters,
 three tags at most). Those are the brain's contract and live in vault_model.
 
-No dependencies. Nothing here walks the brain: the overrides are one file,
-read by its path as the log is.
+A trait is a second way to hold a threshold at another value, by what the
+brain is like and not number by number: a line under `## Traits` in
+CHARACTER.md,
+
+    - caution = 0.8 (I would rather hear "not covered" than a weak page)
+
+Each trait runs from 0 to 1 and moves the few thresholds TRAITS names for it;
+at 0.5 it moves nothing. A trait has nothing else: one that moved no threshold
+would be prose under a number. A line in tuning.md still wins: the trait says
+where a threshold starts, the override where it stands.
+
+No dependencies. Nothing here walks the brain: the overrides are one file and
+the traits another, read by their paths as the log is.
 """
 import collections
 import difflib
@@ -24,7 +35,9 @@ import os
 import re
 
 TUNING_PATH = os.path.join("hippocampus", "tuning.md")
+CHARACTER_FILE = "CHARACTER.md"  # who the brain is to its owner; the rules of CLAUDE.md come before any line of it
 OVERRIDES = re.compile(r"^## Overrides[ \t]*\n(.*?)(?=^## |\Z)", re.S | re.M)
+TRAIT_LINES = re.compile(r"^## Traits[ \t]*\n(.*?)(?=^## |\Z)", re.S | re.M)
 BULLET = re.compile(r"^[-*]\s+")
 # `- name = value`, then anything in brackets: why the value was kept, and when.
 OVERRIDE = re.compile(r"^[-*]\s+(?P<name>[^=\s]+)\s*=\s*(?P<value>[^(]*?)\s*(?:\(.*\)\s*)?$")
@@ -151,6 +164,19 @@ THRESHOLDS = {name: Threshold(*spec) for name, spec in {
     # weighs it. The mark shows where to look: whether the input reports the event is read.
     "trigger_coverage": (0.6, 0.0, 1.0, "share of an event's words an input must hold for `brain fit` to mark the "
                                          "reminder or decision that waits on it"),
+    # -- what the record gives the brain to feel (`brain feel`) --------------------------
+    "feeling_half_life": (7, 1, 365, "days for an event to count half as much in a feeling; a state that stands "
+                                     "(a goal past its date) counts once more for each of them"),
+    "feeling_full": (3.0, 1.0, 100.0, "how many fresh events of one kind toward one target make a feeling as strong "
+                                      "as it gets"),
+    "feeling_floor": (0.1, 0.0, 1.0, "a feeling weaker than this share of its strongest has faded and is not listed"),
+    "mood_half_life": (30, 1, 3650, "days for an event to count half as much in the mood, which is the same events "
+                                    "read over a longer time and across every target"),
+    "mood_lean": (0.33, 0.0, 1.0, "how far what is done well must outweigh what is missed and overdue, or the other "
+                                  "way, as a share of both, before the mood is content or uneasy and not even"),
+    # -- what a trait does (CHARACTER.md > Traits) -----------------------------------------
+    "trait_span": (2.0, 1.0, 10.0, "how far a trait at either end moves a threshold: times this at one end, divided "
+                                   "by it at the other; at 1 no trait moves anything"),
     # -- what was asked and not answered (`brain introspect --gaps`) ---------------------
     # Questions no page answered are one gap when they share a rare word; a question with
     # no rare word is known by all of its words.
@@ -158,6 +184,28 @@ THRESHOLDS = {name: Threshold(*spec) for name, spec in {
                                         "grouped by the rare words they share"),
 }.items()}
 WEIGHT = "weight_"  # weight_<field>: the fields search reads, in the registry's order
+
+# what: what the trait is, for the owner who sets it
+# moves: the thresholds it moves, and which way: 1 raises one as the trait rises, -1 lowers it.
+#        No threshold is moved by two traits, so a value always has one reason.
+Trait = collections.namedtuple("Trait", "what moves")
+TRAITS = {
+    "caution": Trait("how sure it must be before it lists a page or a held idea: higher, and it says sooner that "
+                     "nothing covers the question", (("min_coverage", 1), ("recall_floor", 1), ("held_coverage", 1))),
+    "curiosity": Trait("how much of what is unresolved it raises: higher, and more held ideas come with a recall, "
+                       "and a smaller cluster of concepts already wants a page that frames it",
+                       (("held_limit", 1), ("schema_min", -1))),
+    "persistence": Trait("how long it holds on to what is not in use: higher, and a page takes longer to fade, a "
+                         "goal past its date keeps its pages longer, and pages recalled together stay paired longer",
+                         (("dormant_days", 1), ("goal_stale_days", 1), ("hebbian_half_life", 1))),
+    "openness": Trait("how far recall reaches from the words asked: higher, and it follows more links and each "
+                      "carries more", (("spread_hops", 1), ("spread_decay", 1), ("unlinked_association", 1))),
+    "resilience": Trait("how fast what it feels fades: higher, and an event stops counting sooner, in a feeling "
+                        "and in the mood", (("feeling_half_life", -1), ("mood_half_life", -1))),
+    "sensitivity": Trait("how much one event counts in what it feels: higher, and fewer of them make a feeling as "
+                         "strong as it gets", (("feeling_full", -1),)),
+}
+EVEN = 0.5  # a trait here moves nothing: every threshold of its is the engine's
 
 
 def shown(value):
@@ -173,8 +221,10 @@ def plain(value):
 def value_of(name, text):
     """`text` as a value of the threshold `name`; ValueError says what is wrong with it."""
     spec = THRESHOLDS.get(name)
+    if name in TRAITS:
+        raise ValueError(f"'{name}' is a trait, not a threshold: it is set under `## Traits` in {CHARACTER_FILE}")
     if spec is None:
-        close = difflib.get_close_matches(name, THRESHOLDS, n=1)
+        close = difflib.get_close_matches(name, [*THRESHOLDS, *TRAITS], n=1)
         raise ValueError(f"'{name}' is not a threshold" + (f" (closest: {close[0]})" if close else "")
                          + "; `brain introspect --usage` lists them")
     ladder, whole = isinstance(spec.default, tuple), not isinstance(spec.default, float)
@@ -190,35 +240,54 @@ def value_of(name, text):
     return tuple(values) if ladder else values[0]
 
 
+def trait_of(name, text):
+    """`text` as a value of the trait `name`, from 0 to 1; ValueError says what is wrong with it."""
+    if name in THRESHOLDS:
+        raise ValueError(f"'{name}' is a threshold, not a trait: it is set under `## Overrides` in {TUNING_PATH}")
+    if name not in TRAITS:
+        close = difflib.get_close_matches(name, TRAITS, n=1)
+        raise ValueError(f"'{name}' is not a trait" + (f" (closest: {close[0]})" if close else "")
+                         + f"; the traits are {', '.join(TRAITS)}")
+    try:
+        value = float(text)
+    except ValueError:
+        raise ValueError(f"'{name} = {text.strip()}' is not a number") from None
+    if not 0.0 <= value <= 1.0:
+        raise ValueError(f"'{name} = {text.strip()}' is outside 0 to 1")
+    return value
+
+
 def setting(text):
-    """(name, value) from `name=value`, as `brain eval --set` takes it; ValueError says what is wrong."""
+    """(name, value) from `name=value`, as `brain eval --set` takes it: a threshold or a trait; ValueError says
+    what is wrong."""
     name, equals, value = text.partition("=")
     if not equals:
         raise ValueError(f"'{text}' is not name=value")
-    return name.strip(), value_of(name.strip(), value)
+    name = name.strip()
+    return name, trait_of(name, value) if name in TRAITS else value_of(name, value)
 
 
-def read_overrides(text):
-    """({name: value}, [what is wrong]) from the `## Overrides` section of a tuning page.
+def read_lines(text, section, value_of_one, kind):
+    """({name: value}, [what is wrong]) from the list under one heading of a page.
 
     A line there is `- name = value`, with an optional note in brackets after it.
-    A name that is no threshold, or a value outside its range, is not used: it is
+    A name that is not known, or a value outside its range, is not used: it is
     listed and the default holds. A name set twice is listed too; the later line holds.
     Lines that are not list items are prose, and ignored.
     """
-    section = OVERRIDES.search(text)
+    found = section.search(text)
     values, problems = {}, []
-    for line in (section.group(1).splitlines() if section else []):
+    for line in (found.group(1).splitlines() if found else []):
         line = line.strip()
         if not BULLET.match(line):
             continue
         m = OVERRIDE.match(line)
         if not m:
-            problems.append(f"cannot read '{line}': an override is `- name = value (why)`")
+            problems.append(f"cannot read '{line}': {kind} is `- name = value (why)`")
             continue
         name = m.group("name").strip("`")
         try:
-            value = value_of(name, m.group("value").strip("`"))
+            value = value_of_one(name, m.group("value").strip("`"))
         except ValueError as why:
             problems.append(str(why))
             continue
@@ -228,19 +297,57 @@ def read_overrides(text):
     return values, problems
 
 
+def read_overrides(text):
+    """({name: value}, [what is wrong]) from the `## Overrides` section of a tuning page."""
+    return read_lines(text, OVERRIDES, value_of, "an override")
+
+
+def read_traits(text):
+    """({trait: value}, [what is wrong]) from the `## Traits` section of the character page."""
+    return read_lines(text, TRAIT_LINES, trait_of, "a trait")
+
+
 def tuning_problems(text):
     """What is wrong with the overrides in a tuning page's text; [] if nothing."""
     return read_overrides(text)[1]
 
 
+def character_problems(text):
+    """What is wrong with the traits in the character page's text; [] if nothing. Its prose is the owner's."""
+    return read_traits(text)[1]
+
+
+def moved_by(traits, span):
+    """({threshold: value}, {threshold: trait}) for the thresholds these traits move off their defaults.
+
+    A trait at 0.5 moves nothing. At 1 a threshold it raises is `span` times its default
+    and at 0 that many times smaller, by the same factor for the same step between; a
+    threshold it lowers goes the other way. Never outside the threshold's own range, and
+    a whole number stays whole.
+    """
+    values, by = {}, {}
+    for trait, value in traits.items():
+        for name, way in TRAITS[trait].moves:
+            spec = THRESHOLDS[name]
+            moved = min(max(spec.default * span ** ((2 * value - 1) * way), spec.low), spec.high)
+            moved = round(moved, 4) if isinstance(spec.default, float) else int(moved + 0.5)
+            if moved != spec.default:
+                values[name], by[name] = moved, trait
+    return values, by
+
+
 class Tuning:
     """One brain's thresholds: the defaults, with its own values over them, read as `tuning.stale_days`.
 
-    `overrides` holds the values that differ by the brain's own choice ({} for most brains);
-    they are taken as valid, which read_overrides, value_of and setting make them.
+    `overrides` holds the values that differ by the brain's own choice ({} for most brains),
+    whether a line in tuning.md holds them there or a trait moved them; they are taken as
+    valid, which read_overrides, value_of and setting make them. `traits` is what the brain
+    sets of its character, and `by` the trait behind each threshold that one moved and no
+    override holds.
     """
 
-    def __init__(self, overrides=None):
+    def __init__(self, overrides=None, traits=None, by=None):
+        self.traits, self.by = dict(traits or {}), dict(by or {})
         self.overrides = {name: tuple(value) if isinstance(value, list) else value
                           for name, value in (overrides or {}).items()}
         for name, spec in THRESHOLDS.items():
@@ -258,24 +365,45 @@ class Tuning:
         return " ".join(f"{field}={weight}" for field, weight in self.field_weights)
 
     def rows(self):
-        """{name: {value, default, low, high, what}} for every threshold, in the registry's order, as plain data."""
+        """{name: {value, default, low, high, what, by}} for every threshold, in the registry's order, as plain
+        data. `by` is the trait that moved it, None for one at its default or held by an override."""
         return {name: {"value": plain(getattr(self, name)), "default": plain(spec.default), "low": spec.low,
-                       "high": spec.high, "what": spec.what} for name, spec in THRESHOLDS.items()}
+                       "high": spec.high, "what": spec.what, "by": self.by.get(name)}
+                for name, spec in THRESHOLDS.items()}
+
+    def standing(self, name):
+        """What a threshold or a trait stands at in this brain, as plain data: a trait it does not set is 0.5."""
+        return self.traits.get(name, EVEN) if name in TRAITS else plain(getattr(self, name))
+
+    def trait_rows(self):
+        """{trait: {value, what, moves}} for every trait: 0.5 where the brain sets none, and the thresholds it moves."""
+        return {name: {"value": self.traits.get(name, EVEN), "what": trait.what, "moves": [t for t, _ in trait.moves]}
+                for name, trait in TRAITS.items()}
 
     def changed(self):
-        """{name: value} for the thresholds this brain overrides, as plain data: what a command's result carries
-        so that its text can name the brain's own numbers. Tuning(changed()) is these thresholds again."""
+        """{name: value} for the thresholds this brain holds at another value than the engine's, by an override
+        or by a trait, as plain data: what a command's result carries so that its text can name the brain's own
+        numbers. Tuning(changed()) is these thresholds again."""
         return {name: plain(value) for name, value in self.overrides.items()}
 
 
+def said_in(root, rel, read):
+    """What `read` makes of the file at `rel` in the brain: its values, {} when there is no such file."""
+    path = os.path.join(root, rel)
+    if not os.path.exists(path):
+        return {}
+    with open(path, encoding="utf-8", errors="replace") as fh:
+        return read(fh.read())[0]
+
+
 def tuning_of(root, trial=None):
-    """The thresholds of the brain at `root`: its own overrides, with `trial` ({name: value}) laid over them.
+    """The thresholds of the brain at `root`: its traits move them, its own overrides hold over that, and
+    `trial` ({name: value}, thresholds and traits) is laid over both.
 
     `trial` is how a value is tried before it is kept (`brain eval --set`): nothing is written.
     """
-    path = os.path.join(root, TUNING_PATH)
-    own = {}
-    if os.path.exists(path):
-        with open(path, encoding="utf-8", errors="replace") as fh:
-            own = read_overrides(fh.read())[0]
-    return Tuning(dict(own, **(trial or {})))
+    trial = trial or {}
+    traits = dict(said_in(root, CHARACTER_FILE, read_traits), **{n: v for n, v in trial.items() if n in TRAITS})
+    held = dict(said_in(root, TUNING_PATH, read_overrides), **{n: v for n, v in trial.items() if n in THRESHOLDS})
+    moved, by = moved_by(traits, held.get("trait_span", THRESHOLDS["trait_span"].default))
+    return Tuning(dict(moved, **held), traits, {name: trait for name, trait in by.items() if name not in held})

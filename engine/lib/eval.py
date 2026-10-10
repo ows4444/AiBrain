@@ -72,6 +72,9 @@ written, the search cache included; the report names what was tried and the
 brain's own value. To keep one, add `- NAME = VALUE (why)` under `## Overrides`
 in the brain's hippocampus/tuning.md; `brain introspect --usage` lists every
 threshold with its range. A baseline is never saved from a tried value.
+NAME may be a trait (`--set caution=0.8`, from 0 to 1): the thresholds it
+moves are tried together, and the line to keep goes under `## Traits` in
+CHARACTER.md.
 
 --from-log takes the questions from the brain's own log, in place of a
 question set: every recall line that is not a rehearsal is a question, and
@@ -415,8 +418,7 @@ def run(root, args):
                                              "expect": q.get("expect", [])} for q in asked]}
     if trial:
         own = tuning_of(brain)
-        result["set"] = {name: {"value": plain(value), "was": plain(getattr(own, name))}
-                         for name, value in trial.items()}
+        result["set"] = {name: {"value": plain(value), "was": own.standing(name)} for name, value in trial.items()}
     if args.save_baseline:
         r = result["retrieval"]
         os.makedirs(os.path.dirname(where), exist_ok=True)

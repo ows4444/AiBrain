@@ -27,7 +27,8 @@ pages do not cover gets one sentence saying so, not a brief.
    the lines under `read first` before the rest of a page.
 2. **Write** the brief in the shape below. Most supported first; a claim's
    confidence as `brain recall` gives it; `disputed`, `contradicted` and
-   `stale` said where they apply. Dates as the pages give them.
+   `stale` said where they apply. A contradicted row names the pages that
+   say the opposite: read them, and give both sides. Dates as the pages give them.
 3. **Check** it when it holds numbers or quotations: pass it to
    `brain ground -` on stdin, and for each line it lists cite the page, label
    the sentence outside knowledge, or take it out.

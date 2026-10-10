@@ -24,7 +24,8 @@ optionally the summary it reported.
    - ingest: episodes, index entries and log lines only; no concept page
      created or rewritten; every episode has `input:` and its candidates.
    - sleep: every new concept has two or more sources in
-     `brain introspect --queue` (or one salient episode); replayed episodes
+     `brain introspect --queue` (or one salient episode, whose `salience`
+     the new concept then carries); replayed episodes
      have `consolidated:`; nothing moved to `dormant/` without approval.
    - recall-type runs (ask, write, focus, explore, decide): a `recall` line
      names the pages actually used; a piece saved in `motor/` passes

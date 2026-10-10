@@ -4,7 +4,7 @@ Usage:
     brain introspect [--json] [--queue] [--due] [--decisions] [--open] [--goals] [--projects]
                                   [--dormant] [--stale] [--snapshot] [--remind] [--links]
                                   [--hubs] [--bridges] [--clusters] [--tags] [--graph] [--usage]
-                                  [--gaps] [--context]
+                                  [--gaps] [--salience] [--context]
 
 Default output is the four health metrics (orphan rate, average degree,
 components, stale-concept rate) with a verdict on each, plus counts and the
@@ -63,7 +63,9 @@ are the defaults, and the text prints the brain's own.
              progress to the calibration checkpoint (20 inputs, 4 sleeps):
              the evidence for deciding which features stay; and every
              threshold with its range, what it does and this brain's value
-             (its default too, where the brain overrides it), for that review
+             (its default too, where the brain overrides it, and the trait
+             that moved it when one did), for that review; and every trait
+             with its value here and the thresholds it moves
   --gaps     what was asked and not answered: the recall lines that named no
              page, most asked first. Questions that share a rare word (one
              under 5% of the pages hold) are one gap, known by the words they
@@ -71,6 +73,16 @@ are the defaults, and the text prints the brain's own.
              words closes it. With each: the ideas held on an episode and the
              pages listed under the index's Gaps that it names, which is where
              to start reading. From the log only
+  --salience how the mark of what matters is spread: episodes by the level
+             they carry, and of the pages built on them how many carry a mark
+             and how many take one from an episode (up to 3: it moves the
+             order of rehearsal and the time to fade). Then the episodes
+             marked 1 to 3 for no reason the pages show: they link no page a
+             live goal or project depends on and say the opposite of none, so
+             high stakes is the reason left, or a goal since closed. And the
+             pages that carry 4 or more, which never fade, that no live goal
+             reaches and nothing has used for 180 days: ask the owner whether
+             each still matters; only their answer changes a mark
   --context  the context budget: the size of what loads every session (the
              root CLAUDE.md, the description of each skill and agent the
              model can see, the wake-up briefing) and of what loads on use
@@ -92,7 +104,7 @@ from collections import Counter
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from vault_intentions import stamp  # noqa: E402
-from vaultlib import TUNING_PATH, Tuning, Vault, shown, verdicts  # noqa: E402
+from vaultlib import CHARACTER_FILE, TUNING_PATH, Tuning, Vault, shown, verdicts  # noqa: E402
 
 TOP = 10
 GAP_QUESTIONS = 3  # wordings of one gap printed; --json has them all
@@ -320,6 +332,7 @@ VIEWS = {
     "open": lambda r: {k: [p.rel if not isinstance(p, tuple) else f"{p[0].rel} contradicts {p[1].rel}" for p in v]
                        for k, v in r.vault.open_items().items()},
     "gaps": lambda r: r.vault.unanswered(),
+    "salience": lambda r: r.vault.salience_report(),
     # The graph views cost more (betweenness is pages x links), so they come only when asked for.
     "hubs": _hubs,
     "bridges": _bridges,
@@ -353,13 +366,14 @@ FLAG_VIEWS = {
     "tags": ("tags",),
     "usage": ("usage",),
     "gaps": ("gaps",),
+    "salience": ("salience",),
 }
 # `--json` with no flag: the whole report, apart from the graph views and the link suggestions.
 EVERYTHING = ("pages", "by_type", "links", "avg_degree", "orphan_rate", "components", "main_component_share",
               "verdicts", "stale_concept_rate", "broken_links", "awaiting_consolidation", "due_for_rehearsal",
               "decisions_due", "goals", "projects", "relations", "calibration", "usage", "most_recalled", "stale",
               "queue", "candidates", "candidate_pairs", "contradictions", "encoding", "due", "risk", "decisions",
-              "intentions", "dormant", "open", "gaps", "tuning")
+              "intentions", "dormant", "open", "gaps", "salience", "tuning")
 ORDER = EVERYTHING + ("hubs", "bridges", "bridges_estimated", "cut_points", "clusters", "schema_candidates", "tags",
                       "link_suggestions")
 GRAPH = ("hubs", "bridges", "clusters", "tags")  # the flags `--graph` stands for
@@ -452,7 +466,8 @@ def run(root, args):
 
 def threshold_line(name, row):
     """One threshold as tuning.md takes it, then its default where the brain overrides it, its range and what it does."""
-    was = f"default {shown(row['default'])}; " if row["value"] != row["default"] else ""
+    was = f"default {shown(row['default'])}" + (f", moved by {row['by']}" if row["by"] else "") + "; " \
+        if row["value"] != row["default"] else ""
     return f"{name} = {shown(row['value'])}  ({was}{row['low']} to {row['high']}): {row['what']}"
 
 
@@ -562,6 +577,17 @@ def render(r, args):
     if "gaps" in show:
         out += listed("asked and not answered (recall named no page; most asked first)",
                       [gap_line(g) for g in r["gaps"]])
+    if "salience" in show:
+        m = r["salience"]
+        levels = ", ".join(f"{level}: {n}" for level, n in m["marked"].items() if n)
+        out.append(f"\nsalience: {sum(m['marked'].values())} of {m['episodes']} episodes marked"
+                   + (f" ({levels})" if levels else "") + f"; of {m['built']['pages']} pages built on them, "
+                   f"{m['built']['carry']} carry a mark and {m['built']['reach']} take one from an episode")
+        out += listed("marked 1 to 3 for no reason the pages show (no page a live goal or project depends on, "
+                      "nothing contradicted: high stakes, or a goal since closed)", m["unexplained"])
+        out += listed(f"marked 4 or 5, outside every live goal, unused for {t.dormant_days}+ days "
+                      "(ask whether each still matters; only the owner's answer changes it)",
+                      [f"{x['last']}  {x['page']}  (salience {x['salience']})" for x in m["unasked"]])
     if "usage" in show:
         u = r["usage"]
         out += listed("operations logged", [f"{n:>4}  {op}" for op, n in u["operations"].items()])
@@ -576,6 +602,10 @@ def render(r, args):
         out += listed(f"thresholds (a line under `## Overrides` in {TUNING_PATH} changes one, written as below; "
                       "`brain eval --set name=value` measures one first)",
                       [threshold_line(name, row) for name, row in u["thresholds"].items()])
+        out += listed(f"traits (0 to 1, a line under `## Traits` in {CHARACTER_FILE}; 0.5 moves nothing, and an "
+                      "override holds over a trait; `brain eval --set name=value` measures one first)",
+                      [f"{name} = {row['value']}  (moves {', '.join(row['moves'])}): {row['what']}"
+                       for name, row in u["traits"].items()])
     if "context" in show:
         c = r["context"]
         row = lambda x: f"{x['bytes']:>7} {x['lines']:>6} {x['tokens_est']:>7}  {x['what']}"  # noqa: E731
