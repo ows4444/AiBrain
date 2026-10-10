@@ -185,7 +185,8 @@ a second machine opens its own.
 ### Other programs
 
 `brain mcp` is a read-only [MCP](https://modelcontextprotocol.io) server over
-the same instruments: `search`, `recall`, `since` and `gaps`. Another client
+the same instruments: `search`, `recall`, `since`, `gaps` and `waiting`
+(what `brain tend --check` reports: what is due and what waits). Another client
 (a desktop app, an editor) starts it and reads the brain with no hooks of its
 own. In that client's configuration:
 

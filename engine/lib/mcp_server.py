@@ -4,13 +4,14 @@ Usage:
     brain mcp                 serve on stdin and stdout until stdin closes
 
 Another host (a desktop client, an editor, a script) starts this as a
-subprocess and gets four tools, each one a `brain` command called in this
+subprocess and gets five tools, each one a `brain` command called in this
 process (lib/commands.py), its text returned as it would print:
 
     search   pages by their words
     recall   words, then association along links; confidence, flags, the section to read first
     since    what was made, changed, asked and rehearsed in a period
     gaps     what was asked and not answered
+    waiting  what needs the owner: reminders and rehearsals due, queues, decisions, goals
 
 No tool writes: no page, no index, and no line in the log, so a page read this
 way does not count as used. The brain is $BRAIN_ROOT, else the nearest one at
@@ -47,8 +48,8 @@ LEGACY = ("2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05")   # served aft
 META = "io.modelcontextprotocol/"
 INSTRUCTIONS = ("Read-only access to one person's knowledge base (an AiBrain). `recall` finds the pages that bear on "
                 "a question and is the place to start; `search` finds pages by exact words; `since` lists what "
-                "changed in a period; `gaps` lists what was asked and never answered. Answer from the pages and name "
-                "them. Nothing here writes: a page read this way leaves no trace in the brain's log.")
+                "changed in a period; `gaps` lists what was asked and never answered; `waiting` lists what the brain is "
+                "waiting on its owner for. Answer from the pages and name them. Nothing here writes: a page read this way leaves no trace in the brain's log.")
 TTL_MS = 3600000  # the tool list and the server's description do not change while it runs
 PARSE_ERROR, INVALID_REQUEST, NO_METHOD, INVALID_PARAMS, INTERNAL, UNSUPPORTED = -32700, -32600, -32601, -32602, -32603, -32022
 READ_ONLY = {"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False}
@@ -90,6 +91,11 @@ TOOLS = {
               lambda a: ["since", *flag("--until", a.get("until")), "--", a["start"]]),
     "gaps": ("What was asked of the brain and not answered, most asked first, with the held idea or the index gap "
              "each names: what to read next.", schema(), lambda a: ["introspect", "--gaps"]),
+    "waiting": ("What the brain is waiting on its owner for: reminders whose time has come, pages due for rehearsal, "
+                "input not yet encoded, decisions to review, goals slipping, questions not answered. One line for "
+                "each kind that holds something, and one saying so when nothing does. A program that acts on a "
+                "schedule asks this to learn what is due; doing it stays with the owner.",
+                schema(), lambda a: ["tend", "--check"]),
 }
 
 

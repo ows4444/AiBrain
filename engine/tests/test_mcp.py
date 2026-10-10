@@ -1,4 +1,4 @@
-"""The read-only MCP server: another program lists the brain's four tools and calls them. Run: brain test"""
+"""The read-only MCP server: another program lists the brain's five tools and calls them. Run: brain test"""
 import io
 import json
 import os
@@ -8,7 +8,7 @@ import sys
 import tempfile
 from unittest import mock
 
-from support import BRAIN, ENGINE, TempBrain, ago, page
+from support import BRAIN, ENGINE, TempBrain, ago, page, run_brain
 
 import index  # noqa: E402  (support puts engine/lib on the path)
 import mcp_server  # noqa: E402
@@ -48,21 +48,22 @@ class AnotherClient(TempBrain):
     def modern(request_id, method, **params):
         return {"id": request_id, "method": method, "params": dict(params, _meta=MODERN)}
 
-    def test_it_lists_the_four_tools_and_calls_each(self):
+    def test_it_lists_the_five_tools_and_calls_each(self):
         discover, listing, *called = self.talk(
             self.modern("d", "server/discover"), self.modern(1, "tools/list"),
             self.modern(2, "tools/call", name="search", arguments={"query": "spacing", "limit": 3}),
             self.modern(3, "tools/call", name="recall", arguments={"query": "what does the best gap depend on",
                                                                     "also": ["what sets the optimal interval"]}),
             self.modern(4, "tools/call", name="since", arguments={"start": "2026-01"}),
-            self.modern(5, "tools/call", name="gaps", arguments={}))
+            self.modern(5, "tools/call", name="gaps", arguments={}),
+            self.modern(6, "tools/call", name="waiting", arguments={}))
         info = {"io.modelcontextprotocol/serverInfo": {"name": "aibrain", "version": "1"}}
         self.assertEqual((discover["id"], discover["result"]["resultType"], discover["result"]["_meta"]), ("d", "complete", info))
         self.assertEqual((discover["result"]["supportedVersions"][0], discover["result"]["capabilities"]),
                          ("2026-07-28", {"tools": {}}))
         self.assertIn("Read-only", discover["result"]["instructions"])
         tools = listing["result"]["tools"]
-        self.assertEqual([t["name"] for t in tools], ["search", "recall", "since", "gaps"])  # the same order every time
+        self.assertEqual([t["name"] for t in tools], ["search", "recall", "since", "gaps", "waiting"])  # the same order every time
         self.assertEqual((listing["result"]["resultType"], listing["result"]["ttlMs"], listing["result"]["cacheScope"]),
                          ("complete", 3600000, "public"))
         for tool in tools:
@@ -71,12 +72,17 @@ class AnotherClient(TempBrain):
         self.assertEqual(tools[0]["inputSchema"]["required"], ["query"])
         texts = [c["result"]["content"][0]["text"] for c in called]
         self.assertEqual([(c["id"], c["result"]["isError"], c["result"]["resultType"]) for c in called],
-                         [(2, False, "complete"), (3, False, "complete"), (4, False, "complete"), (5, False, "complete")])
+                         [(2, False, "complete"), (3, False, "complete"), (4, False, "complete"), (5, False, "complete"),
+                          (6, False, "complete")])
         self.assertTrue(texts[0].startswith('search: "spacing"\n'))
         self.assertIn("cortex/concepts/spacing-effect.md\n           Study spread over days is kept longer.", texts[0])
         self.assertIn("read first: ## In one paragraph (lines ", texts[1])  # what `brain recall` prints, as it prints it
         self.assertIn("+ cortex/concepts/spacing-effect.md", texts[2])
         self.assertEqual(texts[3], "  1x  learn, painter, picasso  (last %s)\n        which painters did picasso learn from" % ago(9))
+        # What `brain tend --check` prints, as it prints it: here the one question nobody has answered.
+        self.assertEqual(texts[4], run_brain(self.root, "tend", "--check").stdout.rstrip("\n"))
+        self.assertTrue(texts[4].startswith("tend check, "))
+        self.assertIn("picasso", texts[4])
 
     def test_a_client_of_the_earlier_protocol_is_served_after_its_handshake(self):
         opened, pinged, listing, called = self.talk(
@@ -145,8 +151,8 @@ class AnotherClient(TempBrain):
         before = on_disk()
         answers = self.talk(*(self.modern(n, "tools/call", name=name, arguments=arguments) for n, (name, arguments) in
                               enumerate((("search", {"query": "spacing"}), ("recall", {"query": "spacing"}),
-                                         ("since", {"start": "2026-01"}), ("gaps", {})))))
-        self.assertEqual([a["result"]["isError"] for a in answers], [False] * 4)
+                                         ("since", {"start": "2026-01"}), ("gaps", {}), ("waiting", {})))))
+        self.assertEqual([a["result"]["isError"] for a in answers], [False] * 5)
         self.assertEqual(on_disk(), before)  # no page, no index, and no recall line in the log
 
     def test_where_there_is_no_brain_it_starts_and_offers_nothing(self):
@@ -157,7 +163,7 @@ class AnotherClient(TempBrain):
         self.assertEqual(listing["result"]["tools"], [])
         self.assertEqual((called["result"]["isError"], called["result"]["content"][0]["text"][:14]), (True, "No brain here:"))
         inside = os.path.join(self.root, "cortex")  # started in a folder of the brain: it is found from there
-        self.assertEqual(len(self.talk(self.modern(1, "tools/list"), root=None, cwd=inside)[0]["result"]["tools"]), 4)
+        self.assertEqual(len(self.talk(self.modern(1, "tools/list"), root=None, cwd=inside)[0]["result"]["tools"]), 5)
 
     def test_a_request_that_breaks_the_server_does_not_end_it(self):
         out = io.StringIO()

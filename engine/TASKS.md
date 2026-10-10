@@ -403,6 +403,6 @@ Each item keeps the rules: the line in `hippocampus/intentions.md` and the log a
   - [ ] Not on the allow-list: it installs a job on this machine, so it asks. It writes nothing in the brain
   - [ ] Its limit, said in its own text: a machine that is asleep runs it on waking, so a reminder for 10:00 can be shown later. With 59 the lateness is on record
   - [ ] Done when: with no session open, a reminder whose time has come is shown on the screen, and a week left alone changes no page
-- [ ] **61. What waits, as a fifth MCP tool** (ROADMAP F18, score 4, S, after 29)
-  - [ ] `waiting`: what `brain tend --check --json` gives, read-only as the other four
-  - [ ] Done when: a client lists five tools, `waiting` returns that digest, and the test that calling every tool changes no file holds for it too
+- [x] **61. What waits, as a fifth MCP tool** (ROADMAP F18, score 4, S, after 29)
+  - [x] `waiting`: what `brain tend --check` prints, as it prints it, read-only as the other four (`lib/mcp_server.py`). It takes no argument. Its description says what it is for: a program that acts on a schedule asks it to learn what is due, and doing it stays with the owner
+  - [x] Done when: a client lists five tools, `waiting` returns that digest, and the test that calling every tool changes no file holds for it too (`tests/test_mcp.py`, the scripted client). Not yet called from a real client: a session's server keeps the tools it started with, so Claude Code lists five from its next session on

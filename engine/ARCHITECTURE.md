@@ -244,7 +244,7 @@ pre-commit and CI gates at `git commit`.
 | Host | How the engine is reached | Status |
 |------|---------------------------|--------|
 | Claude Code | plugin `aibrain` (`engine/.claude-plugin`, `hooks/hooks.json`, `skills/`, `agents/`, `bin/` on PATH, `.mcp.json`) | primary |
-| Any MCP client | `brain mcp`: a stdio server with four read-only tools (`search`, `recall`, `since`, `gaps`), each a `brain` command called in its process | reads only |
+| Any MCP client | `brain mcp`: a stdio server with five read-only tools (`search`, `recall`, `since`, `gaps`, `waiting`), each a `brain` command called in its process | reads only |
 
 Only Claude Code runs the hooks, so only there is anything written or enforced. Another host reads the brain
 through `brain mcp` (`lib/mcp_server.py`, standard library only). It serves both eras of the protocol: a request
