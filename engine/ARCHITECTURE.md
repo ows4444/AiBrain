@@ -96,9 +96,9 @@ the dict with `--json`, which every command takes. Another program makes the sam
 
 | Group | Commands |
 |-------|----------|
-| Find | `search` (BM25), `recall` (words, then links), `since` (period view) |
+| Find | `search` (BM25 over the title, the aliases, the questions a page says it answers, the body and the summary), `recall` (words, then links; `--also` adds other wordings of the question, whose scores are added up before the spread), `since` (period view) |
 | Check | `check` (links, schema, index drift, edited inputs), `introspect` (18 views; `--gaps` is what was asked and not answered), `eval` (a question set, or with `--from-log` the log's own questions, each replayed as the brain was that day; `--set` tries a threshold at another value and writes nothing), `ground` (a drafted answer or piece held to the pages it cites: the sensor for the core rule of `/ask` and `/write`) |
-| Input | `capture` (a note in `inbox/`), `inbox` (what waits there, sorted by rule before it lands: ready, duplicate, credential, forgotten, empty, not text), `fetch`, `extract` (a PDF's or an image's text, read by `pdftotext` or `tesseract` when the machine has it; without, the model reads the file), `chats`, `session`, `import` (the notes of an Obsidian vault into `senses/`, one input each, never twice and never over one that is there), `fingerprint`, `fit` (the pages an input's own words reach, the held ideas it names), `new` |
+| Input | `capture` (a note in `inbox/`), `door` (one synced folder as the way in from the phone: the briefing moves what is saved there into `inbox/`), `inbox` (what waits there, sorted by rule before it lands: ready, duplicate, credential, forgotten, empty, not text), `fetch`, `extract` (a PDF's or an image's text, read by `pdftotext` or `tesseract` when the machine has it; without, the model reads the file), `chats`, `session`, `import` (the notes of an Obsidian vault into `senses/`, one input each, never twice and never over one that is there), `fingerprint`, `fit` (the pages an input's own words reach, the held ideas it names), `new` |
 | Record | `log` (the one writer of log lines: it checks the operation and every page name), `index` (rewrites the index's listing from the pages) |
 | Output | `export` (clean copies of chosen pages; it stops on a credential), `graph` (the links as CSV or GraphML, or with `--format html` one page that opens from the disk and asks the network for nothing) |
 | Remove and continue | `forget` (remove an input), `restore` (a faded page back from `dormant/`), `resume` (write where the work stands) |
@@ -108,7 +108,7 @@ the dict with `--json`, which every command takes. Another program makes the sam
 
 | Event | Hook | What it does | Can block |
 |-------|------|--------------|-----------|
-| SessionStart | `wake_up.py` | briefing: owner, queues, last activity, engine drift | no |
+| SessionStart | `wake_up.py` | briefing: owner, queues, last activity, engine drift; before it counts `inbox/`, it moves in what waits at the door (`brain door`) | no |
 | UserPromptSubmit | `prompt_recall.py` | adds matching page summaries to a question (off unless `BRAIN_PROMPT_RECALL=1`) | no |
 | PreToolUse (write, edit, bash) | `gate.py pre` | runs the walls in turn: `protect_senses.py` (edits to existing inputs; `brain forget --yes` is an "ask"), then for a write `protect_log.py` (the log written only by `brain log`), `protect_expected.py` (a frozen `## Expected`) and `validate_page.py` (schema before the write) | yes |
 | PostToolUse (write, edit) | `gate.py post` | `validate_page.py` (schema of the file as written), `scan_secrets.py` (credentials) | feedback |
@@ -204,9 +204,15 @@ The gatekeeper runs `/guard` over the pages chosen for an export in a clean cont
 ### 6.2 One recall (`/ask`)
 
 1. `prompt_recall` (if enabled) adds a pointer: matching summaries only.
-2. `/ask` runs `brain recall`: BM25 seeds activation, which spreads 1 to 2 hops along links, stronger on typed
-   links and on pairs recalled together before. Each hit shows how it was reached, its confidence, and the
-   section to read first: the one holding the question's words that the page's title does not.
+2. `/ask` runs `brain recall` with the question as the owner asked it and two other wordings of its own, one in
+   the field's terms and one in plain words (`--also`). Each wording is searched (BM25; a page's `answers:`, the
+   questions it was written to answer, is one of the fields) and a page's scores are added up, the question as
+   asked counting as much as the other wordings together. The best of them seed activation, which spreads 1 to
+   2 hops along links, stronger on typed links and on pairs recalled together before. Whether the brain covers
+   the question at all is judged on the owner's wording alone. Each hit shows how it was reached, its
+   confidence, and the section to read first: the one holding the question's words that the page's title does
+   not. So the model's knowledge of the vocabulary is used twice with no index of meanings: when a page is
+   written (`answers:`) and when a question is asked (`--also`).
 3. The model reads the pages and answers from them with inline citations; outside knowledge is labelled.
    "Not covered by any page here" is a valid answer. A stale page is put to the owner, never overwritten.
 4. The skill runs `brain log recall`, which checks the page names and appends

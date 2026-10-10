@@ -6,6 +6,11 @@ status: established
 created: 2026-06-10
 updated: 2026-06-10
 aliases: [Ebbinghaus curve]
+answers:
+  - How fast do I forget something I have just learned?
+  - What does going over material again do to how quickly it fades?
+  - Do I forget things that make sense as fast as meaningless ones?
+  - What is the graph of memory fading over time called?
 tags: []
 ---
 

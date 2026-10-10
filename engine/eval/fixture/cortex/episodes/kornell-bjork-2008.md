@@ -9,6 +9,10 @@ author: Kornell, Bjork
 published: 2008
 consolidated: 2026-07-20
 aliases: []
+answers:
+  - What is the best way to learn to recognise different painters' styles?
+  - Did people in the paintings experiment know which way of studying worked better?
+  - What result did the researchers expect before the paintings experiment?
 tags: []
 ---
 

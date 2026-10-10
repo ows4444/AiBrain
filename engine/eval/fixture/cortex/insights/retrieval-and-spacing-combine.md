@@ -5,6 +5,11 @@ type: insight
 created: 2026-06-12
 updated: 2026-06-12
 aliases: [spaced retrieval practice]
+answers:
+  - Should I combine quizzing myself with spreading my study out?
+  - Has any study tested self-quizzing and spread-out study together?
+  - What would settle whether testing and spacing add up?
+  - Do flashcard apps assume that tests spread over time work best?
 tags: []
 ---
 

@@ -9,6 +9,11 @@ author: a secondary school teacher
 published: 2025
 consolidated: 2026-07-20
 aliases: []
+answers:
+  - What happened when a maths teacher mixed old topics into every worksheet?
+  - How did pupils react to worksheets that mix old and new topics?
+  - What extra work do mixed-topic worksheets make for the teacher?
+  - How solid is the teacher's claim that mixed worksheets raised results?
 tags: []
 ---
 

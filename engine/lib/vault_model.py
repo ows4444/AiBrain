@@ -81,6 +81,11 @@ MAX_TAGS = 3
 # `brain new`) may lack it; one with SUMMARY_BODY_WORDS of text may not.
 SUMMARY_MAX = 200
 SUMMARY_BODY_WORDS = 30
+# `answers:` holds the questions a page answers, in the words its owner asks them in: written
+# with the page, when the writer has just read it, so a question that shares no word with the
+# title can still find the page. A few short questions, not a second summary.
+MAX_ANSWERS = 5
+ANSWER_MAX = 120
 LOG_PATH = os.path.join("hippocampus", "log.md")
 
 # Every frontmatter field the brain gives meaning to, in one place: the schema
@@ -98,6 +103,7 @@ FIELDS = {
     "updated":       dict(required=True, date=True),
     "summary":       dict(),
     "aliases":       dict(),
+    "answers":       dict(private=True),
     "tags":          dict(private=True),
     "status":        dict(on=("concept", "decision"), private=True),
     "input":         dict(on=("episode",), private=True),
@@ -352,6 +358,12 @@ def schema_problems(text, vocabulary=None, page_type=None, stem=None, rel=None):
     summary = fields.get("summary")
     if isinstance(summary, str) and len(summary) > SUMMARY_MAX:
         problems.append(f"'summary' is {len(summary)} characters; one sentence, at most {SUMMARY_MAX}")
+    answers = [str(a) for a in as_list(fields.get("answers"))]
+    if len(answers) > MAX_ANSWERS:
+        problems.append(f"{len(answers)} questions under 'answers'; at most {MAX_ANSWERS}")
+    if any(len(a) > ANSWER_MAX for a in answers):
+        problems.append(f"'answers' holds a question of {max(map(len, answers))} characters; each is one short "
+                        f"question, at most {ANSWER_MAX}")
     tags = as_list(fields.get("tags"))
     if len(tags) > MAX_TAGS:
         problems.append(f"{len(tags)} tags; at most {MAX_TAGS}")
@@ -497,6 +509,7 @@ class Page:
         title = self.fields.get("title")
         self.title = title if isinstance(title, str) and title else self.stem
         self.aliases = [str(a) for a in as_list(self.fields.get("aliases")) if a]
+        self.answers = [str(a) for a in as_list(self.fields.get("answers")) if a]  # the questions it answers
         self.targets = links_in(self.body)
         self.relations = relations_in(self.body)
         self.words = len(self.body.split())

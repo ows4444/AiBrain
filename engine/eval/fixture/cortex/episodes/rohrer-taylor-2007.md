@@ -9,6 +9,10 @@ author: Rohrer, Taylor
 published: 2007
 consolidated: 2026-07-20
 aliases: []
+answers:
+  - How much better did students do a week later when maths problems were shuffled?
+  - Is the gain from mixing problem types just the gain from leaving gaps?
+  - Do textbooks usually mix problem types or group them by kind?
 tags: []
 ---
 

@@ -10,6 +10,10 @@ published: 2006
 consolidated: 2026-06-10
 salience: 4
 aliases: []
+answers:
+  - Did practice tests or rereading a passage win when students were tested a week later?
+  - Is rereading better than self-testing when the test is only minutes away?
+  - Did students who reread expect to remember more than they did?
 tags: []
 ---
 

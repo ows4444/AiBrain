@@ -6,6 +6,10 @@ status: emerging
 created: 2026-06-10
 updated: 2026-06-10
 aliases: [retrieval practice]
+answers:
+  - Is quizzing myself better than reading my notes again?
+  - What is it called when recalling an answer makes the memory stronger?
+  - How much evidence do I have that testing myself works?
 tags: []
 ---
 

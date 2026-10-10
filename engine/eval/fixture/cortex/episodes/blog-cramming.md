@@ -8,6 +8,10 @@ url: https://blog.example.com/cramming-works
 author: an anonymous student
 consolidated:
 aliases: []
+answers:
+  - Does anyone say cramming the night before an exam worked for them?
+  - How trustworthy is the student blog post about cramming?
+  - Is there anything in my notes that goes against spreading study out?
 tags: [unverified]
 ---
 

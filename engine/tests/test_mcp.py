@@ -52,7 +52,8 @@ class AnotherClient(TempBrain):
         discover, listing, *called = self.talk(
             self.modern("d", "server/discover"), self.modern(1, "tools/list"),
             self.modern(2, "tools/call", name="search", arguments={"query": "spacing", "limit": 3}),
-            self.modern(3, "tools/call", name="recall", arguments={"query": "what does the best gap depend on"}),
+            self.modern(3, "tools/call", name="recall", arguments={"query": "what does the best gap depend on",
+                                                                    "also": ["what sets the optimal interval"]}),
             self.modern(4, "tools/call", name="since", arguments={"start": "2026-01"}),
             self.modern(5, "tools/call", name="gaps", arguments={}))
         info = {"io.modelcontextprotocol/serverInfo": {"name": "aibrain", "version": "1"}}

@@ -6,6 +6,10 @@ kind: person
 created: 2026-06-10
 updated: 2026-06-10
 aliases: [Ebbinghaus]
+answers:
+  - Who first measured how fast people forget?
+  - When did Ebbinghaus live and where was he from?
+  - What did Ebbinghaus memorise to measure his own forgetting?
 tags: []
 ---
 

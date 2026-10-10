@@ -6,6 +6,10 @@ status: established
 created: 2026-07-20
 updated: 2026-07-20
 aliases: [mixed practice]
+answers:
+  - Should I mix different kinds of problems in one sitting or finish one kind first?
+  - Why does mixing up problem types help me remember more?
+  - What is it called when you shuffle topics instead of doing one at a time?
 tags: []
 ---
 

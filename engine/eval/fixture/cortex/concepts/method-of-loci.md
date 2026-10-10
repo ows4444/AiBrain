@@ -6,6 +6,10 @@ status: established
 created: 2026-07-20
 updated: 2026-07-20
 aliases: [memory palace]
+answers:
+  - How does a memory palace work?
+  - How can I remember a long list of things in the right order?
+  - What is the trick where you picture things along a route you know well?
 tags: []
 ---
 

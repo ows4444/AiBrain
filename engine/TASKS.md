@@ -17,7 +17,7 @@ Done, for every item that touches the engine:
 
 ## Decisions (yours; each blocks the item named)
 
-All seven were answered by the owner on 2026-10-09: each as recommended.
+D1 to D7 were answered by the owner on 2026-10-09, each as recommended; D8 to D16 on 2026-10-10, each put as a choice with a recommendation.
 
 - [x] **D1. May `brain log` run without asking?** Decided: yes, it can only append one checked line. Unblocks 6.
 - [x] **D2. A new optional field `answers:` on memory pages?** Decided: yes, and private, so `brain export` drops it. Unblocks 22.
@@ -25,6 +25,16 @@ All seven were answered by the owner on 2026-10-09: each as recommended.
 - [x] **D4. A new system page, `hippocampus/tuning.md`?** Decided: yes. Adds a system type to `CLAUDE.md`. Unblocks 13.
 - [x] **D5. OpenCode: build what the documents describe, or remove the claims?** Decided: remove them now, reach other hosts through 29. Unblocks 2 and closes 56.
 - [x] **D6. Embeddings?** Decided: defer to the trigger in 30.
+- [x] **D8. Item 10: accept 0.77 s at 5,000 pages, or go further?** Decided 2026-10-10: accept it. Closes 10.
+- [x] **D9. Item 21: close it, or print `unseen:` as information only?** Decided 2026-10-10: close it. Closes 21.
+- [x] **D10. A fresh agent to write the fixture data that 22 and 23 are measured on?** Decided 2026-10-10: yes, for both. Unblocks 22 and 23.
+- [x] **D11. A writer agent for `/write`, a third agent that can write (49)?** Decided 2026-10-10: no. Closes 49.
+- [x] **D12. The one door for a note taken away from the desk (35)?** Decided 2026-10-10: a folder that syncs to this machine. Unblocks 35.
+- [x] **D13. What transcribes a recording (40, 41)?** Decided 2026-10-10: not now. Both stay open.
+- [x] **D14. A quiz writer agent (48)?** Decided 2026-10-10: keep it open; not rehearsed enough to say.
+- [x] **D15. What a read-only view for another person is (54)?** Decided 2026-10-10: nothing new. `/export` and `brain mcp` are the ways out. Closes 54.
+- [x] **D16. Encryption at rest (55)?** Decided 2026-10-10: no. The disk and a private remote cover it, outside the engine. Closes 55.
+- [ ] **D17. Items 22 and 23 together: every recall number on every set is the same or better, except the `first` set's mrr, 0.854 to 0.844 (one question, one rank). Accept it?** Open; the table is under 23.
 - [x] **D7. Should engine work write `engine` lines into this brain's log now?** Found and decided on 2026-10-09: no, hold them until 4 puts the brain in use; git history records engine changes until then. The roadmap asks for one line per finished item, but the first dated line marks this brain as in use: `test_an_unused_brain_matches_the_template` then skips, and a clone no longer starts with an empty log.
 
 ## Phase 0. Baseline
@@ -88,11 +98,11 @@ shows the gain. Nothing changes what a command returns, except where a step says
   - [x] `links_from`, `evidence_for`, `confidence`, `inbound` and recall's `contradicted` read them; so do `project_report`, `schema_candidates` and `missing_from_index`
   - [x] `typed_edges()` stops copying its set, and `knowledge_edges()` is computed once
   - [x] Done when: `confidence` on 200 concepts at 5,000 pages takes under 0.01 s (0.104 s before, 0.003 s after)
-- [ ] **10. `candidate_pairs` without the repeated tokenising** (REFACTOR 2.2, S; built, its time target missed: the owner's call)
+- [x] **10. `candidate_pairs` without the repeated tokenising** (REFACTOR 2.2, S; built, 0.77 s accepted by D8)
   - [x] Tokenise each page's title, aliases and summary once
   - [x] Index words to candidates and pages; compare only pairs that share a word, as `near_duplicates` does. Candidates are no longer each compared with every other one either
   - [x] The same pairs in the same order as before, on the fixture and on five synthetic brains
-  - [ ] Done when: the same pairs on the fixture, and under 0.5 s at 5,000 pages. The pairs are the same; the time is 0.77 s, from 7.64 s (0.043 s from 0.51 s at 1,000 pages). What is left is the cost of building 206,652 pairs, which the synthetic brain's 40-word vocabulary produces and a real brain would not. Accept it, or say to go further
+  - [ ] Done when: the same pairs on the fixture, and under 0.5 s at 5,000 pages. The pairs are the same; the time is 0.77 s, from 7.64 s (0.043 s from 0.51 s at 1,000 pages). What is left is the cost of building 206,652 pairs, which the synthetic brain's 40-word vocabulary produces and a real brain would not. Accepted on 2026-10-10 (D8)
 - [x] **11. Views on demand in `introspect`** (REFACTOR 2.3, S)
   - [x] A table of named views, each a function of the vault (`VIEWS`, computed and kept by `Report`)
   - [x] A flag computes its own views; no flag computes the summary; `due_for_rehearsal` is computed once
@@ -166,24 +176,33 @@ shows the gain. Nothing changes what a command returns, except where a step says
 Gate for every item here: no set of the fixture falls below its baseline, and the target is reached. An item
 that misses its target is closed, not shipped.
 
-- [ ] **21. Say what the brain never mentions** (REFACTOR 4.1, S; measured before building: the target is out of this signal's reach, the owner's call)
-  - [ ] `brain recall` prints the question's words found in no page, dormant ones included: `unseen: picasso`; in the JSON too
-  - [ ] `/ask` says so in the answer when the subject of the question is unseen
-  - [ ] Tune abstention on that signal with `brain eval --set`
-  - [ ] Done when: uncovered questions that still get pages fall from 2 of 6 to 0, covered sets unchanged
+- [x] **21. Say what the brain never mentions** (REFACTOR 4.1, S; closed by D9, nothing built)
+  - [x] Closed, not built: the target (uncovered questions that still get pages from 2 of 6 to 0, covered sets unchanged) is out of this signal's reach, as measured below, and you chose on 2026-10-10 not to print `unseen:` as information either
   - Measured on the fixture on 2026-10-10, nothing built. The two uncovered questions that still get pages hold fewer unseen words than covered questions do. u05 ("Which painters did Picasso learn from?") has one, 0.51 of the question's weight; u06 ("What does a mathematics teacher earn?") one, 0.46. Covered paraphrases have more: p03 three (0.67), p01 three (0.55), p08 two (0.50), p04 two (0.45). A bar that stops u05 and u06 stops those four, and paraphrase recall falls; nothing else about the words tells the two kinds apart (in all of them the best page holds every word the brain has at all). So abstention cannot be tuned on this signal to 0 of 6 with the covered sets unchanged, and by the gate of this phase the item closes. Left to decide: whether to print `unseen:` as information only, for `/ask` to judge by. That wants an answers run (`brain eval --answers`) before and after, because on a paraphrase the line can read as "not covered" when a page does answer
-- [ ] **22. `answers:`, the questions a page answers** (REFACTOR 4.2, M, waits on D2)
-  - [ ] Add the field to `FIELDS` (private), the templates and the table in `templates/README.md`
-  - [ ] Schema: a list, at most five, each one short question
-  - [ ] Search it as a field of its own, with its weight in the tuning registry; raise `CACHE_VERSION`
-  - [ ] `/ingest` and `/sleep` fill it, in the owner's kind of words
-  - [ ] The fixture's `answers:` are written by an agent that sees the page and not `questions.json`
-  - [ ] Done when: paraphrase recall hit@1 is 0.875 or better (0.750 now)
-- [ ] **23. Several wordings, one ranking** (REFACTOR 4.3, S)
-  - [ ] `brain recall Q --also Q2 --also Q3`: fuse the rankings by reciprocal rank to choose the seeds, then spread once
-  - [ ] Eval questions may carry `also`, written by an agent that has not seen the pages
-  - [ ] `/ask` and the researcher agent always pass two rewordings
-  - [ ] Done when: paraphrase hit@5 is 1.000 (0.938 now) and q10 finds `forgetting-curve`
+- [ ] **22. `answers:`, the questions a page answers** (REFACTOR 4.2, M; built and its target reached; D17 is open)
+  - [x] Add the field to `FIELDS` (private), the templates and the table in `templates/README.md`. On the episode, concept, entity and insight templates; `brain export` drops it with its lines
+  - [x] Schema: a list, at most five, each one short question (at most 120 characters). One `  - question` per line, so a comma or a colon in a question is kept
+  - [x] Search it as a field of its own, with its weight in the tuning registry: `weight_answers`, 2.0, what an alias counts, since both are other ways the page is asked for. Recall on the fixture is the same from 0.5 to 3.0, so the value was not fitted. `CACHE_VERSION` is not raised: the weight is part of the cache's key, so rows from before the field are dropped without it (a test holds this)
+  - [x] `/ingest` and `/sleep` fill it, in the owner's kind of words: the words they would ask in before knowing the page's terms
+  - [x] The fixture's `answers:` are written by an agent that sees the page and not `questions.json` (D10). It was given the 21 page paths and told to open nothing else; it reports opening only those, and that the harness attached the fixture's `CLAUDE.md`, which names `questions.json` and quotes none of it. 75 questions on 21 pages, written into the pages as they came back
+  - [x] Done when: paraphrase recall hit@1 is 0.875 or better (0.750 now). 0.875 with the field alone (`brain eval --no-also`); its mrr 0.854 to 0.938
+  - What the field alone costs: on the standard set hit@5 went from 0.923 to 0.885. q13, the broad project question, lost `testing-effect` from rank 5 to 6 to pages whose questions say "exam" and "study". The other wordings of 23 bring that number to 0.962, so the two are measured, saved and judged together (below)
+- [ ] **23. Several wordings, one ranking** (REFACTOR 4.3, S; built and its target reached; D17 is open)
+  - [x] `brain recall Q --also Q2 --also Q3`, then one spread. Not by reciprocal rank, which was built first and measured: at the usual constant (60) a page's place counts for almost nothing against how many wordings find it, and the `first` set's hit@1 fell from 0.750 to 0.500. In its place each wording is searched and a page's scores are added up, the other wordings sharing one vote: the question as you asked it counts as much as all of them together. With no other wording this is exactly what recall did before, and there is no new number to tune
+  - [x] Whether the brain covers the question is judged on the question as asked, never on another wording: with the first version (any wording may pass) recall listed pages for 5 of the 6 uncovered questions; now 2 of 6, as before
+  - [x] Eval questions may carry `also`, written by an agent that has not seen the pages (D10): it was given the 37 questions in its prompt and told to open no file; two wordings each, one in the field's terms, one in plain words. Recall is scored with them, since that is how `/ask` asks; `brain eval --no-also` scores it without, and what the wordings buy is the difference
+  - [x] `/ask` and the researcher agent always pass two rewordings, with the same instruction the eval's were written under; the MCP `recall` tool takes `also` too
+  - [x] Done when: paraphrase hit@5 is 1.000 (0.938 now) and q10 finds `forgetting-curve` (rank 2)
+  - Both items together, against the numbers before them (recall, top 5; a new baseline is saved, since the fixture's pages changed):
+
+    | set | hit@1 | hit@5 | all found | mrr |
+    |---|---|---|---|---|
+    | standard | 0.846 to 0.846 | 0.923 to 0.962 | 12 of 13, same | 0.872 to 0.910 |
+    | first | 0.750 to 0.750 | 1.000 to 1.000 | 8 of 8, same | 0.854 to **0.844** |
+    | paraphrase | 0.750 to 0.875 | 0.938 to 1.000 | 7 to 8 of 8 | 0.854 to 0.938 |
+
+    Uncovered questions that still get pages: 2 of 6, same. Bytes read when every returned page is opened whole: 3,078 to 4,135 a question (the pages now carry their questions, and two more rows come back); when the section recall names is read first: 1,085 to 809, and every row now names one. Search alone, which no rule here holds to a baseline on that set, puts the right page first on fewer `first` questions (0.625 to 0.375); recall on them is unchanged
+  - [ ] D17, yours: one number is below where it was. The `first` set's mrr, 0.854 to 0.844, is one question (f07, "What did Rohrer and Taylor find about interleaving?") whose page went from rank 3 to rank 4 once its other wordings were added. The rule at the top of this file says no set may fall. Accept it, or say to look further
 - [ ] **24. `brain fit senses/FILE`** (REFACTOR 4.4, M; built, waits on real ingests to be measured)
   - [x] The input's own rarest words as the query: the pages it bears on, with summaries, and the held candidates it names (`lib/fit.py`). Of the input's words that some page holds, the twelve that mark it most (`fit_words`: its count in the input times its rarity in the brain) are searched as one question. Rarity alone picked incidental words (`across`, `apart`), so the count weighs in. A held idea is named when every word of its name is in the input; an input already encoded is no source of its own ideas
   - [x] Candidate names made of the same words after stemming count as one candidate in the tally (`same_idea`: `Fluency illusion` and `Illusion of fluency`, `Desirable difficulty` and `difficulties`), under the spelling met first. Two sources naming it so now reach the bar for a concept, where they were two candidates with one source each, paired for sleep to read
@@ -256,9 +275,10 @@ Not ordered: pick any whose tags are met. Each is smaller once 12 is done.
   - [x] Decided: capturing writes no log line. A note in `inbox/` is no memory yet; `/ingest` logs it when it is encoded. `test_skills.py` exempts it by name, with `commit`, `start` and `tend`
   - [x] Done when: a captured line shows in the briefing's inbox count (and in the status line)
 - [ ] **35. Low-friction capture, one door** (ROADMAP F4, score 7, M)
-  - [ ] Name the one concrete door first (the roadmap does not name one)
-  - [ ] Build that door only, into `inbox/`
-  - [ ] Done when: a note taken away from the desk is in `inbox/` at the next session
+  - [x] Name the one concrete door first (the roadmap does not name one). D12: a folder that a sync service keeps on this machine and on the phone
+  - [x] Build that door only, into `inbox/`. `brain door FOLDER` (`lib/door.py`) opens it; the door is the link `inbox/.door`, which git ignores, so nothing about this machine is committed and a second machine opens its own. The session briefing moves what waits there into `inbox/` before it counts the inbox (`brain door --pull` by hand; `brain door` alone looks and moves nothing; `--close` closes it and leaves the folder alone). Moved, not copied, and never over a note that is there. Folders and a `README.md` stay at the door and are named; half-written files (`.tmp`, `.part`, `.icloud`, `.crdownload`) are passed over; a file that cannot be moved yet waits for the next time. A door whose folder cannot be read says so and the briefing still comes. No log line, as with `brain capture`
+  - Not on the allow-list: opening a door decides which folder of yours gets emptied into the brain, so it asks
+  - [ ] Done when: a note taken away from the desk is in `inbox/` at the next session. Tested with a folder standing in for the synced one (`tests/test_door.py`, 7 tests: saved at the door, in `inbox/` after the briefing, gone from the door). With a real sync service it is yours: `brain door "<your synced folder>"`, save one note from the phone, start a session
 - [x] **36. Importers, one per source** (ROADMAP F7, score 5, M each)
   - [x] An Obsidian vault first: it is already Markdown. `brain import obsidian VAULT [--dry-run]` (`lib/importer.py`; `import` is a Python keyword, so the module has the longer name). `SOURCES` there holds one importer; a second source is one more function
   - [x] Never overwrite; one input per note, into `senses/`. Each `.md` note is copied byte for byte to `senses/obsidian/<vault folder>/<path in the vault>`. A note edited in the vault after its import is listed as changed and not brought in, because an input is never edited. Left out and counted: text that is already an input under another path, empty notes, `.obsidian/`, `.trash/` and other hidden folders, attachments, and the brain itself when it is kept inside the vault. A vault inside the brain is refused
@@ -271,7 +291,7 @@ Not ordered: pick any whose tags are met. Each is smaller once 12 is done.
 - [ ] **38. Ingestion scout agent** (ROADMAP A3, score 6, M)
   - [x] Sonnet; sorts `inbox/` before `/ingest`: duplicates by fingerprint, secrets by `brain check --guard`, items that need a person. In two parts. `brain inbox` (`lib/inbox.py`, read-only, on the allow-list) decides what a rule can: each note is ready, a duplicate (the hash of an input or of an earlier note), forgotten, holding a credential (the scanner `check --guard` uses; the kind and the line, never the value), empty or not text; a PDF or an image is passed on to `brain extract` (39), which moves it itself. `agents/scout.md` (sonnet; Read, Glob, Grep, Bash) starts from that list, reads the ready notes, and holds the ones that need you: a fragment, a task that belongs to `/remind`, a note that gives the reader orders, another person's detail
   - [x] `/ingest` step 1 runs `brain inbox` before anything is moved, hands a large or mixed inbox to the scout, moves only what passed, and reports the rest under `Held:`. Why before, not after: nothing in `senses/` is edited again, so a credential that lands stays
-  - [ ] Done when: `/ingest` on a mixed inbox encodes only what the scout passed. The rule half is tested (`tests/test_inbox.py`: of fourteen notes, two are ready and one PDF and one image go to `brain extract`) and the wiring is held by `test_skills.py`. The run itself is yours: a session loads the plugin from the other folder, so the scout cannot be started from here
+  - [ ] Done when: `/ingest` on a mixed inbox encodes only what the scout passed. The rule half is tested (`tests/test_inbox.py`: of fifteen notes, two are ready and one PDF and one image go to `brain extract`) and the wiring is held by `test_skills.py`. The run itself is yours: a session loads the plugin from the other folder, so the scout cannot be started from here
 
 ### Reach
 
@@ -280,11 +300,11 @@ Not ordered: pick any whose tags are met. Each is smaller once 12 is done.
   - [x] Falls back to the model when the tool is absent: exit 1 with the reason and nothing written; the PDF and Image rows of `/ingest` say what the model does then. The same exit for a scan (under 8 words a page), text the tool could not decode, a file it cannot open, and a file extracted before
   - [x] Done when: a PDF lands in `senses/` as text without the model reading the file. Tried here with the real `pdftotext` 26.08 on a two-page PDF: 56 words landed and the PDF moved from `inbox/` to `senses/assets/`. The tests use stand-ins for both tools, so CI needs neither (`tests/test_extract.py`, 10 tests). `tesseract` is not on this machine: the image path has run against the stand-in only
   - Not on the allow-list: it writes into `senses/`, as `brain fetch` does
-- [ ] **40. Audio and video transcription** (ROADMAP F6, score 6, M, after 35)
+- [ ] **40. Audio and video transcription** (ROADMAP F6, score 6, M, after 35; D13: not now)
   - [ ] An external tool or an API
   - [ ] The transcript lands in `senses/` as text, with its source named
   - [ ] Done when: a recording becomes an input `/ingest` can encode
-- [ ] **41. `/transcribe`** (ROADMAP S5, score 6, S, after 40)
+- [ ] **41. `/transcribe`** (ROADMAP S5, score 6, S, after 40; D13: not now)
   - [ ] The front for 40
   - [ ] Done when: the skill passes `test_skills.py`
 
@@ -315,12 +335,11 @@ Not ordered: pick any whose tags are met. Each is smaller once 12 is done.
 - [x] **47. `/review-decision`** (ROADMAP S7, score 5, S)
   - [x] The review step split out of `/decide`, so it can be run or scheduled alone. `skills/review-decision/SKILL.md` holds it; `/sleep`, `/start` and `brain tend --check` point at the new name, and CLAUDE.md names both new skills among those that write a recall line
   - [x] Done when: `/decide` is shorter and both skills pass `test_skills.py`. `/decide` went from 110 lines to 91; the review is 61 lines of its own
-- [ ] **48. Quiz writer agent** (ROADMAP A4, score 5, S)
+- [ ] **48. Quiz writer agent** (ROADMAP A4, score 5, S; D14: kept open until you have rehearsed enough to say)
   - [ ] Only if quizzes feel thin: `/rehearse` already builds its own
   - [ ] Done when: you say the questions are better with it than without
-- [ ] **49. Writer or editor agent for `/write`** (ROADMAP A6, score 3, S)
-  - [ ] Drafting moves out of the main session
-  - [ ] Done when: `/write draft` returns a draft and the session holds only its report
+- [x] **49. Writer or editor agent for `/write`** (ROADMAP A6, score 3, S, closed by D11)
+  - [x] Closed, not built: `/write` drafts in the main session as before, and the encoder and the consolidator stay the only agents that can write
 
 ### Platform
 
@@ -340,11 +359,9 @@ Not ordered: pick any whose tags are met. Each is smaller once 12 is done.
 - [ ] **53. Windows support** (ROADMAP F13, score 4, M). Skipped on your word, 2026-10-10: not built
   - [ ] Paths, the `python3` name, symlinks
   - [ ] Done when: `brain test` passes on Windows in CI
-- [ ] **54. `/share`** (ROADMAP S10, score 3, M)
-  - [ ] Decide what a read-only view for another person means first; 29 is one answer
-  - [ ] Done when: that decision is written down and the skill does only that
-- [ ] **55. Encryption at rest** (ROADMAP F11, score 3, M)
-  - [ ] Only if the brain leaves your machine: it conflicts with plain-Markdown search
-  - [ ] Done when: decided, and dropped from the roadmap if the answer is no
+- [x] **54. `/share`** (ROADMAP S10, score 3, M, closed by D15)
+  - [x] Decided, and no skill built: a read-only view for another person is what is there already. `/export` gives clean copies of chosen pages once the gatekeeper has read them; `brain mcp` gives a program read-only access. A second way out would be a second place for a leak
+- [x] **55. Encryption at rest** (ROADMAP F11, score 3, M, closed by D16)
+  - [x] Decided no, and F11 is off the roadmap: the pages stay plain Markdown, which search needs. The disk's own encryption covers this machine and a private remote covers the pushed copy
 - [x] **56. Run the OpenCode plugin in OpenCode** (ROADMAP P2, S, closed by D5)
   - [x] Closed, not built: D5 removed OpenCode from both documents on 2026-10-09, and P2 from the roadmap. Other hosts are 29

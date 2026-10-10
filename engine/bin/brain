@@ -15,6 +15,7 @@
     brain errors [--since D] [--tail N]   what the hooks swallowed or refused (.cache/errors.log), for refactoring
     brain cache [--rebuild|--clear]       the search cache (.cache/search.sqlite): size, rebuild, clear
     brain capture TEXT                    one line kept for later: a note in inbox/, which /ingest encodes
+    brain door [FOLDER]                   a synced folder as the way in from the phone: what is saved there comes into inbox/
     brain fetch URL [--name SLUG]         a web page cut down to its readable text, saved in senses/
     brain extract FILE [--name SLUG]      a PDF's or an image's text into senses/, read by pdftotext or tesseract
     brain fit senses/FILE                 what an input bears on: the pages its own words reach, the held ideas it names

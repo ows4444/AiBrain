@@ -9,6 +9,12 @@ author: Dresler and colleagues
 published: 2017
 consolidated: 2026-07-20
 aliases: []
+answers:
+  - Can ordinary adults be trained to memorise far more words from a list?
+  - How much daily practice did beginners need to learn the memory palace?
+  - Do the gains from memory training last after the training stops?
+  - Does memory training change the brain?
+  - Has memory palace training been tested on anything besides word lists?
 tags: []
 ---
 

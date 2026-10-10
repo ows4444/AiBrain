@@ -60,6 +60,86 @@ class Search(TempBrain):
         self.assertEqual(self.brain().search("flashcard"), [])
 
 
+class QuestionsAPageAnswers(TempBrain):
+    """`answers:`: the questions a page answers, in its owner's words, searched as a field of its own."""
+
+    def setUp(self):
+        super().setUp()
+        self.write("cortex/concepts/spacing.md", concept(
+            "Study spread over days lasts longer than the same study massed into one sitting.\n", title="Spacing effect",
+            summary="Spread study lasts.",
+            answers="\n  - Is cramming the night before worse, or fine?\n  - Why: does leaving gaps help?"))
+        self.write("cortex/concepts/other.md", concept("Rows and columns of a table.\n", title="Layout", summary="Tables."))
+
+    def test_a_question_in_other_words_than_the_page_s_finds_it(self):
+        v = self.brain()
+        self.assertEqual(v.resolve("spacing").answers, ["Is cramming the night before worse, or fine?",
+                                                        "Why: does leaving gaps help?"])  # commas and colons kept
+        self.assertEqual([p.stem for p, _ in v.search("should I cram the night before?")], ["spacing"])
+        self.assertEqual([r["page"].stem for r in v.recall("should I cram the night before?", abstain=True)], ["spacing"])
+        without = vaultlib.Vault(self.root, today=TODAY, tuning={"weight_answers": 0.0})  # at 0 the field is not read
+        self.assertEqual(without.search("should I cram the night before?"), [])
+        self.assertIn("answers=2.0", v.tuning.cache_key)  # a cache filled before the field was searched is not this one's
+        self.assertNotIn("answers", without.tuning.cache_key)
+
+    def test_it_is_a_few_short_questions_and_stays_in_the_brain(self):
+        def problems(answers):
+            return vaultlib.schema_problems(concept("Text.\n", title="A page", summary="A page.", answers=answers))
+
+        five = "".join(f"\n  - Question {n}?" for n in range(1, 6))
+        self.assertEqual((problems(five), problems("Only one, on the line itself?"), problems("")), ([], [], []))
+        self.assertEqual(problems(five + "\n  - A sixth?"), ["6 questions under 'answers'; at most 5"])
+        self.assertEqual(problems("\n  - " + "why " * 30 + "so?"),
+                         ["'answers' holds a question of 123 characters; each is one short question, at most 120"])
+        out = os.path.join(self.root, "out")
+        made = json.loads(run_brain(self.root, "export", "spacing", "--out", out, "--json").stdout)
+        with open(os.path.join(out, made["exported"][0]), encoding="utf-8") as fh:
+            exported = fh.read()
+        self.assertNotIn("answers", exported)  # private, with its lines: how its owner asks is not for others
+        self.assertNotIn("cramming the night", exported)
+        self.assertIn("Study spread over days", exported)
+
+
+class SeveralWordings(TempBrain):
+    """`brain recall Q --also Q2`: other wordings of one question, searched each on its own and added up."""
+
+    def setUp(self):
+        super().setUp()
+        for stem, title in (("alpha", "Alpha"), ("beta", "Beta"), ("gamma", "Gamma")):
+            self.write(f"cortex/concepts/{stem}.md", concept(f"What {stem} is.\n", title=title, summary=f"On {stem}."))
+
+    def stems(self, rows):
+        return [(r["page"].stem, r["score"]) for r in rows]
+
+    def test_a_page_only_another_wording_reaches_comes_in(self):
+        v = self.brain()
+        self.assertEqual(self.stems(v.recall("alpha")), [("alpha", 1.0)])
+        self.assertEqual(self.stems(v.recall("alpha", also=())), self.stems(v.recall("alpha")))  # one wording: as before
+        self.assertEqual(self.stems(v.recall("alpha", also=["beta"])), [("alpha", 1.0), ("beta", 1.0)])
+        # The question as asked counts as much as its other wordings together: two of them count half each.
+        self.assertEqual(self.stems(v.recall("alpha", also=["beta", "gamma"])), [("alpha", 1.0), ("beta", 0.5), ("gamma", 0.5)])
+        self.assertEqual(self.stems(v.recall("alpha", also=["alpha beta", "alpha"])), [("alpha", 1.0), ("beta", 0.25)])
+
+    def test_whether_the_brain_covers_the_question_is_judged_on_the_question_as_asked(self):
+        v = self.brain()
+        self.assertEqual(v.recall("zebra", also=["alpha"], abstain=True), [])  # no word of the question is here
+        self.assertEqual(v.recall("zebra quartz violin alpha", also=["alpha"], abstain=True), [])  # too little of it is
+        self.assertEqual(self.stems(v.recall("zebra", also=["alpha"])), [("alpha", 1.0)])  # --all: the other wording may find
+        self.assertEqual(self.stems(v.recall("alpha", also=["zebra"], abstain=True)), [("alpha", 1.0)])
+
+    def test_the_command_takes_them_and_says_them_back(self):
+        r = run_brain(self.root, "recall", "what is alpha", "--also", "what is beta", "--also", "  ", "--json")
+        found = json.loads(r.stdout)
+        self.assertEqual((found["also"], [row["page"] for row in found["results"]]),
+                         (["what is beta"], ["cortex/concepts/alpha.md", "cortex/concepts/beta.md"]))
+        text = run_brain(self.root, "recall", "what is alpha", "--also", "what is beta").stdout
+        self.assertEqual(text.splitlines()[:2], ['recall: "what is alpha"', '  also asked as: "what is beta"'])
+        self.assertNotIn("also", json.loads(run_brain(self.root, "recall", "what is alpha", "--json").stdout))
+        r = run_brain(self.root, "search", "alpha", "--also", "beta")
+        self.assertEqual((r.returncode, r.stderr), (1, "brain search: --also is for recall, which fuses the wordings; "
+                                                       "search takes one\n"))
+
+
 class Association(TempBrain):
     def setUp(self):
         super().setUp()
@@ -221,6 +301,26 @@ class AnswerTestSet(unittest.TestCase):
             for measure in ("hit_at_1", "hit_at_k", "mrr"):
                 self.assertGreaterEqual(sets["recall"][measure], base["sets"][name]["recall"][measure], (name, measure))
 
+    def test_the_questions_pages_answer_and_other_wordings_reach_the_paraphrases(self):
+        """Done when: paraphrase recall hit@1 is 0.875 or better (22); its hit@5 is 1.000 and q10 finds forgetting-curve (23)."""
+        now, plain = self.run_eval()["retrieval"], self.run_eval("--no-also")["retrieval"]
+        self.assertEqual((now["reworded"], plain["reworded"]), (37, 0))
+        reached = now["sets"]["paraphrase"]["recall"]
+        self.assertGreaterEqual(reached["hit_at_1"], 0.875)
+        self.assertEqual((reached["hit_at_k"], reached["all_at_k"]), (1.0, 8))
+        q10 = {row["id"]: row for row in now["per_question"]["recall"]}["q10"]
+        self.assertIn("forgetting-curve", q10["top"])
+        # What the other wordings buy, on the same pages: the last paraphrase, and q10. The field alone gives hit@1.
+        self.assertEqual((plain["sets"]["paraphrase"]["recall"]["hit_at_1"], plain["sets"]["paraphrase"]["recall"]["hit_at_k"]),
+                         (0.875, 0.938))
+        self.assertNotIn("forgetting-curve", {row["id"]: row for row in plain["per_question"]["recall"]}["q10"]["top"])
+        # No wording of a question the brain does not cover makes it look covered.
+        listed = [[u["id"] for u in run["uncovered"] if u["recall_results"]] for run in (now, plain)]
+        self.assertEqual(listed, [["u05", "u06"], ["u05", "u06"]])
+        with open(os.path.join(ENGINE, "eval", "questions.json"), encoding="utf-8") as fh:
+            asked = json.load(fh)["questions"]
+        self.assertTrue(all(len(q["also"]) == 2 for q in asked))
+
     def recall_cmd(self, *args):
         r = run_brain(FIXTURE, "recall", *args, env=dict(os.environ, BRAIN_CACHE="0"))
         self.assertEqual(r.returncode, 0, r.stderr)
@@ -252,7 +352,7 @@ class AnswerTestSet(unittest.TestCase):
         self.assertEqual(vault.coverage("What is the forgetting curve?", vault.resolve("forgetting-curve")), 1.0)
         self.assertIn("nothing matches", self.recall_cmd("What is the capital of Australia?"))
         now = self.run_eval()["retrieval"]
-        self.assertEqual([u["recall_results"] for u in now["uncovered"]], [0, 0, 0, 0, 4, 3])  # not every one is caught
+        self.assertEqual([u["recall_results"] for u in now["uncovered"]], [0, 0, 0, 0, 3, 4])  # not every one is caught
         self.assertLess(now["recall"]["rows"], 5 * now["recall"]["questions"])
 
     def test_an_idea_held_on_an_episode_is_listed_when_the_question_names_it(self):
@@ -324,8 +424,8 @@ class AnswerTestSet(unittest.TestCase):
         self.assertLess(recall["bytes_by_section"] / recall["questions"], 2500)
         self.assertGreater(recall["bytes_read"] / recall["questions"], 3000)
         self.assertLess(q02["by_section"], q02["bytes"])
-        self.assertIn("\n  recall  by section: 14113, 1085 a question, when the section recall names is read in place of "
-                      "its page (41 of 47 rows name one)   (baseline 14113)\n", run_brain(None, "eval").stdout)
+        self.assertIn("\n  recall  by section: 10528, 809 a question, when the section recall names is read in place of "
+                      "its page (49 of 49 rows name one)   (baseline 10528)\n", run_brain(None, "eval").stdout)
         self.assertGreaterEqual(now["recall"]["bytes_read"], now["recall"]["bytes_needed"] * now["recall"]["hit_at_k"])
 
     def test_answers_are_scored_for_citations_and_admitted_gaps(self):
@@ -435,12 +535,28 @@ class OwnQuestionSet(TempBrain):
                          ("paraphrase", "", "Recall beats rereading.", ["effect", "testing"]))
         report = run().stdout
         self.assertIn("retrieval over 1 covered questions", report)  # the empty question is skipped
+        self.assertEqual(json.loads(run("--json").stdout)["retrieval"]["reworded"], 0)  # no question carries another wording
         self.assertIn("question o01: not a paraphrase, it uses spacing from [[spacing]]", report)
         self.assertNotIn("uncovered", report)
         self.assertIn("baseline saved to " + os.path.join(self.root, "motor", "eval-questions-baseline.json"),
                       run("--save-baseline").stdout)
         with open(os.path.join(ENGINE, "eval", "baseline.json"), encoding="utf-8") as fh:
             self.assertEqual(json.load(fh)["sets"]["standard"]["recall"]["questions"], 13)  # the engine's is untouched
+        # Another wording of a question is carried with it and passed to recall; one that is not text is said.
+        self.write("motor/eval-questions.json", json.dumps({"questions": [
+            {"id": "o01", "question": "Which study lasts longer?", "expect": ["testing"], "also": ["Does recalling beat rereading?"]},
+            {"id": "o02", "question": "Why wait between sessions?", "expect": ["spacing"], "also": "spread study"}]}))
+        found = json.loads(run("--json").stdout)
+        self.assertEqual(found["problems"], ["o02: `also` is a list of other wordings of the question, each some text"])
+        ranks = {row["id"]: row["rank"] for row in found["retrieval"]["per_question"]["recall"]}
+        self.assertEqual(found["retrieval"]["reworded"], 1)
+        self.assertIn(ranks["o01"], (1, 2))  # the page its own words reach, and the one the other wording does
+        alone = json.loads(run("--json", "--no-also").stdout)["retrieval"]
+        self.assertEqual((alone["reworded"], alone["per_question"]["recall"][0]["rank"]), (0, None))  # its own words miss it
+        r = run("--no-also", "--save-baseline")
+        self.assertEqual((r.returncode, r.stderr), (1, "brain eval: a baseline holds the numbers of the questions as they "
+                                                       "are asked, their other wordings included; leave --no-also or "
+                                                       "--save-baseline out\n"))
 
 
 class TheSectionToReadFirst(TempBrain):

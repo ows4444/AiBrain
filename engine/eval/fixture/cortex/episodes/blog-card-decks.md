@@ -9,6 +9,11 @@ author: a memory hobbyist
 published: 2024
 consolidated: 2026-07-20
 aliases: []
+answers:
+  - How does someone memorise a shuffled deck of cards in two minutes?
+  - What goes wrong first when a memory palace loses items?
+  - Can I use the same memory palace route again for a new list?
+  - How long would it take me to learn to memorise a deck of cards?
 tags: []
 ---
 

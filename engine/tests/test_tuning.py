@@ -58,7 +58,7 @@ class Registry(unittest.TestCase):
                 self.assertFalse(hasattr(vaultlib, name.upper()), "one place holds it: the registry")
                 family, _, member = name.partition("_")
                 if family == "weight":  # read by its prefix: the fields search knows how to take from a page
-                    self.assertIn(member, ("title", "aliases", "body", "summary"))
+                    self.assertIn(member, ("title", "aliases", "answers", "body", "summary"))
                 elif family == "relation":  # read by its prefix: one for each relation of the vocabulary
                     self.assertIn(member, relations)
                 else:
@@ -301,7 +301,8 @@ class WhatEachThresholdMoves(Tuned):
         self.assertEqual(list(found(v, "gaps")), ["gaps", "spacing"])  # a word of the summary counts for half
         self.assertEqual(list(found(self.trying(weight_summary=0.0), "gaps")), ["gaps"])  # at 0 it is not searched
         self.assertEqual(list(found(self.trying(weight_summary=50.0), "gaps")), ["spacing", "gaps"])
-        self.assertEqual([f for f, _ in self.trying(weight_summary=0.0).tuning.field_weights], ["title", "aliases", "body"])
+        self.assertEqual([f for f, _ in self.trying(weight_summary=0.0).tuning.field_weights],
+                         ["title", "aliases", "answers", "body"])
         self.assertGreater(found(self.trying(bm25_b=0.0), "study")["spacing"], found(v, "study")["spacing"])  # length forgiven
         self.assertLess(found(self.trying(bm25_k1=0.0), "study")["spacing"], found(v, "study")["spacing"])  # repeats ignored
 
@@ -483,7 +484,7 @@ class TheCacheFollowsTheWeights(Tuned):
         self.assertEqual((self.computed(), self.computed()), (2, 0))
         self.tune("weight_title = 6")
         self.assertEqual((self.computed(), self.computed()), (2, 0))  # every row was the old weights'
-        self.assertEqual(self.brain().tuning.cache_key, "title=6.0 aliases=2.0 body=1.0 summary=0.5")
+        self.assertEqual(self.brain().tuning.cache_key, "title=6.0 aliases=2.0 answers=2.0 body=1.0 summary=0.5")
         # `brain cache` opens it under the brain's own key: it reports the rows, it does not empty them.
         stats = json.loads(run_brain(self.root, "cache", "--json").stdout)
         self.assertEqual((stats["pages"], stats["version"]), (2, vault_cache.CACHE_VERSION))

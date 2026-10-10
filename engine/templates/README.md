@@ -36,6 +36,7 @@ table in step with that registry. Lists may be inline, `[a, b]`, or one
 | `type` | all, required | episode, concept, entity, insight, decision | yes | Page type |
 | `created`, `updated` | all, required | YYYY-MM-DD | yes | Dates |
 | `aliases` | all | list | yes | Other names the page resolves by |
+| `answers` | all | up to five short questions (at most 120 characters each), one `  - item` per line | no | The questions this page answers, in the words the owner would ask them in before knowing the page's terms. Search reads them as a field of its own (`weight_answers`), so a question that shares no word with the title can still find the page. Written with the page, by `/ingest` and `/sleep`; not a second summary |
 | `tags` | all | up to three, from the vocabulary | no | |
 | `status` | concept, decision | concept: emerging, established; decision: open, decided, reviewed | no | See Page contracts |
 | `input` | episode | path | no | Its path in `senses/`; this marks the input encoded |

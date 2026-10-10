@@ -35,7 +35,6 @@ matters. P1 gives the measure that decides item F1.
 | F8 | 5 | Visual interface | L | none | Cheapest form is a static HTML graph from `brain graph`; a server is not worth it |
 | F9 | 4 | Intra-day ordering | S | none | Optional `HH:MM` after the date in log lines. Check every parser that assumes `^\d{4}-\d{2}-\d{2} (\S+)` (`LOG_LINE` in vault_model.py) |
 | F10 | 4 | Backup and sync | S | none | Document a git remote; the shipped permissions deny `git push` on purpose |
-| F11 | 3 | Encryption at rest | M | none | Conflicts with plain-Markdown search; only worth it if the brain leaves your machine |
 | F12 | 3 | MCP server over `brain` | M | F1 | Read-only tools only (`search`, `recall`, `since`); no write path |
 | F13 | 4 | Windows support | M | none | Paths, `python3` name, the `brain` symlink `install.sh` makes |
 
@@ -64,7 +63,7 @@ Acceptance: leaving the brain alone for a week produces one report, and no page 
 | S7 | 5 | `/review-decision` | S | Splits the review step out of `/decide` (110 lines) so it can be run or scheduled alone |
 | S8 | 4 | `/restore` | S | Confirmed gap: `/maintain` moves pages to `dormant/` but nothing moves them back. Log it, move the file, re-add to the index |
 | S9 | 4 | `/export` | S | Wrapper for `brain export`, with `/guard` run first |
-| S10 | 3 | `/share` | M | Read-only view for another person; needs a decision on what "view" means |
+| S10 | 3 | `/share` | M | Read-only view for another person; needs a decision on what "view" means. Decided 2026-10-10: nothing new, `/export` and `brain mcp` are the ways out; not built |
 
 Skill template: copy `engine/skills/commit/SKILL.md` (19 lines) for a thin skill, `ask` (93 lines) for one
 that logs a recall. `engine/tests/test_skills.py` checks the contract; extend it, do not bypass it.
@@ -78,7 +77,7 @@ that logs a recall. `engine/tests/test_skills.py` checks the contract; extend it
 | A3 | 6 | Ingestion scout | M | sonnet | Sorts `inbox/` before `/ingest`: duplicates by fingerprint, secrets by `brain check --guard`, items that need a person |
 | A4 | 5 | Quiz writer | S | sonnet | Drafts questions; `/rehearse` already builds its own, so only worth it if quizzes feel thin |
 | A5 | 4 | Privacy gatekeeper | S | inherit | Clean-context pass of `/guard` before any export. The critic already covers part of this |
-| A6 | 3 | Writer or editor for `/write` | S | sonnet | Drafting stays in the main session today |
+| A6 | 3 | Writer or editor for `/write` | S | sonnet | Drafting stays in the main session today. Decided 2026-10-10: not built |
 
 Agent template: `engine/agents/curator.md` (23 lines, read-only, cheap model). Give new agents the
 fewest tools that do the job; only writers get `Write` and `Edit`.

@@ -2,16 +2,25 @@
 
 Usage:
     brain search QUERY... [--type TYPE ...] [--dormant] [--limit N] [--json]
-    brain recall QUERY... [--project NAME] [--hops N] [--dormant] [--limit N] [--all] [--json]
+    brain recall QUERY... [--also WORDING ...] [--project NAME] [--hops N] [--dormant] [--limit N] [--all] [--json]
 
-search  BM25 over title (x3), aliases (x2), body and summary (x0.5). Replaces grepping the
-        brain: same words, ranked, stop words and simple suffixes ignored.
+search  BM25 over title (x3), aliases (x2), the questions a page says it answers (`answers:`,
+        x2), body and summary (x0.5). Replaces grepping the brain: same words, ranked, stop
+        words and simple suffixes ignored.
 recall  search hits seed an activation that spreads along links (typed links
         and pairs recalled together before carry more), so pages one or two
         links from the words can come back. Each page shows how it was
         reached, its confidence (sources behind it) and flags: disputed,
         contradicted, stale (ask the owner whether it still holds), generated,
         dormant. --project biases toward the pages a project links to.
+        --also gives another wording of the same question (repeat it): the
+        field's own terms for it, or plainer words. Each wording is searched
+        and a page's scores are added up before the spread, the question as
+        asked counting as much as its other wordings together. So a page
+        that only the right term reaches, and one that only plain words
+        reach, both come back, and the words every wording keeps count most.
+        A model asking for the owner passes two. Whether the brain covers
+        the question is still judged on the question as asked.
         `read first` names the section of a page that holds the words of
         the question its title does not, with its lines: open that part,
         and the rest only if it does not answer. A page the question names
@@ -42,8 +51,8 @@ def search_rows(vault, query, types=None, dormant=False, limit=10):
             for p, s in vault.search(query, types=types, dormant=dormant, limit=limit)]
 
 
-def recall_rows(vault, query, project=None, limit=10, hops=None, dormant=False, everything=False):
-    rows = vault.recall(query, project=project, limit=limit, hops=hops, dormant=dormant,
+def recall_rows(vault, query, project=None, limit=10, hops=None, dormant=False, everything=False, also=()):
+    rows = vault.recall(query, project=project, limit=limit, hops=hops, dormant=dormant, also=also,
                         floor=0.0 if everything else vault.tuning.recall_floor, abstain=not everything)
     return [{"page": r["page"].rel, "title": r["page"].title, "type": r["page"].type, "score": r["score"],
              "summary": r["page"].summary,
@@ -70,6 +79,8 @@ def arguments(ap):
     ap.add_argument("--type", action="append", choices=PAGE_TYPES, dest="types")
     ap.add_argument("--dormant", action="store_true")
     ap.add_argument("--project")
+    ap.add_argument("--also", action="append", default=[], metavar="WORDING",
+                    help="recall: another wording of the same question; repeat it. The scores are added up")
     ap.add_argument("--hops", type=int, help="links followed from each hit; the brain's spread_hops when not given")
     ap.add_argument("--limit", type=int, default=10)
     ap.add_argument("--all", action="store_true", dest="everything",
@@ -80,19 +91,22 @@ def run(root, args):
     """`args.mode` is `search` or `recall`: the command's own name, which `brain` sets."""
     vault = Vault(root)
     query = " ".join(args.query)
+    also = [w.strip() for w in args.also if w.strip()]
     if args.mode == "search":
+        if also:
+            raise Refused("brain search: --also is for recall, which fuses the wordings; search takes one")
         rows = search_rows(vault, query, args.types, args.dormant, args.limit)
     else:
         try:
-            rows = recall_rows(vault, query, args.project, args.limit, args.hops, args.dormant, args.everything)
+            rows = recall_rows(vault, query, args.project, args.limit, args.hops, args.dormant, args.everything, also)
         except ValueError as e:
             raise Refused(str(e)) from None
     # recall found words but too little of the question: name the pages, list nothing
     weak = ([p.rel for p, _ in vault.search(query, dormant=args.dormant, limit=3)]
             if args.mode == "recall" and not rows and not args.everything else [])
     held = held_rows(vault, query)
-    return dict({"query": query, "mode": args.mode, "results": rows}, **({"weak": weak} if weak else {}),
-                **({"held": held} if held else {}))
+    return dict({"query": query, "mode": args.mode, "results": rows}, **({"also": also} if also else {}),
+                **({"weak": weak} if weak else {}), **({"held": held} if held else {}))
 
 
 def render(result, args):
@@ -104,6 +118,7 @@ def render(result, args):
     if not rows:
         return "\n".join([f'{mode}: nothing matches "{query}"' + ("" if args.dormant else " (try --dormant)")] + held)
     out = [f'{mode}: "{query}"' + (f"  [project {args.project}]" if args.project else "")]
+    out += [f'  also asked as: "{wording}"' for wording in result.get("also", [])]
     for r in rows:
         line = f"  {r['score']:>7.3f}  {r['page']}"
         line += f"\n           {r['summary'] or '(no summary: open the page to judge it)'}"

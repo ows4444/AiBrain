@@ -9,6 +9,12 @@ author: Piotr Wozniak
 published: 1990
 consolidated: 2026-06-10
 aliases: []
+answers:
+  - How does a flashcard program decide when to show me a card again?
+  - What happens to a flashcard's schedule when I get it wrong?
+  - How long are the first two waits before a new flashcard comes back?
+  - What scale are answers marked on when reviewing flashcards?
+  - What makes a flashcard come back sooner if I find it hard?
 tags: []
 ---
 

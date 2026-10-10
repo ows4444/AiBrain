@@ -87,6 +87,9 @@ THRESHOLDS = {name: Threshold(*spec) for name, spec in {
     # field out of search.
     "weight_title": (3.0, 0.0, 100.0, "how much a word in the title counts in search"),
     "weight_aliases": (2.0, 0.0, 100.0, "how much a word in an alias counts in search"),
+    # `answers:` is the questions a page answers, in the owner's words: another way the page
+    # is asked for, as an alias is another way it is named, so it counts as an alias does.
+    "weight_answers": (2.0, 0.0, 100.0, "how much a word in a question the page says it answers counts in search"),
     "weight_body": (1.0, 0.0, 100.0, "how much a word in the body counts in search"),
     "weight_summary": (0.5, 0.0, 100.0, "how much a word in the summary counts in search"),
     "bm25_k1": (1.2, 0.0, 10.0, "BM25: how fast a repeated word stops adding to a page's score"),

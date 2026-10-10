@@ -51,6 +51,7 @@ COMMANDS = {
     "export": ("export", True, {}),
     "cache": ("cache", True, {}),
     "capture": ("capture", True, {}),
+    "door": ("door", True, {}),
     "errors": ("errlog", True, {}),
     "extract": ("extract", True, {}),
     "fetch": ("fetch", True, {}),

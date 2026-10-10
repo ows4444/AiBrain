@@ -23,8 +23,13 @@ in one sentence and stop.
 
 ## Workflow
 
-1. **Recall:** `brain recall "<the question>"`, adding `--project <name>` when
-   the question is about a project in `prefrontal/`. It ranks pages by the
+1. **Recall:** `brain recall "<the question>" --also "<wording>" --also
+   "<wording>"`, adding `--project <name>` when the question is about a
+   project in `prefrontal/`. The question goes in as the owner asked it; the
+   two other wordings are yours, one in the terms the field uses for it and
+   one in plain everyday words. Same question, same scope: no fact, name or
+   number the owner did not give. They reach a page whose words the owner did
+   not use; whether the brain covers the question is still judged on theirs. It ranks pages by the
    question's words, then spreads along links (typed links and pages recalled
    together before count more), and shows for each how it was reached, its
    summary, its confidence and its flags. It cuts weak rows, and prints one

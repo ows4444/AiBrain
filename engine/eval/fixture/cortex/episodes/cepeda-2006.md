@@ -9,6 +9,10 @@ author: Cepeda, Pashler, Vul, Wixted, Rohrer
 published: 2006
 consolidated: 2026-06-10
 aliases: []
+answers:
+  - How far apart should my study sessions be if the exam is a year away?
+  - How many experiments did the big review of spread-out study cover?
+  - How does the big review explain why spread-out study wins?
 tags: []
 ---
 

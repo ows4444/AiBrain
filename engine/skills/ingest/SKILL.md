@@ -65,7 +65,10 @@ from the owner, in the conversation.
    `--name <short-slug>` when the title is long) creates it in
    `cortex/episodes/` with `title`, `input`, `url`, `author`, `published` and
    the dates filled from the input; never type that frontmatter by hand.
-   Then set `summary:` (one sentence, at most 200 characters, from what the
+   Then set `answers:`, up to five short questions this episode answers, in
+   the words the owner would ask them in before knowing the source's terms,
+   one `  - question` per line under the field: they are how a question that
+   shares no word with the title finds the page. And set `summary:` (one sentence, at most 200 characters, from what the
    source says, not from its headings) and fill the sections with Edit: claims as claims with attribution,
    numbers with the conditions they hold under. Correct `url:` only when the
    input relays someone else's work: it is where the content originally came

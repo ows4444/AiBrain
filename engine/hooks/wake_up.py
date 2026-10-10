@@ -5,8 +5,9 @@ With an OWNER.md, the briefing opens with it: who the owner is, how to talk to
 them and their goals reach every session this way, so the root CLAUDE.md does
 not change when a goal does.
 Four lines, every session, and more only when something needs the owner: notes
-waiting in inbox/; new input contradicting a page; a reminder whose date has
-come; a goal past its date, gone stale, with no pages behind it or slipping;
+waiting in inbox/ (what waited at the door, `brain door`, is brought in first);
+new input contradicting a page; a reminder whose date has come; a goal past
+its date, gone stale, with no pages behind it or slipping;
 the pages the last questions and live projects point to; the calibration
 checkpoint reached; a note left before a compaction (save_resume.py) that is
 newer than the log; or, in a brain that hosts its own engine, hooks running
@@ -23,6 +24,7 @@ import sys
 
 ROOT = os.environ.get("CLAUDE_PROJECT_DIR", os.getcwd())
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
+import door  # noqa: E402
 from vaultlib import LOG_LINE, LOG_PATH, OWNER_FILE, Vault, find_brain, is_brain  # noqa: E402
 
 # The brain may be above the folder the session started in (prefrontal/<name>/).
@@ -56,10 +58,18 @@ def purpose_line(vault):
 
 
 def inbox_line():
+    """What waits in inbox/, after what waited at the door (`brain door`) has been brought in."""
+    came = door.pull(ROOT)
     inbox = os.path.join(ROOT, "inbox")
     waiting = [f for f in (os.listdir(inbox) if os.path.isdir(inbox) else [])
                if not f.startswith(".") and f != "README.md"]
-    return f"Inbox: {len(waiting)} notes waiting (/ingest moves them into senses/)" if waiting else ""
+    through = f", {len(came['brought'])} of them just in through the door" if came["brought"] else ""
+    lines = [f"Inbox: {len(waiting)} notes waiting{through} (/ingest moves them into senses/)"] if waiting else []
+    if came["unreachable"]:
+        lines.append(f"Door: it leads to {came['door']}, which cannot be read (`brain door FOLDER` moves it)")
+    elif came["left"]:
+        lines.append(f"Door: {len(came['left'])} left there, not brought in ({', '.join(came['left'][:SHOW])})")
+    return "\n".join(lines)
 
 
 def attention_lines(vault):

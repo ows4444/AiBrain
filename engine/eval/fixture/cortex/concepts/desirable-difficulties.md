@@ -6,6 +6,11 @@ status: established
 created: 2026-07-20
 updated: 2026-07-20
 aliases: []
+answers:
+  - Why does studying that feels harder sometimes stick better?
+  - Does doing badly in practice mean I am not learning?
+  - Can I trust my own feeling about which way of studying works best?
+  - What is it called when making study harder makes it last longer?
 tags: []
 ---
 

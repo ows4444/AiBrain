@@ -6,6 +6,10 @@ kind: product
 created: 2026-06-10
 updated: 2026-06-10
 aliases: []
+answers:
+  - Which flashcard app will I probably use for the exam?
+  - Is Anki free?
+  - Where does Anki's way of timing reviews come from?
 tags: []
 ---
 

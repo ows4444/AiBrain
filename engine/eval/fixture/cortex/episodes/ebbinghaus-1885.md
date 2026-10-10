@@ -9,6 +9,11 @@ author: Hermann Ebbinghaus
 published: 1885
 consolidated: 2026-06-10
 aliases: []
+answers:
+  - Is relearning something quicker than learning it the first time?
+  - How did Ebbinghaus work out how much of a list he still remembered?
+  - Over what delays did Ebbinghaus test himself, shortest to longest?
+  - Did Ebbinghaus find that repeating over several days beats one day?
 tags: []
 ---
 

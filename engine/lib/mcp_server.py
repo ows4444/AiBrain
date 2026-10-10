@@ -75,10 +75,15 @@ TOOLS = {
                "nothing when no page holds enough of the question: that means the brain does not cover it.",
                schema(("query",), query=QUERY, limit=LIMIT, dormant=DORMANT,
                       project={"type": "string", "description": "A project in prefrontal/ to lean toward"},
+                      also={"type": "array", "items": {"type": "string"},
+                            "description": "Other wordings of the same question (the field's own terms for it, "
+                                           "plainer words): each is searched and a page's scores are added up. Two "
+                                           "is enough"},
                       everything={"type": "boolean", "description": "Every match, however weak; use before "
                                                                     "concluding that nothing answers"}),
                lambda a: ["recall", *flag("--limit", a.get("limit")), *switch("--dormant", a.get("dormant")),
-                          *flag("--project", a.get("project")), *switch("--all", a.get("everything")), "--", a["query"]]),
+                          *flag("--project", a.get("project")), *switch("--all", a.get("everything")),
+                          *(word for wording in a.get("also") or [] for word in ("--also", wording)), "--", a["query"]]),
     "since": ("What happened in a period: pages made and changed, operations, questions asked, rehearsals.",
               schema(("start",), start={"type": "string", "description": "YYYY-MM-DD, or YYYY-MM for a whole month"},
                      until={"type": "string", "description": "YYYY-MM-DD or YYYY-MM; today when not given"}),

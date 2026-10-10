@@ -93,6 +93,11 @@ class SkillWiring(unittest.TestCase):
                              ("ingest", "scout"), ("tend", "consolidator"), ("ask", "researcher")):
             self.assertIn(agent, agents)
             self.assertIn(f"`{agent}` agent", self.skill(skill), skill)
+        # What answers for the owner asks in three wordings; what writes a page says what it answers.
+        for rel in (os.path.join("skills", "ask", "SKILL.md"), os.path.join("agents", "researcher.md")):
+            self.assertRegex(self.everything()[rel], r'brain recall "<[^>]+>" --also "<wording>" --also\s+"<wording>"')
+        for skill in ("ingest", "sleep"):
+            self.assertIn("`answers:`", self.skill(skill), skill)
         # The review of a decision is a skill of its own, and `decide` is the shorter for it.
         self.assertIn("`/review-decision`", self.skill("decide"))
         self.assertNotIn("## Outcome", self.skill("decide"))

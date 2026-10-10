@@ -6,6 +6,11 @@ status: established
 created: 2026-06-10
 updated: 2026-06-10
 aliases: [distributed practice, spaced practice]
+answers:
+  - Is cramming it all into one session worse than studying a bit over several days?
+  - What is it called when spreading study out makes it last longer?
+  - Does spreading practice out work for skills as well as facts?
+  - What backs up the idea that spreading study over days works?
 tags: []
 ---
 

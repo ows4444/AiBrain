@@ -194,10 +194,10 @@ class EvalReport(unittest.TestCase):
             with open(base, encoding="utf-8") as fh:
                 self.assertEqual(json.load(fh)["k"], 5)
             out = run_brain(None, "eval", "--baseline", base, "--answers", answers).stdout
-        for fragment in ("retrieval over 13 covered questions, top 5", "(baseline hit", "recall missed q10",
+        for fragment in ("retrieval over 13 covered questions, top 5", "(baseline hit", "recall missed q13",
                          "uncovered: u01 (0 pages matched words, recall lists 0)", "answers: 2/35 given",
                          "uncovered questions recall still lists pages for: 2 of 6", "recall  rows returned", "held ideas: 2 of 2 questions list the idea they name;", "set paraphrase: 8 questions", "set first: 8 questions",
-                         "hit@1", "recall buried q10: the first expected page is not in the top 5;",
+                         "hit@1", "recall buried f07: the first expected page is at rank 4;",
                          "q09: missing [], extra ['anki']", "u01: missing [], extra [], did not say it was not covered"):
             self.assertIn(fragment, out)
 

@@ -5,6 +5,8 @@
 __pycache__/
 .venv/
 node_modules/
+# the door (brain door): a link to a folder of this machine, so each machine opens its own
+inbox/.door
 # graph exports (brain graph); a CSV dropped into senses/ is still tracked
 motor/graph/
 # exports (brain export): regenerated from cortex/ on demand

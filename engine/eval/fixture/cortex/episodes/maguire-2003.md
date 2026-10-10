@@ -9,6 +9,11 @@ author: Maguire, Valentine, Wilding, Kapur
 published: 2003
 consolidated: 2026-07-20
 aliases: []
+answers:
+  - Are memory champions born with different brains?
+  - What technique do nearly all memory champions use?
+  - Which brain areas are more active when memory champions memorise?
+  - Are memory champions smarter than other people in general?
 tags: []
 ---
 

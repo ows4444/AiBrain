@@ -4,8 +4,8 @@ Mixed into vaultlib.Vault; relies on its pages, events, edges, tuning, resolve()
 typed_edges(), contradicted_by(), strength(), confidence() and links_from().
 Every number here is the brain's own (vault_tuning): the defaults are named below.
 
-    search    BM25 over title (x3), aliases (x2), body and summary (x0.5);
-              dormant/ on request
+    search    BM25 over title (x3), aliases (x2), the questions a page says it
+              answers (x2), body and summary (x0.5); dormant/ on request
     recall    search hits seed an activation that spreads along links, so a
               page the question never names, one or two links from what it
               does name, can still come back (associative recall)
@@ -33,6 +33,8 @@ def field_text(page, field):
         return page.title
     if field == "aliases":
         return " ".join(page.aliases)
+    if field == "answers":
+        return " ".join(page.answers)
     if field == "summary":
         return page.summary or ""
     return prose(page.body)
@@ -112,7 +114,7 @@ class RetrievalMixin:
         return sum(w for t, w in idf.items() if t in docs[page]) / sum(idf.values())
 
     def search(self, query, types=None, dormant=False, limit=10):
-        """[(page, score)] by BM25 over title, aliases, body and summary, best first; [] when no word matches.
+        """[(page, score)] by BM25 over title, aliases, answers, body and summary, best first; [] when no word matches.
 
         `types` limits the page types; `dormant` adds the pages in dormant/.
         System pages (index, log, ...) and projects are never results.
@@ -275,12 +277,22 @@ class RetrievalMixin:
                              "bytes": len(text.encode("utf-8"))}
         return out
 
-    def recall(self, query, project=None, limit=10, hops=None, dormant=False, floor=0.0, abstain=False):
+    def recall(self, query, project=None, limit=10, hops=None, dormant=False, floor=0.0, abstain=False, also=()):
         """Ranked pages for a question: [{page, score, seed, hop, from, confidence, flags, section}].
 
         `floor` cuts rows scoring under that share of the best row; `abstain`
         returns nothing when the best search hit holds under min_coverage of
         the question. `brain recall` uses both (recall_floor) unless given --all.
+
+        `also` is other wordings of the same question (the field's own terms,
+        plainer words). Each wording is searched on its own and a page's
+        scores are added up, the other wordings sharing one vote between
+        them: the question as the owner asked it counts as much as all of
+        them together. So a word every wording keeps counts most, and a page
+        only one wording reaches still comes in. The best seed_limit of the
+        sums seed one spread. Whether to abstain is judged on the question
+        as it was asked: another wording can change which pages lead, never
+        whether the brain covers the question.
 
         Search hits seed the spread (scaled so the best is 1.0). With `project`
         (a prefrontal/ folder name), its pages count project_boost times more
@@ -291,13 +303,16 @@ class RetrievalMixin:
         section: the part of the page to read first, when one stands out (best_sections).
         """
         t = self.tuning
-        hits = self.search(query, limit=t.seed_limit, dormant=dormant)
-        if abstain and hits and self.coverage(query, hits[0][0], dormant=dormant) < t.min_coverage:
+        wordings = [query, *also]
+        asked = self.search(query, limit=1, dormant=dormant)
+        if abstain and (not asked or self.coverage(query, asked[0][0], dormant=dormant) < t.min_coverage):
             return []
-        seeds = {}
-        if hits:
-            top = hits[0][1]
-            seeds = {p: s / top for p, s in hits}
+        summed = {}  # with no other wording: the question's own scores, as `search` gives them
+        for wording, share in [(query, 1.0), *((other, 1 / len(also)) for other in also)]:
+            for p, s in self.search(wording, limit=None, dormant=dormant):
+                summed[p] = summed.get(p, 0.0) + s * share
+        hits = sorted(summed.items(), key=lambda kv: (-kv[1], kv[0].rel))[:t.seed_limit]
+        seeds = {p: s / hits[0][1] for p, s in hits}
         focus = self.resolve(project) if project else None
         if project and (focus is None or focus.type != "project"):
             raise ValueError(f"no project named {project} in prefrontal/")
@@ -325,7 +340,7 @@ class RetrievalMixin:
                          "from": seed, "flags": flags})
         rows.sort(key=lambda r: (-r["score"], r["page"].rel))
         rows = [r for r in rows if r["score"] >= floor * rows[0]["score"]][:limit]
-        sections = self.best_sections(query, [r["page"] for r in rows], dormant)
+        sections = self.best_sections(" ".join(wordings), [r["page"] for r in rows], dormant)
         for r in rows:
             r["confidence"] = None if "dormant" in r["flags"] else self.confidence(r["page"])
             r["section"] = sections[r["page"]]

@@ -29,7 +29,7 @@ class MixedInbox(TempBrain):
             self.write(f"inbox/{name}", text)
         for name, data in (("h-photo.png", b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR"), ("i-latin.txt", b"Caf\xe9 notes\n"),
                            ("l-paper.PDF", b"%PDF-1.4\n\xe2\xe3\xcf\xd3\n"), ("m-paper-again.pdf", b"%PDF-1.4\n\xe2\xe3\xcf\xd3\n"),
-                           ("n-nothing.md", b"")):
+                           ("n-nothing.md", b""), ("o-plain.pdf", b"%PDF-1.4\nA PDF written out in plain characters.\n")):
             with open(os.path.join(self.root, "inbox", name), "wb") as fh:
                 fh.write(data)
         os.makedirs(os.path.join(self.root, "inbox", "j-folder"))
@@ -43,7 +43,7 @@ class MixedInbox(TempBrain):
             "a-thought.md": "ready", "b-copy.md": "duplicate", "c-again.md": "duplicate", "d-keys.md": "secret",
             "e-contact.md": "ready", "f-blank.md": "empty", "g-gone.md": "forgotten", "h-photo.png": "not_text",
             "i-latin.txt": "not_text", "j-folder": "not_text", "k-keys-again.md": "secret", "l-paper.PDF": "not_text",
-            "m-paper-again.pdf": "duplicate", "n-nothing.md": "empty"})
+            "m-paper-again.pdf": "duplicate", "n-nothing.md": "empty", "o-plain.pdf": "not_text"})
         self.assertEqual(found["ready"], ["inbox/a-thought.md", "inbox/e-contact.md"])
         rows = {row["note"]: row for row in found["notes"]}
         self.assertEqual(rows["inbox/b-copy.md"]["same_as"], "senses/inbox/2026-10-01-idea.md")  # an input
@@ -63,7 +63,7 @@ class MixedInbox(TempBrain):
         r = run_brain(self.root, "inbox")
         self.assertEqual((r.returncode, r.stderr), (0, ""))
         self.assertEqual(r.stdout, "\n".join((
-            "inbox: 14 notes, 2 ready for /ingest",
+            "inbox: 15 notes, 2 ready for /ingest",
             "  ready      inbox/a-thought.md",
             "  duplicate  inbox/b-copy.md: the same as senses/inbox/2026-10-01-idea.md",
             "  duplicate  inbox/c-again.md: the same as inbox/a-thought.md",
@@ -81,7 +81,9 @@ class MixedInbox(TempBrain):
             "  not text   inbox/l-paper.PDF: a PDF or an image: `brain extract` reads it where `pdftotext` is installed, "
             "else the model does",
             "  duplicate  inbox/m-paper-again.pdf: the same as inbox/l-paper.PDF",
-            "  empty      inbox/n-nothing.md: no text")) + "\n")
+            "  empty      inbox/n-nothing.md: no text",
+            "  not text   inbox/o-plain.pdf: a PDF or an image: `brain extract` reads it where `pdftotext` is installed, "
+            "else the model does")) + "\n")
         self.assertEqual(sorted(os.listdir(os.path.join(self.root, "inbox"))), before)  # it reads; it moves nothing
 
     def test_it_counts_the_notes_the_briefing_and_the_digest_count(self):

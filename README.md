@@ -97,9 +97,10 @@ The `brain` command works in any terminal (`brain --help`):
 ```sh
 brain check           # broken links, schema, index drift
 brain search QUERY    # pages by their words
-brain recall QUERY    # words, then associations along links
+brain recall QUERY    # words, then associations along links; --also "..." adds another wording of the question
 brain since 2026-09-01
 brain capture "a line" # keep it for later: a note in inbox/, which /ingest encodes
+brain door FOLDER     # a synced folder as the way in from the phone: what is saved there comes into inbox/
 brain inbox           # what waits in inbox/, sorted: ready, duplicate, credential, not text
 brain extract FILE    # a PDF's or an image's text into senses/, if pdftotext or tesseract is installed
 brain fit senses/FILE # what an input bears on, before it is encoded; /ingest runs it
@@ -163,6 +164,23 @@ writes, so it can run on a schedule. Two ways:
 
 Nothing here encodes, consolidates or rehearses for you: `/tend` does the
 first two when you start it, and `/rehearse` is yours alone.
+
+### A note taken away from the desk
+
+Pick one folder that a sync service keeps on this machine and on your phone
+(iCloud Drive, Dropbox, Syncthing), and open it as the door, once:
+
+```sh
+brain door "$HOME/Library/Mobile Documents/com~apple~CloudDocs/Brain"
+```
+
+A note, a photo or a PDF saved there from anywhere is moved into `inbox/` when
+the next session starts (`brain door --pull` does it by hand), and from there
+it is a note like any other: `brain inbox` sorts it and `/ingest` encodes it.
+Files are moved, not copied, so the folder is empty again. `brain door` alone
+says where the door is and what waits; `brain door --close` closes it and
+leaves the folder alone. The door is a link, `inbox/.door`, which git ignores:
+a second machine opens its own.
 
 ### Other programs
 

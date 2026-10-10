@@ -2,7 +2,7 @@
 
 Usage:
     brain eval [--root DIR] [--questions FILE] [--answers FILE] [--k N] [--json]
-               [--save-baseline] [--baseline FILE] [--draft N] [--set NAME=VALUE ...]
+               [--save-baseline] [--baseline FILE] [--draft N] [--set NAME=VALUE ...] [--no-also]
     brain eval --from-log [--root DIR] [--k N] [--save-baseline] [--baseline FILE]
                [--set NAME=VALUE ...] [--json]
 
@@ -38,6 +38,13 @@ came first instead.
 Recall is scored as `brain recall` runs it: rows under recall_floor of the
 best are cut and a gross mismatch returns nothing, so `rows` and `bytes` are
 what the command would hand an answer.
+
+A question may carry `also`: other wordings of it, as a model asking for the
+owner passes to `brain recall --also`. Recall is then scored with them, since
+that is how /ask asks; search is scored on the question alone. They are
+written by someone who has not seen the pages, or the number means nothing.
+--no-also asks every question in its first wording only: what the wordings
+buy is the difference between the two runs. A baseline is saved with them.
 
 A question with `held` names an idea that has no page yet (a candidate on an
 episode). It is scored on whether `held_ideas` lists that idea, and reports
@@ -151,6 +158,10 @@ def question_problems(vault, questions):
     """Questions that break their own set: a page that is not there, a paraphrase that names its page."""
     problems = []
     for q in questions:
+        also = q.get("also", [])
+        if not isinstance(also, list) or not all(isinstance(w, str) and w.strip() for w in also):
+            problems.append(f"{q['id']}: `also` is a list of other wordings of the question, each some text")
+            q["also"] = []
         for stem in q.get("expect", []):
             page = vault.resolve(stem)
             if page is None:
@@ -228,13 +239,14 @@ def summary(rows):
             "unsummarised": sum(r["unsummarised"] for r in rows)}
 
 
-def retrieval(vault, questions, k):
+def retrieval(vault, questions, k, reworded=True):
+    """Every question scored. `reworded`: recall also gets the other wordings a question carries (`also`)."""
     out = {"search": [], "recall": [], "uncovered": [], "held": []}
 
     def recalled(q):  # as `brain recall` does it: weak rows cut, nothing on a gross mismatch
         then = vault.as_of(q["line"], q["day"]) if "line" in q else vault  # a logged question: the brain of its day
         return then.recall(q["question"], project=q.get("project"), limit=k, floor=vault.tuning.recall_floor,
-                           abstain=True)
+                           abstain=True, also=q.get("also", ()) if reworded else ())
 
     for q in questions:
         if "held" in q:  # the question names an idea still held on its episode
@@ -263,6 +275,7 @@ def retrieval(vault, questions, k):
             for name in names}
     standard = sets.get(STANDARD) or {mode: summary([]) for mode in ("search", "recall")}
     return {"k": k, "search": standard["search"], "recall": standard["recall"], "sets": sets,
+            "reworded": sum(1 for q in questions if reworded and q.get("also")),
             "per_question": {"search": out["search"], "recall": out["recall"]}, "uncovered": out["uncovered"],
             "held": {"questions": len(out["held"]), "listed": sum(1 for h in out["held"] if h["rank"]),
                      "row_bytes": sum(h["row"] for h in out["held"]),
@@ -315,6 +328,8 @@ def arguments(ap):
     ap.add_argument("--draft", type=int, metavar="N")
     ap.add_argument("--set", action="append", dest="tried", metavar="NAME=VALUE", default=[],
                     help="run with a threshold at another value; nothing is written")
+    ap.add_argument("--no-also", action="store_false", dest="reworded",
+                    help="ask each question in its first wording only, leaving out the `also` it carries")
 
 
 def baseline_of(args, brain=None):
@@ -363,6 +378,9 @@ def tried(args):
     if trial and args.save_baseline:
         raise Refused("brain eval: --set tries a value, and a baseline holds the numbers of the brain's own "
                       "thresholds; leave one of the two out")
+    if not args.reworded and args.save_baseline:
+        raise Refused("brain eval: a baseline holds the numbers of the questions as they are asked, their other "
+                      "wordings included; leave --no-also or --save-baseline out")
     return trial
 
 
@@ -386,7 +404,8 @@ def run(root, args):
         else:
             asked = [q for q in spec["questions"] if q.get("question", "").strip()]
             problems = question_problems(vault, asked)
-        result = {"retrieval": dict(retrieval(vault, asked, args.k), brain=brain_hash(brain)), "problems": problems}
+        result = {"retrieval": dict(retrieval(vault, asked, args.k, args.reworded), brain=brain_hash(brain)),
+                  "problems": problems}
         if args.answers:
             result["answers"] = answers(vault, asked, load(args.answers))
     where = baseline_of(args, brain if args.from_log else None)

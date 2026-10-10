@@ -61,7 +61,7 @@ def sort(root):
             rows.append({"note": rel, "kind": "not_text", "bytes": 0, "reader": None})
             continue
         row, digest, text = {"note": rel, "bytes": os.path.getsize(path)}, sha256(path), text_of(path)
-        found = scan_text(text)
+        found, reader = scan_text(text), READERS.get(os.path.splitext(name)[1].lower(), (None,))[0]
         secrets = [{"kind": kind, "line": line} for kind, severity, line in found if severity == "critical"]
         if not row["bytes"] or (text and not text.strip()):
             row["kind"] = "empty"
@@ -71,8 +71,8 @@ def sort(root):
             row["kind"] = "forgotten"
         elif digest in held:
             row.update(kind="duplicate", same_as=held[digest])
-        elif not text:
-            row.update(kind="not_text", reader=READERS.get(os.path.splitext(name)[1].lower(), (None,))[0])
+        elif reader or not text:  # a PDF is a PDF even when its bytes happen to read as text
+            row.update(kind="not_text", reader=reader)
         else:
             row.update(kind="ready", personal=[{"kind": kind, "line": line} for kind, _, line in found])
         held.setdefault(digest, rel)
