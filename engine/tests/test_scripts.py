@@ -7,10 +7,11 @@ import sys
 import tempfile
 import unittest
 
-from support import ENGINE, TempBrain, VALID, ago, page, run_brain, vaultlib
+from support import ENGINE, TODAY, TempBrain, VALID, ago, page, run_brain, vaultlib
 
 import commands  # noqa: E402  (support puts engine/lib on the path)
 import fit  # noqa: E402
+import tend  # noqa: E402
 
 
 class BrainCommand(TempBrain):
@@ -417,6 +418,82 @@ class Fit(TempBrain):
                 fh.write("Spacing my study sessions.\n")  # no frontmatter either
             found = self.fit(path)
             self.assertEqual((found["input"], found["pages"][0]["page"]), (path, "cortex/concepts/spacing.md"))
+
+
+class TendCheck(TempBrain):
+    """`brain tend --check`: everything that needs the owner, in one digest that writes nothing."""
+
+    def fill(self):
+        old = dict(created=ago(300), updated=ago(300))
+        self.write("senses/new.md", "not encoded yet\n")
+        self.write("senses/read.md", "encoded\n")
+        self.write("inbox/note.md", "a quick note\n")
+        self.write("cortex/concepts/spacing.md", page("concept", "Study spread over days lasts.\n", title="Spacing effect",
+                                                      status="established", summary="Spread study lasts.", **old))
+        self.write("cortex/episodes/blog.md", page("episode", "Cramming works, it says (contradicts:: [[spacing]]).\n",
+                                                   title="A blog", input="senses/read.md", summary="A blog.", **old))
+        frozen = dict(title="Raise prices", review=ago(5), revisit_if="a rival cuts prices", **old)
+        self.write("cortex/decisions/raise.md", page("decision", "## Expected\n- [hypothesis] It holds.\n## Decision\n"
+                                                     "- [decision] Go.\n", status="decided", **frozen))
+        self.write("cortex/decisions/hire.md", page("decision", "## Expected\n- [hypothesis] It holds.\n## Decision\n"
+                                                    "- [decision] Go.\n", status="decided", tags="[to-revisit]",
+                                                    **dict(frozen, title="Hire", review="2030-01-01")))
+        self.write("hippocampus/intentions.md", page("intentions", f"\n## Open\n\n- Renew the domain when {ago(2)}\n"))
+        ahead = (TODAY + datetime.timedelta(days=12)).isoformat()
+        self.write("OWNER.md", f"# Owner\n\n## Goals\n\n- Hand in by {ahead} -> [[spacing]]\n- Move by {ago(10)}\n")
+        self.log(f"{ago(9)} recall which painters did picasso learn from -> none",
+                 f"{ago(3)} recall when was picasso born -> none")
+
+    def test_one_digest_of_everything_that_is_waiting(self):
+        self.fill()
+        found = tend.digest(self.brain())
+        self.assertEqual(found, {
+            "date": TODAY.isoformat(), "senses": ["senses/new.md"], "inbox": ["note.md"],
+            "sleep": ["cortex/episodes/blog.md"],
+            "contradictions": [{"episode": "cortex/episodes/blog.md", "page": "cortex/concepts/spacing.md"}],
+            "rehearse": ["cortex/concepts/spacing.md"], "reminders": [{"text": "Renew the domain", "when": ago(2)}],
+            "review": [{"page": "cortex/decisions/raise.md", "review": ago(5)}], "revisit": ["cortex/decisions/hire.md"],
+            "late": [{"goal": "Move", "state": "past-due", "due": ago(10)}],
+            "at_risk": [{"goal": "Hand in", "days_left": 12}],
+            "gaps": [{"words": ["picasso"], "asked": 2, "last": ago(3)}], "needs": 11})
+        self.assertEqual(tend.render(found, None).splitlines(), [
+            f"tend check, {TODAY.isoformat()}: waiting on you",
+            "  not encoded       1: senses/new.md  (/ingest, or /tend)",
+            "  in the inbox      1: note.md  (/ingest moves them into senses/)",
+            "  awaiting sleep    1: cortex/episodes/blog.md  (/sleep, or /tend)",
+            "  contradictions    1: cortex/episodes/blog.md against cortex/concepts/spacing.md  (/sleep records both sides)",
+            "  due to rehearse   1: cortex/concepts/spacing.md  (/rehearse: yours alone)",
+            f"  reminders due     1: Renew the domain ({ago(2)})",
+            f"  to review         1: cortex/decisions/raise.md ({ago(5)})  (/decide)",
+            "  to revisit        1: cortex/decisions/hire.md  (the event the decision named has come)",
+            f"  goals past date   1: Move ({ago(10)})  (close, re-date or drop)",
+            "  goals at risk     1: Hand in (12 days left)  (nothing done toward them lately)",
+            "  not answered      1: picasso (2x)  (brain introspect --gaps)"])
+
+    def test_it_writes_nothing_and_has_no_form_that_does(self):
+        self.fill()
+
+        def on_disk():
+            return {os.path.join(folder, name): os.path.getmtime(os.path.join(folder, name))
+                    for folder, dirs, names in os.walk(self.root) for name in names if ".cache" not in folder}
+
+        before = on_disk()
+        r = run_brain(self.root, "tend", "--check")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("  not encoded       1: senses/new.md  (/ingest, or /tend)\n", r.stdout)
+        self.assertEqual(json.loads(run_brain(self.root, "tend", "--check", "--json").stdout)["needs"], 11)
+        self.assertEqual(on_disk(), before)  # no page, no log line, no index: nothing but the search cache
+        r = run_brain(self.root, "tend")
+        self.assertEqual((r.returncode, r.stdout), (1, ""))
+        self.assertTrue(r.stderr.startswith("brain tend: give --check for the read-only digest of what needs you."))
+
+    def test_a_brain_with_nothing_waiting_says_so_in_one_line_and_a_long_line_is_cut(self):
+        self.assertEqual(run_brain(self.root, "tend", "--check").stdout,
+                         f"tend check, {datetime.date.today().isoformat()}: nothing needs you\n")
+        for n in range(7):
+            self.write(f"senses/in{n}.md", "waiting\n")
+        self.assertIn("  not encoded       7: senses/in0.md, senses/in1.md, senses/in2.md, senses/in3.md, senses/in4.md "
+                      "and 2 more  (/ingest, or /tend)\n", run_brain(self.root, "tend", "--check").stdout)
 
 
 class NewPage(TempBrain):

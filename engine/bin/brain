@@ -17,11 +17,13 @@
     brain fetch URL [--name SLUG]         a web page cut down to its readable text, saved in senses/
     brain fit senses/FILE                 what an input bears on: the pages its own words reach, the held ideas it names
     brain new TYPE [--from senses/FILE]   a page from its template, frontmatter filled in from the input
+    brain mcp                             a read-only MCP server on stdin and stdout, for other programs: search, recall, since, gaps
     brain chats EXPORT OUT [...]          a Claude or ChatGPT export, one file per conversation
     brain session [TRANSCRIPT]            what the owner typed in this conversation, for /ingest session
     brain forget SOURCE [--yes]           what rests on one input; with the owner's yes, remove it and its episodes
     brain resume                          write where the work stands to the active project's process/resume.md
     brain statusline [--bar]              the queues and context fill on one line; --bar is the short form for Claude Code's row
+    brain tend --check                    everything that needs the owner, in one read-only digest: safe to run on a schedule
     brain eval [--from-log] [--set N=V]   the answer test set, or with --from-log every question in the log replayed; --set tries a threshold
     brain synth OUT [--pages N]           a synthetic brain of any size, for testing the engine
     brain bench [--pages N] [--json]      how long each instrument takes on a synthetic brain: run before and after a change
@@ -30,6 +32,7 @@
 The brain is the nearest folder at or above the working directory that holds
 both cortex/ and hippocampus/ (or $BRAIN_ROOT). A command works from that folder.
 `eval`, `synth`, `bench` and `chats` need no brain: they run on the engine's fixture or on the paths given.
+`mcp` starts without one too, and then offers no tools.
 Every command takes --json: what it found or did as data, in place of the text.
 Another program calls a command the same way, without a process: see lib/commands.py.
 """

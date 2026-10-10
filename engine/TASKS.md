@@ -210,16 +210,16 @@ that misses its target is closed, not shipped.
   - [x] `/write` always runs it, `/ask` on long answers, the critic on a run; `Bash(brain ground *)` is allowed
   - [x] Its limit, said in its own text and in `/write`: it reads digits and quotation marks, not meaning. A claim in words alone is not checked, and a sound line can be listed (the page says `a month`, the draft `1 month`): the skill says to tell the owner, not to reword the piece past the check
   - [x] Done when: it flags nothing in the reference answers and catches a planted number in the tests. There were no reference answers: `engine/eval/answers.json` now holds eight, written from the fixture's pages (citation recall and precision 1.0 by `brain eval --answers`, both uncovered questions said to be so). It reads 10 links, 11 numbers and a quotation in them and lists nothing; a planted number, a changed quotation, a wrong page and a page that does not exist are each caught
-- [ ] **28. `brain tend --check` and its schedule** (REFACTOR 5.2, ROADMAP F2 steps 1 and 2, S1, A1, M, after 12 and 19)
-  - [ ] One read-only digest: queues, rehearsals and reminders due, decisions to review, goals at risk, the gaps of 19
-  - [ ] A watcher agent: haiku, read-only tools, runs it and reports
-  - [ ] A schedule (a Claude Code `/schedule` routine, or cron) that sends you the result
+- [ ] **28. `brain tend --check` and its schedule** (REFACTOR 5.2, ROADMAP F2 steps 1 and 2, S1, A1, M, after 12 and 19; built, the schedule is yours to set)
+  - [x] One read-only digest: queues, rehearsals and reminders due, decisions to review, goals at risk, the gaps of 19 (`lib/tend.py`: also the inbox, new input that contradicts a page, decisions whose `revisit if` has come and goals past their date). A line only where something waits, `nothing needs you` when nothing does. A test holds that no file changes outside `.cache/`; `brain tend` without `--check` is refused, so the command has no form that writes
+  - [x] A watcher agent: haiku, read-only tools, runs it and reports (`agents/watcher.md`; `Bash(brain tend --check*)` is allowed)
+  - [ ] A schedule (a Claude Code `/schedule` routine, or cron) that sends you the result. The README has the cron line and the wording for the agent; setting it on your machine is yours. A cloud routine cannot read a brain that is only on this machine, so for the real brain it is cron or launchd
   - [ ] Done when: leaving the brain alone for a week gives one report and no page changes
-- [ ] **29. A read-only MCP server** (REFACTOR 5.3, ROADMAP F12, M, after 12)
-  - [ ] A stdio server, standard library only, over the calling convention of 12
-  - [ ] Four tools: `search`, `recall`, `since`, `gaps`; no tool that writes
-  - [ ] Declared in the plugin, so it starts with it
-  - [ ] Done when: another client lists and calls the four tools
+- [ ] **29. A read-only MCP server** (REFACTOR 5.3, ROADMAP F12, M, after 12; built, not yet tried from a real client)
+  - [x] A stdio server, standard library only, over the calling convention of 12 (`brain mcp`, `lib/mcp_server.py`). The specification moved while this was planned: revision 2026-07-28 dropped the `initialize` handshake, and every request now names its protocol version. Both are served: such a request is answered on its own (`server/discover`, `tools/list`, `tools/call`), and a client that opens with `initialize` (2025-11-25 and earlier) is served that way
+  - [x] Four tools: `search`, `recall`, `since`, `gaps`; no tool that writes. Each returns what its `brain` command prints. A test holds that calling all four changes no file outside `.cache/`: no page, no index, no recall line, so a page read this way does not count as used
+  - [x] Declared in the plugin, so it starts with it (`engine/.mcp.json`). It starts without a brain too, since the plugin may be enabled in any project, and then offers no tools. Its cost in a brain's own sessions: four tool descriptions in the context, beside `brain` on PATH which does the same
+  - [ ] Done when: another client lists and calls the four tools. A scripted client does, in `test_mcp.py`, in both eras of the protocol, and is refused cleanly for an unknown tool, a version it does not speak and arguments that do not fit. No real client has been pointed at it yet: do that once (the README has the configuration) before ticking this
 
 ## Phase 6. Only when the log can judge it
 

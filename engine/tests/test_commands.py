@@ -66,6 +66,8 @@ KEYS = {
     "forget": ("forget", ["cepeda-2006"], ["asset", "candidates", "citing", "episodes", "input", "other_inputs"]),
     "forget --yes": ("forget", ["cepeda-2006", "--yes"], [
         "asset", "candidates", "citing", "episodes", "input", "other_inputs", "removed"]),
+    "tend --check": ("tend", ["--check"], ["at_risk", "contradictions", "date", "gaps", "inbox", "late", "needs",
+                                           "rehearse", "reminders", "review", "revisit", "senses", "sleep"]),
     "eval": ("eval", [], ["problems", "retrieval"]),
     "eval --answers": ("eval", ["--answers", "{tmp}/answers.json"], ["answers", "problems", "retrieval"]),
     "eval --draft": ("eval", ["--draft", "2"], ["questions"]),
@@ -126,7 +128,7 @@ class EveryCommand(Brain):
         self.assertEqual((result["context"], result["line"]), (42, "brain | senses 0 | sleep 1 | rehearse 1 | context 42%"))
 
     def test_no_command_is_left_out_of_the_pin_or_of_the_help(self):
-        pinned = {name for name, _, _ in KEYS.values()} | {"statusline"}
+        pinned = {name for name, _, _ in KEYS.values()} | {"statusline", "mcp"}  # mcp serves stdin: test_mcp.py
         self.assertEqual(pinned, set(commands.COMMANDS))
         listed = run_brain(None, "help").stdout
         for name in (*commands.COMMANDS, "test"):

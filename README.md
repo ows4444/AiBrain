@@ -91,6 +91,8 @@ brain recall QUERY    # words, then associations along links
 brain since 2026-09-01
 brain fit senses/FILE # what an input bears on, before it is encoded; /ingest runs it
 brain ground FILE     # a draft: links, numbers and quotations with no page behind them
+brain tend --check    # everything that needs you, in one read-only digest
+brain mcp             # a read-only MCP server for other programs: search, recall, since, gaps
 brain log recall "a question" --pages a-page   # one checked line in the log; skills run it
 brain index           # rewrite the index's listing from the pages and their summaries
 brain test            # the engine's own tests
@@ -123,6 +125,45 @@ runs without it and gives the same results. Git ignores it.
 
 On a 5,000-page brain, a recall takes about 0.45 s with the cache and 1.2 s
 without. Set `BRAIN_CACHE=0` to turn it off.
+
+### A check that runs without you
+
+`brain tend --check` prints everything the brain is waiting on: input not
+encoded, pages awaiting sleep, rehearsals and reminders due, decisions to
+review, goals slipping, questions asked and not answered. It reads and never
+writes, so it can run on a schedule. Two ways:
+
+- **cron or launchd, no model.** Once a week, from the brain's folder, with
+  the output sent wherever you read it. For cron, Mondays at nine, mailed:
+
+  ```
+  0 9 * * 1  cd /path/to/brain && brain tend --check | mail -s "brain" you@example.com
+  ```
+
+- **Claude Code.** Ask the `watcher` agent: "use the watcher agent to tell me
+  what needs me". It runs the same command and reports it in a few lines. A
+  scheduled routine (`/schedule`) can do that only for a brain its cloud
+  session can read, which a brain kept on one machine is not.
+
+Nothing here encodes, consolidates or rehearses for you: `/tend` does the
+first two when you start it, and `/rehearse` is yours alone.
+
+### Other programs
+
+`brain mcp` is a read-only [MCP](https://modelcontextprotocol.io) server over
+the same instruments: `search`, `recall`, `since` and `gaps`. Another client
+(a desktop app, an editor) starts it and reads the brain with no hooks of its
+own. In that client's configuration:
+
+```json
+{"mcpServers": {"brain": {"command": "python3",
+                          "args": ["/path/to/aibrain/engine/bin/brain", "mcp"],
+                          "env": {"BRAIN_ROOT": "/path/to/your/brain"}}}}
+```
+
+It has no tool that writes, and a page read through it leaves no recall line,
+so it does not count as used. Claude Code starts it with the plugin; outside a
+brain it offers no tools.
 
 ### Thresholds
 

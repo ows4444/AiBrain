@@ -102,7 +102,7 @@ the dict with `--json`, which every command takes. Another program makes the sam
 | Record | `log` (the one writer of log lines: it checks the operation and every page name), `index` (rewrites the index's listing from the pages) |
 | Output | `export`, `graph` |
 | Remove and continue | `forget` (remove an input), `resume` (write where the work stands) |
-| Operate | `statusline`, `cache`, `errors`, `synth`, `bench`, `test` |
+| Operate | `statusline`, `tend --check` (everything that needs the owner, read-only: what a scheduled run sends), `mcp` (the read-only server for other hosts), `cache`, `errors`, `synth`, `bench`, `test` |
 
 ### 4.3 The hooks: `engine/hooks/` (six events, one command each)
 
@@ -152,7 +152,7 @@ swallowed crash is not invisible.
 `/commit`, `/forget`, `/rollback`, `/start`, `/owner` and `/tend` are manual-only
 (`disable-model-invocation`). Skills that answer or write from pages also append a `recall` log line.
 
-### 5.2 Agents (7)
+### 5.2 Agents (8)
 
 | Agent | Model | Tools | Called by |
 |-------|-------|-------|-----------|
@@ -163,8 +163,10 @@ swallowed crash is not invisible.
 | curator | haiku | read only | `/sleep`, `/maintain` |
 | reviewer | sonnet | read only | `/reflect` |
 | graph-analyst | haiku | read + bash | `/health` |
+| watcher | haiku | read + bash | the owner, or a schedule |
 
-Only encoder and consolidator write. The critic judges a run in a clean context against its log line.
+Only encoder and consolidator write. The critic judges a run in a clean context against its log line. The
+watcher runs `brain tend --check` and reports it: the one thing meant to run with nobody there.
 
 ## 6. The flows
 
@@ -224,11 +226,14 @@ pre-commit and CI gates at `git commit`.
 
 | Host | How the engine is reached | Status |
 |------|---------------------------|--------|
-| Claude Code | plugin `aibrain` (`engine/.claude-plugin`, `hooks/hooks.json`, `skills/`, `agents/`, `bin/` on PATH) | primary |
+| Claude Code | plugin `aibrain` (`engine/.claude-plugin`, `hooks/hooks.json`, `skills/`, `agents/`, `bin/` on PATH, `.mcp.json`) | primary |
+| Any MCP client | `brain mcp`: a stdio server with four read-only tools (`search`, `recall`, `since`, `gaps`), each a `brain` command called in its process | reads only |
 
-No other host is supported: the hooks are Claude Code's. A read-only MCP server (`REFACTOR.md` 5.3) is the
-planned way for another host to read the brain. The brain also works as plain Markdown in Obsidian (the folder
-is its own vault).
+Only Claude Code runs the hooks, so only there is anything written or enforced. Another host reads the brain
+through `brain mcp` (`lib/mcp_server.py`, standard library only). It serves both eras of the protocol: a request
+that names its protocol version is answered on its own (revision 2026-07-28), and a client that opens with
+`initialize` is served that way (2025-11-25 and earlier). It has no tool that writes and leaves no recall line.
+The brain also works as plain Markdown in Obsidian (the folder is its own vault).
 
 ## 8. Observability
 
@@ -246,10 +251,11 @@ is its own vault).
 ## 9. Limits that follow from this design
 
 - Search is word-based plus link spreading; there is no embedding search.
-- Nothing runs unless a session is open (no scheduler); reminders and decay act only then.
+- Nothing writes unless a session is open. `brain tend --check` can run on a schedule (cron, or the watcher
+  agent) and say what is waiting; encoding, sleep and rehearsal still wait for the owner.
 - The model does the extraction from PDFs, images and transcripts; the engine has no extractor.
 - One owner; memory dates carry no time of day, so order within a day is log position.
-- Enforcement needs Claude Code hooks; no other host runs them.
+- Enforcement needs Claude Code hooks; no other host runs them, which is why `brain mcp` only reads.
 
 The ideas for lifting these are in `engine/ROADMAP.md`; the order of work is in `engine/REFACTOR.md`, and its
 checklist in `engine/TASKS.md`.

@@ -23,7 +23,8 @@ it for them.
 
 1. **Count.** `brain statusline` gives `senses` (input not encoded), `inbox`
    and `sleep` (awaiting consolidation). All zero: say so and stop. With
-   `dry-run`, list what each step would take and stop.
+   `dry-run`, list what each step would take and stop. (`brain tend --check`
+   is the wider, read-only digest a schedule runs: it starts none of this.)
 2. **Encode**, if `senses` or `inbox` is above zero: the `encoder` agent, told
    to encode everything waiting, oldest first, and to return the ingest
    output block for each input. More than twenty waiting: ten, then stop for
