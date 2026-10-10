@@ -3,6 +3,8 @@
 Usage:
     brain eval [--root DIR] [--questions FILE] [--answers FILE] [--k N] [--json]
                [--save-baseline] [--baseline FILE] [--draft N] [--set NAME=VALUE ...]
+    brain eval --from-log [--root DIR] [--k N] [--save-baseline] [--baseline FILE]
+               [--set NAME=VALUE ...] [--json]
 
 Runs on the fixture brain in engine/eval/fixture/ with engine/eval/questions.json
 unless --root and --questions point elsewhere (an owner can keep a question
@@ -62,6 +64,19 @@ brain's own value. To keep one, add `- NAME = VALUE (why)` under `## Overrides`
 in the brain's hippocampus/tuning.md; `brain introspect --usage` lists every
 threshold with its range. A baseline is never saved from a tried value.
 
+--from-log takes the questions from the brain's own log, in place of a
+question set: every recall line that is not a rehearsal is a question, and
+the pages it names are the ones expected. A line that named none (`-> none`)
+is an uncovered question. Each is replayed as the brain was on its day: the
+log's lines before it, and no later one, so the line that recorded an answer
+never helps to find it. The brain is --root, or the one `brain` is run in.
+It is scored like a question set, and its baseline is kept in that brain, at
+motor/eval-from-log-baseline.json. Two limits are printed with every result.
+The questions are the ones recall already answered on the day they were
+asked, so a fall is a regression and a high number is not quality. And the
+pages are as they are now, not as they were. A line all of whose pages are
+gone since (merged, renamed, faded) cannot be scored: it is listed, not run.
+
 A question set for a brain other than the fixture keeps its baseline beside
 it (`motor/eval-questions.json` -> `motor/eval-questions-baseline.json`), so
 it never overwrites the engine's. `--draft N` prints, as JSON, N questions to
@@ -81,13 +96,20 @@ import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from commands import Refused  # noqa: E402
-from vaultlib import LINK, Vault, parse_date, plain, setting, shown, tokens, tuning_of  # noqa: E402
+from commands import Refused, brain_root  # noqa: E402
+from vaultlib import (LINK, Vault, is_rehearsal_pass, parse_date, plain, setting, shown, tokens,  # noqa: E402
+                      tuning_of)
 
 EVAL = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "eval")
 FIXTURE = os.path.join(EVAL, "fixture")
 QUESTIONS = os.path.join(EVAL, "questions.json")
 BASELINE = os.path.join(EVAL, "baseline.json")
+FROM_LOG_BASELINE = os.path.join("motor", "eval-from-log-baseline.json")  # in the brain whose log it is
+# What a replay of the log cannot show; printed with every result.
+LIMITS = ("these are the questions recall already answered on the day they were asked: a fall is a regression, "
+          "a high number is not quality",
+          "each is replayed against the pages as they are now, not as they were that day")
+SHOWN = 10              # questions listed of each kind in the text of --from-log; --json has them all
 STANDARD = "standard"   # the set of a question that names none
 BURIED_BELOW = 3        # a first expected page under this rank is buried
 PARAPHRASE = "paraphrase"
@@ -156,6 +178,27 @@ def draft(vault, questions, n):
     return out
 
 
+def log_cases(vault):
+    """(questions, lines not replayed) from the brain's own log: every recall line that is not a rehearsal.
+
+    A question is what the line says before its arrow; the pages expected are the ones it
+    names that are here now. A line that names none is a question no page answered. `line` is
+    where it stands among the log's dated lines and `day` its date: it is asked of the brain
+    as it was then (Vault.as_of). A line all of whose pages are gone since cannot be scored.
+    """
+    questions, gone = [], []
+    for at, e in enumerate(vault.events):
+        if e.op != "recall" or not e.arrow or not e.day or not e.what or is_rehearsal_pass(e):
+            continue
+        here = [p.stem for p in map(vault.resolve, e.targets) if p is not None and not p.is_system]
+        if e.targets and not here:
+            gone.append(f"{e.date} recall {e.rest}")
+            continue
+        asked = {"id": f"{e.date}#{at + 1}", "question": e.what, "date": e.date, "line": at, "day": e.day}
+        questions.append(dict(asked, expect=sorted(set(here))) if here else dict(asked, covered=False))
+    return questions, gone
+
+
 def rank_scores(pages, expect, k):
     top = [p.stem for p in pages[:k]]
     found = [e for e in expect if e in top]
@@ -183,8 +226,9 @@ def retrieval(vault, questions, k):
     out = {"search": [], "recall": [], "uncovered": [], "held": []}
 
     def recalled(q):  # as `brain recall` does it: weak rows cut, nothing on a gross mismatch
-        return [r["page"] for r in vault.recall(q["question"], project=q.get("project"), limit=k,
-                                                floor=vault.tuning.recall_floor, abstain=True)]
+        then = vault.as_of(q["line"], q["day"]) if "line" in q else vault  # a logged question: the brain of its day
+        return [r["page"] for r in then.recall(q["question"], project=q.get("project"), limit=k,
+                                               floor=vault.tuning.recall_floor, abstain=True)]
 
     for q in questions:
         if "held" in q:  # the question names an idea still held on its episode
@@ -251,7 +295,8 @@ def answers(vault, questions, given):
 
 
 def arguments(ap):
-    ap.add_argument("--root", default=FIXTURE)
+    ap.add_argument("--root", help="the brain to test: the engine's fixture, or with --from-log the brain you are in")
+    ap.add_argument("--from-log", action="store_true", help="the questions are the brain's own log, replayed")
     ap.add_argument("--questions", default=QUESTIONS)
     ap.add_argument("--answers")
     ap.add_argument("--k", type=int, default=5)
@@ -262,12 +307,25 @@ def arguments(ap):
                     help="run with a threshold at another value; nothing is written")
 
 
-def baseline_of(args):
-    """Where the baseline is kept: the engine's set keeps the engine's; any other keeps its own beside it."""
+def baseline_of(args, brain=None):
+    """Where the baseline is kept: the engine's set keeps the engine's; any other keeps its own beside it.
+
+    A replay of the log (`brain`: whose log it is) keeps its baseline in that brain's motor/.
+    """
     if args.baseline:
         return args.baseline
+    if brain:
+        return os.path.join(brain, FROM_LOG_BASELINE)
     own = os.path.realpath(args.questions) != os.path.realpath(QUESTIONS)
     return os.path.splitext(args.questions)[0] + "-baseline.json" if own else BASELINE
+
+
+def tested(args):
+    """The brain a run tests: --root; without it the engine's fixture, or for --from-log the brain `brain` is run in."""
+    if args.from_log and (args.draft is not None or args.answers or args.questions != QUESTIONS):
+        raise Refused("brain eval --from-log: the questions are the log's own; it takes no --questions, "
+                      "--answers or --draft")
+    return args.root or (brain_root() if args.from_log else FIXTURE)
 
 
 @contextlib.contextmanager
@@ -301,25 +359,39 @@ def tried(args):
 def run(root, args):
     """`root` is not used: the brain tested is --root, the engine's fixture unless another is given."""
     trial = tried(args)
-    spec = load(args.questions) if os.path.exists(args.questions) or not args.draft else {"questions": []}
-    fixture = os.path.realpath(args.root) == os.path.realpath(FIXTURE)
+    brain = tested(args)
+    if args.from_log:
+        spec = {}
+    else:
+        spec = load(args.questions) if os.path.exists(args.questions) or not args.draft else {"questions": []}
+    fixture = os.path.realpath(brain) == os.path.realpath(FIXTURE)
     # The engine never writes into its own folder, and a value being tried leaves nothing behind.
     with cache_off() if fixture or trial else contextlib.nullcontext():
-        vault = Vault(args.root, today=parse_date(spec.get("today", "")) or None, tuning=trial)
+        vault = Vault(brain, today=parse_date(spec.get("today", "")) or None, tuning=trial)
         if args.draft is not None:
             return {"questions": draft(vault, spec["questions"], args.draft)}
-        asked = [q for q in spec["questions"] if q.get("question", "").strip()]
-        result = {"retrieval": dict(retrieval(vault, asked, args.k), brain=brain_hash(args.root)),
-                  "problems": question_problems(vault, asked)}
+        if args.from_log:
+            asked, gone = log_cases(vault)
+            problems = [f"not replayed, it names only pages that are not here: {line}" for line in gone]
+        else:
+            asked = [q for q in spec["questions"] if q.get("question", "").strip()]
+            problems = question_problems(vault, asked)
+        result = {"retrieval": dict(retrieval(vault, asked, args.k), brain=brain_hash(brain)), "problems": problems}
         if args.answers:
             result["answers"] = answers(vault, asked, load(args.answers))
+    where = baseline_of(args, brain if args.from_log else None)
+    if args.from_log:
+        result["from_log"] = {"log_lines": len(vault.events), "limits": list(LIMITS), "baseline": where,
+                              "questions": [{"id": q["id"], "date": q["date"], "question": q["question"],
+                                             "expect": q.get("expect", [])} for q in asked]}
     if trial:
-        own = tuning_of(args.root)
+        own = tuning_of(brain)
         result["set"] = {name: {"value": plain(value), "was": plain(getattr(own, name))}
                          for name, value in trial.items()}
     if args.save_baseline:
         r = result["retrieval"]
-        with open(baseline_of(args), "w", encoding="utf-8") as fh:
+        os.makedirs(os.path.dirname(where), exist_ok=True)
+        with open(where, "w", encoding="utf-8") as fh:
             json.dump({"k": r["k"], "brain": r["brain"], "search": r["search"], "recall": r["recall"],
                        "sets": r["sets"], "held": {k: v for k, v in r["held"].items() if k != "per_question"}},
                       fh, indent=2)
@@ -327,29 +399,77 @@ def run(root, args):
     return result
 
 
+def score_lines(k, sets, was_sets, indent):
+    """One line for search and one for recall: the scores of a set, with the baseline's beside them."""
+    rows = []
+    for mode in ("search", "recall"):
+        s, b = sets[mode], (was_sets or {}).get(mode)
+        was = f"   (baseline hit {b['hit_at_k']}, mrr {b['mrr']})" if b else ""
+        rows.append(f"{indent}{mode:<7} hit@1 {s['hit_at_1']:.3f}   hit@{k} {s['hit_at_k']:.3f}   "
+                    f"all {s['all_at_k']}/{s['questions']}   mrr {s['mrr']:.3f}{was}")
+    return rows
+
+
+def tried_line(result):
+    return ["  tried with " + ", ".join(f"{name} = {shown(x['value'])} (the brain's own: {shown(x['was'])})"
+                                        for name, x in result["set"].items()) + "; nothing was written"] \
+        if "set" in result else []
+
+
+def render_from_log(result, args):
+    """The replay of the log: its two limits first, then the scores, then the questions that went wrong."""
+    r, log = result["retrieval"], result["from_log"]
+    asked = {q["id"]: q for q in log["questions"]}
+    covered, uncovered = r["recall"]["questions"], r["uncovered"]
+    if not asked:
+        return (f"recall replayed from the log: no question in it yet ({log['log_lines']} lines; a question is a "
+                "recall line that is not a rehearsal)")
+    base = load(log["baseline"]) if os.path.exists(log["baseline"]) else None
+    out = [f"recall replayed from the log: {covered} questions that named pages, {len(uncovered)} that named none, "
+           f"each as the brain was that day, top {r['k']}"]
+    out += [f"  limit: {limit}" for limit in log["limits"]] + tried_line(result)
+    if base and (base["brain"], base["recall"]["questions"]) != (r["brain"], covered):
+        out.append(f"  the pages or the log changed since the baseline was saved ({base['recall']['questions']} "
+                   f"questions then, {covered} now): its numbers are not comparable")
+    out += [f"  {problem}" for problem in result["problems"]]
+    out += score_lines(r["k"], r, base, "  ")
+
+    def some(rows, said):
+        return [said(row) for row in rows[:SHOWN]] + (
+            [f"    and {len(rows) - SHOWN} more (--json lists them)"] if len(rows) > SHOWN else [])
+
+    missed = [row for row in r["per_question"]["recall"] if row["missed"]]
+    if missed:
+        out.append(f"  recall missed a page of {len(missed)} of {covered}:")
+        out += some(missed, lambda row: f"    {asked[row['id']]['date']} {asked[row['id']]['question']} -> "
+                                        f"{', '.join(row['missed'])}; {row['top'][0] if row['top'] else 'nothing'} "
+                                        "came first")
+    listed = [u for u in uncovered if u["recall_results"]]
+    if uncovered:
+        out.append(f"  uncovered questions recall still lists pages for: {len(listed)} of {len(uncovered)}")
+        out += some(listed, lambda u: f"    {asked[u['id']]['date']} {asked[u['id']]['question']} "
+                                      f"({u['recall_results']} pages)")
+    if args.save_baseline:
+        out.append(f"baseline saved to {log['baseline']}")
+    return "\n".join(out)
+
+
 def render(result, args):
     """The report, with the saved baseline beside each number; the questions to write, for --draft, as JSON."""
     if args.draft is not None:
         return json.dumps(result, indent=2)
+    if "from_log" in result:
+        return render_from_log(result, args)
     r = result["retrieval"]
     base = load(baseline_of(args)) if os.path.exists(baseline_of(args)) else None
     covered = r['recall']['questions'] or sum(sets['recall']['questions'] for sets in r['sets'].values())
-    out = [f"retrieval over {covered} covered questions, top {r['k']}"]
-    if "set" in result:
-        out.append("  tried with " + ", ".join(f"{name} = {shown(x['value'])} (the brain's own: {shown(x['was'])})"
-                                               for name, x in result["set"].items()) + "; nothing was written")
+    out = [f"retrieval over {covered} covered questions, top {r['k']}"] + tried_line(result)
     if base and base.get("brain") not in (None, r["brain"]):
         out.append(f"  the brain's pages changed since the baseline was saved ({base['brain']} then, {r['brain']} now): "
                    "its numbers are not comparable")
 
     def lines(sets, was_sets, indent):
-        rows = []
-        for mode in ("search", "recall"):
-            s, b = sets[mode], (was_sets or {}).get(mode)
-            was = f"   (baseline hit {b['hit_at_k']}, mrr {b['mrr']})" if b else ""
-            rows.append(f"{indent}{mode:<7} hit@1 {s['hit_at_1']:.3f}   hit@{r['k']} {s['hit_at_k']:.3f}   "
-                        f"all {s['all_at_k']}/{s['questions']}   mrr {s['mrr']:.3f}{was}")
-        return rows
+        return score_lines(r["k"], sets, was_sets, indent)
 
     out += [f"  question {problem}" for problem in result["problems"]]
     if r["recall"]["questions"]:  # the standard set; a set kept for one's own brain may hold none

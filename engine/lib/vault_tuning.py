@@ -129,6 +129,11 @@ THRESHOLDS = {name: Threshold(*spec) for name, spec in {
     # name, and at least held_coverage of the question in its name and one-line note.
     "held_coverage": (0.5, 0.0, 1.0, "share of the question a held idea's name and note must hold to be listed"),
     "held_limit": (3, 1, 100, "held ideas listed with a recall at most"),
+    # -- what was asked and not answered (`brain introspect --gaps`) ---------------------
+    # Questions no page answered are one gap when they share a rare word; a question with
+    # no rare word is known by all of its words.
+    "rare_word_share": (0.05, 0.0, 1.0, "a word under this share of the pages is rare: unanswered questions are "
+                                        "grouped by the rare words they share"),
 }.items()}
 WEIGHT = "weight_"  # weight_<field>: the fields search reads, in the registry's order
 

@@ -1,6 +1,8 @@
 """Retrieval: search, co-recall weights, spreading activation, confidence, the answer test set. Run: brain test"""
+import datetime
 import json
 import os
+import re
 import subprocess
 import sqlite3
 import sys
@@ -10,7 +12,10 @@ from unittest import mock
 
 from support import ENGINE, SCRIPTS, TempBrain, TODAY, ago, page, run_brain, vaultlib
 
-import vault_cache  # noqa: E402  (support puts engine/lib on the path)
+import commands  # noqa: E402  (support puts engine/lib on the path)
+import eval as eval_script  # noqa: E402
+import synth  # noqa: E402
+import vault_cache  # noqa: E402
 
 FIXTURE = os.path.join(ENGINE, "eval", "fixture")
 
@@ -425,6 +430,248 @@ class OwnQuestionSet(TempBrain):
                       run("--save-baseline").stdout)
         with open(os.path.join(ENGINE, "eval", "baseline.json"), encoding="utf-8") as fh:
             self.assertEqual(json.load(fh)["sets"]["standard"]["recall"]["questions"], 13)  # the engine's is untouched
+
+
+class TheBrainAsItWas(TempBrain):
+    """Vault.as_of: the same pages, and only what the log had taught up to one of its lines."""
+
+    def setUp(self):
+        super().setUp()
+        for name in ("alpha", "beta", "gamma"):
+            self.write(f"cortex/concepts/{name}.md", concept(f"{name.title()} is a word.", title=name.title()))
+        self.log("2026-08-01 recall what is alpha -> [[alpha]], [[beta]]", "2026-08-10 recall rehearse -> [[gamma]]",
+                 "2026-09-01 ingest senses/a.md -> 1 episode", "2026-09-10 recall alpha again -> [[alpha]]")
+
+    def test_a_copy_knows_nothing_the_log_taught_after_its_line(self):
+        v = self.brain()
+        alpha, beta, gamma = (v.resolve(n) for n in ("alpha", "beta", "gamma"))
+        pair = frozenset((alpha, beta))
+        unused = v.as_of(0)
+        self.assertEqual((unused.events, unused.recall_count, unused.edge_weights(), unused.strength(gamma)), ([], {}, {}, 0))
+        self.assertEqual(unused.association_graph(), {alpha: {}, beta: {}, gamma: {}})
+        self.assertIs(unused.pages, v.pages)  # nothing is read again
+        first = v.as_of(1, today=datetime.date(2026, 8, 1))
+        self.assertEqual((first.recall_count, first.edge_weights(), first.strength(gamma)),
+                         ({alpha: 1, beta: 1}, {pair: 1.0}, 0))  # judged on its own day: nothing has faded yet
+        self.assertEqual(v.as_of(1).edge_weights(), {pair: 0.5 ** (63 / 90)})  # judged from today
+        self.assertEqual((v.as_of(2).strength(gamma), v.as_of(2).today), (1, TODAY))
+        # The brain the copies were made from is as it was, and a copy of everything is its equal.
+        self.assertEqual((v.recall_count, v.edge_weights(), len(v.events)), ({alpha: 2, beta: 1, gamma: 1},
+                                                                              {pair: 0.5 ** (63 / 90)}, 4))
+        whole = v.as_of(len(v.events))
+        self.assertEqual((whole.recall_count, whole.association_graph()), (v.recall_count, v.association_graph()))
+        self.assertEqual(v.as_of(3).as_of(1).recall_count, v.as_of(1).recall_count)
+        tried = vaultlib.Vault(self.root, today=TODAY, tuning={"hebbian_half_life": 63}).as_of(1)
+        self.assertEqual(tried.edge_weights(), {frozenset((tried.resolve("alpha"), tried.resolve("beta"))): 0.5})
+
+
+class ReplayOfTheLog(TempBrain):
+    """`brain eval --from-log`: every question the log holds, asked again of the brain as it was that day."""
+
+    def setUp(self):
+        super().setUp()
+        self.write("cortex/concepts/alpha.md", concept("Alpha is a word.", title="Alpha", summary="What alpha is."))
+        self.write("cortex/concepts/beta.md", concept("Nothing of the word here.", title="Beta", summary="What beta is."))
+        # A page found only by association comes back at 0.4 of the best row, which is where recall cuts by
+        # default: this brain cuts lower, so that what the test shows does not hang on the last decimal.
+        self.write("hippocampus/tuning.md", page("tuning", "\n## Overrides\n\n- recall_floor = 0.3\n"))
+        self.log("2026-08-01 recall what is alpha -> [[alpha]], [[beta]]",   # nothing ties beta to alpha yet
+                 "2026-08-20 recall more on alpha -> [[alpha]], [[beta]]",   # the line above does
+                 "2026-08-21 recall rehearse -> [[alpha]]", "2026-08-22 rehearse missed -> [[alpha]]",
+                 "2026-08-25 recall the capital of australia -> none",
+                 "2026-08-26 recall alpha and the weather -> none",
+                 "2026-08-27 recall an old name -> [[renamed-away]]",
+                 "2026-08-28 recall a third on alpha -> [[alpha]], [[renamed-away]]",
+                 "2026-08-29 recall -> [[alpha]]", "2026-02-30 recall on a day that is none -> [[alpha]]",
+                 "2026-08-30 recall with no arrow at all")
+
+    def replay(self, *args):
+        with mock.patch.dict(os.environ, {"BRAIN_CACHE": "0"}):  # a call in this process would leave the cache open
+            return commands.call("eval", ["--from-log", "--root", self.root, *args])
+
+    def text(self, *args, root=None, **kw):
+        r = run_brain(root, "eval", "--from-log", *args, **kw)
+        return r.returncode, r.stdout + r.stderr
+
+    def test_a_question_is_asked_without_the_line_that_recorded_its_answer(self):
+        result = self.replay()
+        asked = result["from_log"]["questions"]
+        self.assertEqual([(q["date"], q["question"], q["expect"]) for q in asked], [
+            ("2026-08-01", "what is alpha", ["alpha", "beta"]), ("2026-08-20", "more on alpha", ["alpha", "beta"]),
+            ("2026-08-25", "the capital of australia", []), ("2026-08-26", "alpha and the weather", []),
+            ("2026-08-28", "a third on alpha", ["alpha"])])  # a rehearsal is no question; a page gone since is not expected
+        self.assertEqual([q["id"] for q in asked], ["2026-08-01#1", "2026-08-20#2", "2026-08-25#5", "2026-08-26#6",
+                                                    "2026-08-28#8"])
+        r = result["retrieval"]
+        rows = {row["id"]: row for row in r["per_question"]["recall"]}
+        # On its day nothing had been recalled with alpha: beta is missed. Nineteen days on, the first line had
+        # taught the pair, and beta comes back with alpha though no word of the question is on its page.
+        self.assertEqual((rows["2026-08-01#1"]["top"], rows["2026-08-01#1"]["missed"]), (["alpha"], ["beta"]))
+        self.assertEqual((rows["2026-08-20#2"]["top"], rows["2026-08-20#2"]["missed"]), (["alpha", "beta"], []))
+        self.assertEqual((r["recall"]["questions"], r["recall"]["hit_at_1"], r["recall"]["hit_at_k"], r["recall"]["all_at_k"]),
+                         (3, 1.0, 0.833, 2))
+        self.assertEqual((r["search"]["hit_at_k"], r["search"]["all_at_k"]), (0.667, 1))  # words alone never reach beta
+        self.assertEqual([(u["id"], u["search_results"], bool(u["recall_results"])) for u in r["uncovered"]],
+                         [("2026-08-25#5", 0, False), ("2026-08-26#6", 1, True)])
+        self.assertEqual(result["problems"], ["not replayed, it names only pages that are not here: "
+                                              "2026-08-27 recall an old name -> [[renamed-away]]"])
+        self.assertEqual((result["from_log"]["log_lines"], result["from_log"]["limits"]), (11, list(eval_script.LIMITS)))
+        json.dumps(result)
+
+    def test_the_text_gives_the_two_limits_then_the_scores_then_what_went_wrong(self):
+        code, out = self.text("--root", self.root)
+        self.assertEqual(code, 0)
+        self.assertEqual(out.splitlines()[:8], [
+            "recall replayed from the log: 3 questions that named pages, 2 that named none, each as the brain was "
+            "that day, top 5",
+            "  limit: these are the questions recall already answered on the day they were asked: a fall is a "
+            "regression, a high number is not quality",
+            "  limit: each is replayed against the pages as they are now, not as they were that day",
+            "  not replayed, it names only pages that are not here: 2026-08-27 recall an old name -> [[renamed-away]]",
+            "  search  hit@1 1.000   hit@5 0.667   all 1/3   mrr 1.000",
+            "  recall  hit@1 1.000   hit@5 0.833   all 2/3   mrr 1.000",
+            "  recall missed a page of 1 of 3:",
+            "    2026-08-01 what is alpha -> beta; alpha came first"])
+        self.assertEqual(out.splitlines()[8:], ["  uncovered questions recall still lists pages for: 1 of 2",
+                                                "    2026-08-26 alpha and the weather (2 pages)"])
+
+    def test_it_is_the_brain_one_is_in_unless_another_is_named(self):
+        self.assertEqual(self.text(cwd=self.root), self.text("--root", self.root))
+        self.assertEqual(self.text(root=self.root), self.text("--root", self.root))  # $BRAIN_ROOT
+        with tempfile.TemporaryDirectory() as elsewhere:
+            code, out = self.text(cwd=elsewhere)
+            self.assertEqual((code, out.split(" (")[0]), (1, "brain: no brain here"))
+        for extra in (["--draft", "2"], ["--answers", "a.json"], ["--questions", "mine.json"]):
+            with self.assertRaises(commands.Refused) as refused:
+                self.replay(*extra)
+            self.assertEqual(str(refused.exception), "brain eval --from-log: the questions are the log's own; it takes no "
+                                                     "--questions, --answers or --draft")
+
+    def test_its_baseline_is_kept_in_the_brain_and_a_longer_log_is_said(self):
+        kept = os.path.join(self.root, "motor", "eval-from-log-baseline.json")
+        code, out = self.text("--root", self.root, "--save-baseline")
+        self.assertEqual((code, out.splitlines()[-1]), (0, f"baseline saved to {kept}"))
+        with open(kept, encoding="utf-8") as fh:
+            saved = json.load(fh)
+        self.assertEqual((saved["recall"]["questions"], saved["recall"]["hit_at_k"], saved["k"]), (3, 0.833, 5))
+        again = self.text("--root", self.root)[1]
+        self.assertIn("  recall  hit@1 1.000   hit@5 0.833   all 2/3   mrr 1.000   (baseline hit 0.833, mrr 1.0)\n", again)
+        self.assertNotIn("not comparable", again)
+        commands.call("log", ["recall", "a fourth on alpha", "--pages", "alpha"], root=self.root)
+        self.assertIn("  the pages or the log changed since the baseline was saved (3 questions then, 4 now): its numbers "
+                      "are not comparable\n", self.text("--root", self.root)[1])
+        with open(os.path.join(ENGINE, "eval", "baseline.json"), encoding="utf-8") as fh:
+            self.assertEqual(json.load(fh)["sets"]["standard"]["recall"]["questions"], 13)  # the engine's is untouched
+
+    def test_a_value_is_tried_on_the_log_s_questions_too(self):
+        tried = self.replay("--set", "recall_floor=0.9")
+        self.assertEqual(tried["set"], {"recall_floor": {"value": 0.9, "was": 0.3}})
+        self.assertEqual(tried["retrieval"]["recall"]["hit_at_k"], 0.667)  # beta, found by association, is cut again
+        self.assertIn("\n  tried with recall_floor = 0.9 (the brain's own: 0.3); nothing was written\n",
+                      self.text("--root", self.root, "--set", "recall_floor=0.9")[1])
+        with self.assertRaises(commands.Refused):
+            self.replay("--set", "recall_floor=0.9", "--save-baseline")
+        self.assertFalse(os.path.exists(os.path.join(self.root, "motor")))
+
+    def test_a_long_list_is_cut_in_the_text_and_whole_in_the_data(self):
+        lines = []
+        for n in range(1, 13):  # twelve questions, each naming a page nothing had tied to alpha before
+            self.write(f"cortex/concepts/z{n}.md", concept("Nothing of the word here.", title=f"Z{n}"))
+            lines.append(f"2026-09-{n:02d} recall alpha number {n} -> [[alpha]], [[z{n}]]")
+        self.log(*lines)
+        out = self.text("--root", self.root)[1].splitlines()
+        self.assertEqual(out[5:7], ["  recall missed a page of 12 of 12:", "    2026-09-01 alpha number 1 -> z1; alpha came first"])
+        self.assertEqual((len(out), out[-1]), (17, "    and 2 more (--json lists them)"))  # and no uncovered question
+        self.assertEqual(len([row for row in self.replay()["retrieval"]["per_question"]["recall"] if row["missed"]]), 12)
+
+    def test_a_log_with_no_question_says_so_and_one_that_is_all_found_lists_nothing(self):
+        self.log("2026-08-01 ingest senses/a.md -> 1 episode", "2026-08-21 recall rehearse -> [[alpha]]")
+        self.assertEqual(self.text("--root", self.root), (0, "recall replayed from the log: no question in it yet (2 lines; "
+                                                             "a question is a recall line that is not a rehearsal)\n"))
+        self.log("2026-08-01 recall what is alpha -> [[alpha]]")
+        self.assertEqual(self.text("--root", self.root)[1].splitlines()[3:], [
+            "  search  hit@1 1.000   hit@5 1.000   all 1/1   mrr 1.000",
+            "  recall  hit@1 1.000   hit@5 1.000   all 1/1   mrr 1.000"])
+
+    def test_it_runs_on_a_synthetic_brain(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = os.path.join(tmp, "brain")
+            synth.build(root, 60, seed=5, today=TODAY)
+            with open(os.path.join(root, "hippocampus", "log.md"), encoding="utf-8") as fh:
+                questions = [line for line in fh if re.match(r"\d{4}-\d\d-\d\d recall (?!rehearse )", line)]
+            first = self.replay("--root", root)  # the last --root is the one that counts
+            self.assertEqual(len(first["from_log"]["questions"]), len(questions))
+            self.assertEqual((first["retrieval"]["recall"]["questions"], first["retrieval"]["uncovered"], first["problems"]),
+                             (len(questions), [], []))
+            self.assertEqual(self.replay("--root", root), first)  # the same log, the same numbers
+            self.assertFalse(os.path.exists(os.path.join(root, "motor", "eval-from-log-baseline.json")))
+
+
+class AskedAndNotAnswered(TempBrain):
+    """`brain introspect --gaps`: the questions recall named no page for, grouped by the rare words they share."""
+
+    def setUp(self):
+        super().setUp()
+        self.write("cortex/concepts/spacing.md", concept("Study spread over days lasts.", title="Spacing effect"))
+        self.write("cortex/episodes/e.md", page("episode", "A talk.\n\n## Candidates\n\n- Cubism - a style in art\n",
+                                                title="A talk", created=ago(20), updated=ago(20)))
+        self.write("hippocampus/index.md", page("index", "\n# Index\n\n## Gaps\n\n- [[picasso]]\n"))
+        self.log("2026-08-01 recall which painters did picasso learn from -> none",
+                 "2026-08-02 recall rehearse -> [[spacing]]",
+                 "2026-08-09 recall which painters did picasso learn from -> none",  # asked again: the same gap
+                 "2026-08-12 recall when was picasso born -> none",                  # another wording about him
+                 "2026-08-15 recall what is the capital of australia -> none",
+                 "2026-08-20 recall where is canberra -> none",
+                 "2026-08-25 recall is canberra the capital -> [[spacing]]",         # answered since
+                 "2026-08-26 recall what is cubism -> none",
+                 "2026-08-27 recall -> none", "2026-08-28 recall with no arrow at all")
+
+    def test_a_question_asked_twice_is_one_gap_and_an_answer_closes_one(self):
+        self.assertEqual(self.brain().unanswered(), [
+            {"words": ["picasso"], "asked": 3, "first": "2026-08-01", "last": "2026-08-12", "held": [],
+             "questions": ["which painters did picasso learn from", "when was picasso born"], "index_gaps": ["picasso"]},
+            # Of two asked once, the one asked last comes first. Every page that holds the word is one of
+            # two here, so `cubism` is not rare: the question is known by all its words, and names a held idea.
+            {"words": ["cubism"], "asked": 1, "first": "2026-08-26", "last": "2026-08-26", "held": ["Cubism"],
+             "questions": ["what is cubism"], "index_gaps": []},
+            # `capital` was in the answered question; `australia` was not, so this one is still open.
+            {"words": ["australia", "capital"], "asked": 1, "first": "2026-08-15", "last": "2026-08-15", "held": [],
+             "questions": ["what is the capital of australia"], "index_gaps": []}])
+
+    def test_the_text_lists_each_gap_with_where_to_start(self):
+        out = run_brain(self.root, "introspect", "--gaps").stdout
+        self.assertIn("\nasked and not answered (recall named no page; most asked first): 3\n"
+                      "    3x  picasso  (last 2026-08-12)\n"
+                      "        which painters did picasso learn from\n"
+                      "        when was picasso born\n"
+                      "        start with: a gap in the index: [[picasso]]\n"
+                      "    1x  cubism  (last 2026-08-26)\n"
+                      "        what is cubism\n"
+                      "        start with: held on an episode: Cubism\n"
+                      "    1x  australia, capital  (last 2026-08-15)\n"
+                      "        what is the capital of australia\n", out)
+        self.assertEqual(json.loads(run_brain(self.root, "introspect", "--gaps", "--json").stdout)["gaps"],
+                         self.brain().unanswered())
+        self.assertNotIn("asked and not answered", run_brain(self.root, "introspect").stdout)
+
+    def test_many_wordings_of_one_gap_are_cut_in_the_text(self):
+        self.log(*(f"2026-09-0{n} recall {what} picasso -> none" for n, what in enumerate(
+            ("who was", "where lived", "what painted", "when died", "who taught"), 1)))
+        gap, = self.brain().unanswered()
+        self.assertEqual((gap["words"], gap["asked"], len(gap["questions"])), (["picasso"], 5, 5))
+        out = run_brain(self.root, "introspect", "--gaps").stdout
+        self.assertIn("    5x  picasso  (last 2026-09-05)\n        who was picasso\n        where lived picasso\n"
+                      "        what painted picasso\n        and 2 more (--json has every wording)\n"
+                      "        start with: a gap in the index: [[picasso]]\n", out)
+
+    def test_what_counts_as_rare_is_the_brain_s_own(self):
+        # With every word counted as rare, `cubism` is a rare word like any other; with none, each
+        # question is known by all its words, and the two about Picasso still share his name.
+        for share in (1.0, 0.0):
+            tried = vaultlib.Vault(self.root, today=TODAY, tuning={"rare_word_share": share})
+            self.assertEqual([(g["words"], g["asked"]) for g in tried.unanswered()],
+                             [(["picasso"], 3), (["cubism"], 1), (["australia", "capital"], 1)])
+        self.assertEqual(vaultlib.Vault(os.path.join(ENGINE, "eval", "fixture")).unanswered(), [])  # all its questions were answered
 
 
 if __name__ == "__main__":

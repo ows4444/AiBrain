@@ -79,13 +79,22 @@ class RetrievalMixin:
     # -- keyword search -----------------------------------------------------
 
     def _searchable(self, types=None, dormant=False):
-        """{page: tf} for the pages a search may return."""
-        pool = [p for p in self.knowledge if p.type != "project"]
-        if dormant:
-            pool += self.dormant_pages
-        if types:
-            pool = [p for p in pool if p.type in types]
-        return self._term_frequencies_many(pool) if pool else {}
+        """({page: tf}, {page: its length}) for the pages a search may return.
+
+        Kept for the life of the Vault, which reads its pages once: a second search, the
+        coverage of its best hit and a recall of the same question do not weigh every page again.
+        """
+        kept = self.__dict__.setdefault("_searchable_kept", {})
+        key = (tuple(types) if types else None, dormant)
+        if key not in kept:
+            pool = [p for p in self.knowledge if p.type != "project"]
+            if dormant:
+                pool += self.dormant_pages
+            if types:
+                pool = [p for p in pool if p.type in types]
+            docs = self._term_frequencies_many(pool) if pool else {}
+            kept[key] = docs, {p: sum(tf.values()) for p, tf in docs.items()}
+        return kept[key]
 
     def coverage(self, query, page, dormant=False):
         """How much of the question `page` holds: the share of its words found there, each weighted by its rarity.
@@ -94,7 +103,7 @@ class RetrievalMixin:
         the brain never mentions scores low however well one common word matches.
         """
         terms = set(tokens(query))
-        docs = self._searchable(dormant=dormant)
+        docs, _ = self._searchable(dormant=dormant)
         if not terms or page not in docs:
             return 0.0
         n = len(docs)
@@ -109,10 +118,9 @@ class RetrievalMixin:
         System pages (index, log, ...) and projects are never results.
         """
         terms = set(tokens(query))
-        docs = self._searchable(types, dormant) if terms else {}
+        docs, lengths = self._searchable(types, dormant) if terms else ({}, {})
         if not docs:
             return []
-        lengths = {p: sum(tf.values()) for p, tf in docs.items()}
         average = sum(lengths.values()) / len(docs) or 1.0
         df = Counter(t for tf in docs.values() for t in terms if t in tf)
         n = len(docs)
@@ -131,33 +139,49 @@ class RetrievalMixin:
 
     # -- Hebbian weights ----------------------------------------------------
 
+    def _pairs_recalled(self):
+        """[(day, pairs)] for each event of the log: the pairs of pages a recall line names together, else ().
+
+        Rehearsal lines are left out: quizzing two pages in one session is the owner being
+        tested, not the two ideas being used together. Worked out once and shared with every
+        copy as_of makes, as _event_pages is.
+        """
+        if "_pairs_recalled_kept" not in self.__dict__:
+            out = []
+            for e, named in zip(self.events, self._event_pages()):
+                pairs = ()
+                if e.op == "recall" and e.day and e.arrow and not is_rehearsal_pass(e):
+                    pages = sorted(set(named) - {None}, key=lambda p: p.rel)
+                    pages = [p for p in pages if not p.is_system]
+                    pairs = tuple(frozenset((a, b)) for i, a in enumerate(pages) for b in pages[i + 1:])
+                out.append((e.day, pairs))
+            self._pairs_recalled_kept = out
+        return self._pairs_recalled_kept
+
     def edge_weights(self, half_life=None):
         """{frozenset({a, b}): weight} from recall lines naming both pages, each halving every `half_life` days.
 
-        Rehearsal lines are left out: quizzing two pages in one session is the
-        owner being tested, not the two ideas being used together.
         `half_life` is the brain's hebbian_half_life unless given.
         """
         half_life = self.tuning.hebbian_half_life if half_life is None else half_life
         key = ("_hebbian", half_life)
         if key not in self.__dict__:
             weights = {}
-            for e in self.events:
-                if e.op != "recall" or not e.day or not e.arrow or is_rehearsal_pass(e):
-                    continue
-                pages = sorted({self.resolve(t) for t in e.targets} - {None}, key=lambda p: p.rel)
-                pages = [p for p in pages if not p.is_system]
-                w = 0.5 ** (max(0, (self.today - e.day).days) / half_life)
-                for i, a in enumerate(pages):
-                    for b in pages[i + 1:]:
-                        pair = frozenset((a, b))
+            for _, (day, pairs) in zip(self.events, self._pairs_recalled()):
+                if pairs:
+                    w = 0.5 ** (max(0, (self.today - day).days) / half_life)
+                    for pair in pairs:
                         weights[pair] = weights.get(pair, 0.0) + w
             self.__dict__[key] = weights
         return self.__dict__[key]
 
-    def association_graph(self):
-        """{page: {neighbour: weight}}: links (typed ones weighted), strengthened by co-recall."""
-        if "_associations" not in self.__dict__:
+    def _link_weights(self):
+        """{page: {neighbour: weight}} from the links alone: 1.0 for a plain one, more for a typed one.
+
+        What the log teaches is laid over this (association_graph); the links themselves do not
+        change with use, so this is worked out once and shared with every copy as_of makes.
+        """
+        if "_link_weights_kept" not in self.__dict__:
             graph = {p: {} for p in self.knowledge}
             # relation_<name> for each relation of the vocabulary; one outside it carries like a plain link
             carries = {rel: getattr(self.tuning, "relation_" + rel.replace("-", "_")) for rel in RELATIONS}
@@ -165,19 +189,25 @@ class RetrievalMixin:
             for a, rel, b in self.typed_edges():
                 pair = frozenset((a, b))
                 relation[pair] = max(relation.get(pair, 1.0), carries.get(rel, 1.0))
-            hebb = self.edge_weights()
             for a, b in self.knowledge_edges():
-                pair = frozenset((a, b))
-                w = relation.get(pair, 1.0) * (1 + math.log1p(hebb.get(pair, 0.0)))
-                graph[a][b] = max(graph[a].get(b, 0.0), w)
-                graph[b][a] = max(graph[b].get(a, 0.0), w)
-            for pair, h in hebb.items():
+                graph[a][b] = graph[b][a] = relation.get(frozenset((a, b)), 1.0)
+            self._link_weights_kept = graph
+        return self._link_weights_kept
+
+    def association_graph(self):
+        """{page: {neighbour: weight}}: links (typed ones weighted), strengthened by co-recall."""
+        if "_associations" not in self.__dict__:
+            graph = {p: dict(around) for p, around in self._link_weights().items()}
+            for pair, h in self.edge_weights().items():
                 a, b = tuple(pair)
-                w = self.tuning.unlinked_association * math.log1p(h)
-                # A co-recall old enough to decay to 0.0 associates nothing; a zero
-                # weight would also be a page's strongest link and divide by zero.
-                if w > 0 and a in graph and b in graph and b not in graph[a]:
-                    graph[a][b] = graph[b][a] = w
+                if b in graph.get(a, ()):  # linked: recalled together, the link carries more
+                    graph[a][b] = graph[b][a] = graph[a][b] * (1 + math.log1p(h))
+                else:
+                    w = self.tuning.unlinked_association * math.log1p(h)
+                    # A co-recall old enough to decay to 0.0 associates nothing; a zero
+                    # weight would also be a page's strongest link and divide by zero.
+                    if w > 0 and a in graph and b in graph:
+                        graph[a][b] = graph[b][a] = w
             self._associations = graph
         return self._associations
 
@@ -311,7 +341,7 @@ class RetrievalMixin:
         """
         limit = self.tuning.held_limit if limit is None else limit
         terms = set(tokens(query))
-        docs = self._searchable()
+        docs, _ = self._searchable()
         if not terms:
             return []
         n = len(docs)
@@ -332,6 +362,53 @@ class RetrievalMixin:
             rows.append({"name": row["name"], "note": notes[0] if notes else "", "episodes": row["episodes"],
                          "sources": row["sources"], "score": round(score, 3)})
         return sorted(rows, key=lambda r: (-r["score"], r["name"].lower()))[:limit]
+
+    # -- what was asked and not answered ------------------------------------
+
+    def unanswered(self):
+        """Gaps the log shows: [{words, asked, first, last, questions, held, index_gaps}], most asked first.
+
+        A recall line that named no page (`-> none`) is a question the brain could not
+        answer. A question is known by its rare words: the ones fewer than rare_word_share
+        of the pages hold, or all of its words when it has none. One that shares a rare
+        word with a gap joins it, and the gap is then known by the words all its questions
+        share (`words`); so a question asked twice is one gap, and so are two wordings about
+        one subject. A later question that did name pages closes the gaps all of whose words
+        it holds. With each gap come the ideas held on an episode and the pages listed under
+        the index's Gaps that its questions name: where to start reading. Read from the
+        log; nothing is written.
+        """
+        docs, _ = self._searchable()
+        held_by = Counter(t for tf in docs.values() for t in tf)
+        few = self.tuning.rare_word_share * len(docs)
+        gaps = []  # each: [the words all its questions share, [(date, question)] in the order asked]
+        for e in self.events:
+            if e.op != "recall" or not e.arrow or is_rehearsal_pass(e):
+                continue
+            words = set(tokens(e.what))
+            if e.targets:  # answered: a gap it holds every word of is closed
+                gaps = [gap for gap in gaps if not gap[0] <= words]
+                continue
+            known_by = {w for w in words if held_by[w] < few} or words
+            nearest = max(gaps, key=lambda gap: len(gap[0] & known_by), default=None)
+            if nearest and nearest[0] & known_by:
+                nearest[0] &= known_by
+                nearest[1].append((e.date, e.what))
+            elif known_by:
+                gaps.append([known_by, [(e.date, e.what)]])
+        in_index = {name: set(tokens(name)) for name in set().union(*(p.gap_targets for p in self.of_type("index")))}
+        out = []
+        for shared, asked in gaps:
+            questions = list(dict.fromkeys(question for _, question in asked))
+            every = set(tokens(" ".join(questions)))
+            out.append({"words": sorted(shared), "asked": len(asked), "first": asked[0][0], "last": asked[-1][0],
+                        "questions": questions,
+                        "held": list(dict.fromkeys(h["name"] for q in questions for h in self.held_ideas(q))),
+                        "index_gaps": sorted(name for name, named in in_index.items()
+                                             if 2 * len(every & named) >= len(named) > 0)})
+        out.sort(key=lambda g: g["words"])
+        out.sort(key=lambda g: g["last"], reverse=True)  # of two asked as often, the one asked last
+        return sorted(out, key=lambda g: -g["asked"])
 
     # -- next links ---------------------------------------------------------
 

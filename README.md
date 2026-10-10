@@ -128,8 +128,10 @@ Every number the brain judges by (how long before a concept is stale, where
 recall stops, how fast rehearsals space out) has a default in the engine, and a
 brain may hold its own. `brain introspect --usage` lists them all, each with
 its range and what it does. To try one, `brain eval --set recall_floor=0.35`
-runs the question set with it and writes nothing. To keep one, add a line under
-`## Overrides` in `hippocampus/tuning.md`:
+runs the question set with it and writes nothing; with `--from-log` the
+questions are the ones your own log holds, each asked again of the brain as it
+was that day. To keep one, add a line under `## Overrides` in
+`hippocampus/tuning.md`:
 
 ```
 - recall_floor = 0.35 (2026-11-02: hit@5 0.81 to 0.88 on my own questions)

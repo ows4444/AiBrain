@@ -140,34 +140,38 @@ shows the gain. Nothing changes what a command returns, except where a step says
 
 ## Phase 3. The brain measures itself
 
-- [ ] **18. `brain eval --from-log`** (REFACTOR 3.1, ROADMAP F3, M, after 6)
-  - [ ] The vault takes a cut-off: only the log lines before a given line
-  - [ ] A case is a recall line that is not a rehearsal, with its question and its pages; a line with no page is an uncovered case
-  - [ ] Replay each as of its own date; score hit@1, hit@k, mrr and uncovered questions still listed
-  - [ ] Print the two limits with every result: it shows regression, not absolute quality; pages are as they are now
-  - [ ] Its baseline is kept beside the brain, in `motor/`
-  - [ ] Tests on a synthetic brain
-  - [ ] Done when: it runs on the real brain after 4 and its baseline is saved
-- [ ] **19. `brain introspect --gaps`** (REFACTOR 3.2, S, after 6)
-  - [ ] Recall lines that named no page, grouped by the rare words they share
-  - [ ] With each group, any held idea or index gap it names
-  - [ ] `/reflect` reads it for Thin spots
-  - [ ] Done when: an uncovered question asked twice shows as one gap
-- [ ] **20. The calibration checkpoint closes its loop** (REFACTOR 3.3, S, after 13 and 18)
-  - [ ] `/health`: at the checkpoint, run 18 before and after each `--set` trial
-  - [ ] Write the value kept to `tuning.md` and log `health calibration -> ...`
-  - [ ] Done when: the skill text says so and `test_skills.py` passes
+- [ ] **18. `brain eval --from-log`** (REFACTOR 3.1, ROADMAP F3, M, after 6; built, waits on a run in the real brain)
+  - [x] The vault takes a cut-off: only the log lines before a given line (`Vault.as_of(line, today)`: a copy that shares the pages, the links and the search terms, and knows only what the log had taught by then)
+  - [x] A case is a recall line that is not a rehearsal, with its question and its pages; a line with no page is an uncovered case. A page gone since is not expected; a line all of whose pages are gone is listed and not replayed
+  - [x] Replay each as of its own date; score hit@1, hit@k, mrr and uncovered questions still listed. The first ten misses are printed, `--json` has them all
+  - [x] Print the two limits with every result: it shows regression, not absolute quality; pages are as they are now
+  - [x] Its baseline is kept beside the brain, in `motor/` (`eval-from-log-baseline.json`); the report says when the pages or the log have changed since it was saved
+  - [x] Tests on a synthetic brain, and on a small one where a question finds a page only through the pair an earlier line taught
+  - [x] Decided on the way: with no `--root` it replays the log of the brain `brain` is run in, not the fixture's; `--set` works on it, so a value is tried on one's own questions. It refuses `--questions`, `--answers` and `--draft`
+  - [x] Its cost: 997 logged questions on 1,000 synthetic pages took 19 s, now 9 s, after the pages each log line names, the pairs it teaches and the link weights were worked out once for all copies (and the pages a search may return, with their lengths, once a Vault). Most of what is left is one search a question over every page, which the synthetic brain's 40 words make dearer than a real one. `brain eval` is at its baseline and `brain bench` unchanged
+  - [ ] Done when: it runs on the real brain after 4 and its baseline is saved. In the real brain, after `main` is merged there: `brain eval --from-log --save-baseline`
+- [x] **19. `brain introspect --gaps`** (REFACTOR 3.2, S, after 6)
+  - [x] Recall lines that named no page, grouped by the rare words they share (`Vault.unanswered()`). A word is rare when under 5% of the pages hold it (`rare_word_share`, a threshold like the others); a question with no rare word is known by all its words. A question joins the gap it shares a rare word with, and the gap is then known by the words all its questions share
+  - [x] With each group, any held idea or index gap it names
+  - [x] Decided on the way: a later question that did name pages closes the gaps all of whose words it holds, or a gap would stay listed for ever. Most asked first, then the one asked last
+  - [x] `/reflect` reads it for Thin spots, and names the gap asked most in Next
+  - [x] Done when: an uncovered question asked twice shows as one gap (and another wording about the same subject joins it: three questions about one painter are one gap, asked 3 times)
+- [x] **20. The calibration checkpoint closes its loop** (REFACTOR 3.3, S, after 13 and 18)
+  - [x] `/health`: at the checkpoint, run 18 before and after each `--set` trial (step 5 of the skill: one threshold at a time, the owner's own question set too when there is one, since a replay of the log shows a regression and not quality)
+  - [x] Write the value kept to `tuning.md` (on the owner's yes) and log `health calibration -> ...`, whatever came of the review: that line is what stops the briefing asking
+  - [x] Done when: the skill text says so and `test_skills.py` passes
 
 ## Phase 4. Better recall without a dependency
 
 Gate for every item here: no set of the fixture falls below its baseline, and the target is reached. An item
 that misses its target is closed, not shipped.
 
-- [ ] **21. Say what the brain never mentions** (REFACTOR 4.1, S)
+- [ ] **21. Say what the brain never mentions** (REFACTOR 4.1, S; measured before building: the target is out of this signal's reach, the owner's call)
   - [ ] `brain recall` prints the question's words found in no page, dormant ones included: `unseen: picasso`; in the JSON too
   - [ ] `/ask` says so in the answer when the subject of the question is unseen
   - [ ] Tune abstention on that signal with `brain eval --set`
   - [ ] Done when: uncovered questions that still get pages fall from 2 of 6 to 0, covered sets unchanged
+  - Measured on the fixture on 2026-10-10, nothing built. The two uncovered questions that still get pages hold fewer unseen words than covered questions do. u05 ("Which painters did Picasso learn from?") has one, 0.51 of the question's weight; u06 ("What does a mathematics teacher earn?") one, 0.46. Covered paraphrases have more: p03 three (0.67), p01 three (0.55), p08 two (0.50), p04 two (0.45). A bar that stops u05 and u06 stops those four, and paraphrase recall falls; nothing else about the words tells the two kinds apart (in all of them the best page holds every word the brain has at all). So abstention cannot be tuned on this signal to 0 of 6 with the covered sets unchanged, and by the gate of this phase the item closes. Left to decide: whether to print `unseen:` as information only, for `/ask` to judge by. That wants an answers run (`brain eval --answers`) before and after, because on a paraphrase the line can read as "not covered" when a page does answer
 - [ ] **22. `answers:`, the questions a page answers** (REFACTOR 4.2, M, waits on D2)
   - [ ] Add the field to `FIELDS` (private), the templates and the table in `templates/README.md`
   - [ ] Schema: a list, at most five, each one short question

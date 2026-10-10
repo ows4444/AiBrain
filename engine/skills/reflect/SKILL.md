@@ -43,7 +43,10 @@ The `reviewer` agent can run this whole review in its own context.
    everything else in Next. Reminders due or waiting: `brain introspect --remind`.
 6. **Thin spots:** pages recalled or linked often but thin; gaps that keep
    being linked; candidates waiting on a second episode; `/explore`
-   candidates still waiting on any evidence.
+   candidates still waiting on any evidence. Questions asked and not
+   answered: `brain introspect --gaps` lists them, most asked first, each
+   with the held idea or the index gap it names. The one asked most is
+   what to read next; say so in Next.
 7. **Next:** three actions, each tied to a page.
 8. **Schedule** (only if asked): propose cadences from log volume, by default
    `/ingest` when senses/ fills, `/sleep` weekly (proposals only: fading and

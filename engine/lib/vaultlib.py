@@ -14,6 +14,7 @@ so every script reports the same numbers. The parts live in their own modules:
 
 Everything is importable from here, so callers only ever import vaultlib.
 """
+import copy
 import datetime
 import os
 import sys
@@ -44,10 +45,33 @@ class Vault(GraphMixin, MemoryMixin, PurposeMixin, RetrievalMixin):
         self.out_links, self.in_links = self._adjacency()
         self.goals = owner_goals(self.root)
         self.events = read_events(self.root)
+        self._fold_log()
+
+    def _fold_log(self):
+        """What is read off the log's events at once: when each page was recalled, and how each rehearsal went."""
         self.recall_dates = self._recalls()
         self.rehearsals = self._rehearsals()
         self.recall_count = {p: len(d) for p, d in self.recall_dates.items()}
         self.last_recall = {p: d[-1] for p, d in self.recall_dates.items()}
+
+    def as_of(self, line, today=None):
+        """This brain as it had been used when its log held only its first `line` dated lines.
+
+        The pages are the ones here now. What the log taught after that point is unknown to the
+        copy: recalls, rehearsals, the pairs recalled together. `today` is the day it judges
+        from, for what fades with time; as_of(0) has been used for nothing. A question from
+        the log is replayed on such a copy, so the line that recorded its answer cannot help
+        to find it (`brain eval --from-log`). Cheap: pages, links and search terms are shared.
+        """
+        # What does not come from the log is worked out here once, so every copy shares it.
+        self.knowledge_edges(), self.typed_edges(), self._searchable(), self._link_weights(), self._pairs_recalled()
+        then = copy.copy(self)
+        then.today = today or self.today
+        then.events = self.events[:line]
+        for learned in [key for key in then.__dict__ if key == "_associations" or isinstance(key, tuple)]:
+            del then.__dict__[learned]  # the association graph and the pair weights are folded from the log
+        then._fold_log()
+        return then
 
     def _load(self):
         for top in MEMORY_DIRS:

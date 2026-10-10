@@ -97,7 +97,7 @@ the dict with `--json`, which every command takes. Another program makes the sam
 | Group | Commands |
 |-------|----------|
 | Find | `search` (BM25), `recall` (words, then links), `since` (period view) |
-| Check | `check` (links, schema, index drift, edited inputs), `introspect` (17 views), `eval` (`--set` tries a threshold at another value and writes nothing) |
+| Check | `check` (links, schema, index drift, edited inputs), `introspect` (18 views; `--gaps` is what was asked and not answered), `eval` (a question set, or with `--from-log` the log's own questions, each replayed as the brain was that day; `--set` tries a threshold at another value and writes nothing) |
 | Input | `fetch`, `chats`, `session`, `fingerprint`, `new` |
 | Record | `log` (the one writer of log lines: it checks the operation and every page name), `index` (rewrites the index's listing from the pages) |
 | Output | `export`, `graph` |

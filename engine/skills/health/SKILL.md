@@ -41,15 +41,6 @@ word count are never health signals; both rise whether things improve or not.
    is filled in and has at least one goal under `## Goals`;
    `git status`; `git config core.hooksPath` is `engine/githooks` (the
    pre-commit gate; offer to set it if not).
-   At the calibration checkpoint, `brain introspect --usage` lists every
-   threshold beside the usage numbers: its value here, its range and what
-   it does. Change one only on evidence: `brain eval --set name=value` runs
-   the question set with the value and writes nothing; compare it with the
-   run without `--set`. Show the owner both; on their yes, keep the value
-   as a line under `## Overrides` in `hippocampus/tuning.md`,
-   `- name = value (why, date)` (a brain without that page takes it from
-   `${CLAUDE_PLUGIN_ROOT}/templates/brain/hippocampus/tuning.md`).
-   Removing the line restores the default.
    **Own question set** (when asked, or once the brain holds about 50
    pages): `brain eval --root . --questions motor/eval-questions.json
    --draft 10` prints ten pages no question expects yet, each with its
@@ -59,12 +50,34 @@ word count are never health signals; both rise whether things improve or not.
    them into `motor/eval-questions.json` and run the same command without
    `--draft`, then with `--save-baseline`. Its baseline stays beside it, and
    it is the set to rerun before and after a threshold changes.
-5. **Context budget:** `brain introspect --context` prints what loads every
+5. **Calibration checkpoint** (when the briefing asks for it, or on
+   request). Every threshold is a guess until this brain's own use tests it.
+   `brain introspect --usage` lists each with its value here, its range and
+   what it does, beside what has been used. Change one only on evidence:
+   - Before: `brain eval --from-log` replays every question the log holds,
+     each as the brain was on its day; add `--save-baseline` to keep the
+     numbers to beat. Read its two limits aloud: a fall is a regression, a
+     high number is not quality. So run the owner's own question set too,
+     when there is one.
+   - For each value worth trying, run the same again with
+     `--set name=value` (it writes nothing) and put its numbers beside the
+     first run's. One threshold at a time.
+   - Show the owner the runs. On their yes, keep the value as a line under
+     `## Overrides` in `hippocampus/tuning.md`, `- name = value (why,
+     date)`; a brain without that page takes it from
+     `${CLAUDE_PLUGIN_ROOT}/templates/brain/hippocampus/tuning.md`.
+     Removing the line restores the default. Then save the baseline again,
+     so the next review starts from the values kept.
+   - Record that the review was done, whatever came of it:
+     `brain log health calibration --result "<what was kept, or nothing;
+     recall hit@5 before and after>"`. The briefing stops asking once the
+     log holds that line.
+6. **Context budget:** `brain introspect --context` prints what loads every
    session and what loads on use, in bytes, lines and estimated tokens, and
    the change since the last snapshot. Report the every-session total; on
    `GROWN` or a `WARNING`, name what was added and ask whether it has to
    load every session. The tokens are an estimate; say so.
-6. **Snapshot** (monthly or when asked): `brain introspect --snapshot`
+7. **Snapshot** (monthly or when asked): `brain introspect --snapshot`
    appends today's metrics to `hippocampus/metrics.md` as one line of data
    (once a day) and prints what changed since the previous snapshot. Report
    that; never compute the change by reading the file. This is the only

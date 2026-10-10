@@ -83,14 +83,23 @@ class MemoryMixin:
             "thresholds": t.rows(),
         }
 
+    def _event_pages(self):
+        """For each event of the log, the pages its targets reach (None for a name that reaches none).
+
+        Worked out once and shared with every copy as_of makes: a copy holds the first events
+        of the same log, so the first entries here are its own.
+        """
+        if "_event_pages_kept" not in self.__dict__:
+            self._event_pages_kept = [tuple(self.resolve(t) for t in e.targets) for e in self.events]
+        return self._event_pages_kept
+
     def _recalls(self):
         """Page -> sorted dates of every `DATE recall <question> -> [[page]], ...` line naming it."""
         dates = {}
-        for e in self.events:
+        for e, pages in zip(self.events, self._event_pages()):
             if e.op != "recall" or not e.arrow or not e.day:
                 continue
-            for target in e.targets:
-                page = self.resolve(target)
+            for page in pages:
                 if page:
                     dates.setdefault(page, []).append(e.day)
         return {p: sorted(d) for p, d in dates.items()}
@@ -103,12 +112,11 @@ class MemoryMixin:
         keeps it from fading but is not the owner remembering it.
         """
         out = {}
-        for e in self.events:
+        for e, pages in zip(self.events, self._event_pages()):
             passed, missed = is_rehearsal_pass(e), is_rehearsal_miss(e)
             if not e.day or not e.arrow or not (passed or missed):
                 continue
-            for target in e.targets:
-                page = self.resolve(target)
+            for page in pages:
                 if page:
                     out.setdefault(page, []).append((e.day, passed))
         return {p: sorted(e) for p, e in out.items()}

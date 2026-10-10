@@ -4,7 +4,7 @@ Usage:
     brain introspect [--json] [--queue] [--due] [--decisions] [--open] [--goals] [--projects]
                                   [--dormant] [--stale] [--snapshot] [--remind] [--links]
                                   [--hubs] [--bridges] [--clusters] [--tags] [--graph] [--usage]
-                                  [--context]
+                                  [--gaps] [--context]
 
 Default output is the four health metrics (orphan rate, average degree,
 components, stale-concept rate) with a verdict on each, plus counts and the
@@ -62,6 +62,13 @@ are the defaults, and the text prints the brain's own.
              the evidence for deciding which features stay; and every
              threshold with its range, what it does and this brain's value
              (its default too, where the brain overrides it), for that review
+  --gaps     what was asked and not answered: the recall lines that named no
+             page, most asked first. Questions that share a rare word (one
+             under 5% of the pages hold) are one gap, known by the words they
+             all share; a later question that did name pages and holds those
+             words closes it. With each: the ideas held on an episode and the
+             pages listed under the index's Gaps that it names, which is where
+             to start reading. From the log only
   --context  the context budget: the size of what loads every session (the
              root CLAUDE.md, the description of each skill and agent the
              model can see, the wake-up briefing) and of what loads on use
@@ -85,6 +92,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from vaultlib import TUNING_PATH, Tuning, Vault, shown, verdicts  # noqa: E402
 
 TOP = 10
+GAP_QUESTIONS = 3  # wordings of one gap printed; --json has them all
 METRICS = os.path.join("hippocampus", "metrics.md")
 SNAPSHOT_LINE = re.compile(r"^(\d{4}-\d{2}-\d{2}) (\{.*\})$")
 SNAPSHOT_KEYS = ("pages", "links", "avg_degree", "orphan_rate", "components", "main_component_share",
@@ -289,6 +297,7 @@ VIEWS = {
     "dormant": lambda r: [p.rel for p in r.vault.dormant_candidates()],
     "open": lambda r: {k: [p.rel if not isinstance(p, tuple) else f"{p[0].rel} contradicts {p[1].rel}" for p in v]
                        for k, v in r.vault.open_items().items()},
+    "gaps": lambda r: r.vault.unanswered(),
     # The graph views cost more (betweenness is pages x links), so they come only when asked for.
     "hubs": _hubs,
     "bridges": _bridges,
@@ -321,13 +330,14 @@ FLAG_VIEWS = {
     "clusters": ("clusters", "schema_candidates"),
     "tags": ("tags",),
     "usage": ("usage",),
+    "gaps": ("gaps",),
 }
 # `--json` with no flag: the whole report, apart from the graph views and the link suggestions.
 EVERYTHING = ("pages", "by_type", "links", "avg_degree", "orphan_rate", "components", "main_component_share",
               "verdicts", "stale_concept_rate", "broken_links", "awaiting_consolidation", "due_for_rehearsal",
               "decisions_due", "goals", "projects", "relations", "calibration", "usage", "most_recalled", "stale",
               "queue", "candidates", "candidate_pairs", "contradictions", "due", "risk", "decisions", "intentions",
-              "dormant", "open", "tuning")
+              "dormant", "open", "gaps", "tuning")
 ORDER = EVERYTHING + ("hubs", "bridges", "bridges_estimated", "cut_points", "clusters", "schema_candidates", "tags",
                       "link_suggestions")
 GRAPH = ("hubs", "bridges", "clusters", "tags")  # the flags `--graph` stands for
@@ -373,6 +383,18 @@ def decision_line(d):
     return (f"{d['page']}{'  TO REVISIT' if d['triggered'] else ''}\n      revisit if: {d['revisit_if'] or '(none)'}"
             f"\n      claims: {', '.join(f'{t} {n}' for t, n in mix.items()) or 'none tagged'}"
             + ("  (rests mostly on guesses)" if guesses > seen else ""))
+
+
+def gap_line(g):
+    """One gap: how often it was asked, the words it is known by, its questions, and where to start reading."""
+    shown = g["questions"][:GAP_QUESTIONS]
+    more = len(g["questions"]) - len(shown)
+    start = ([f"held on an episode: {', '.join(g['held'])}"] if g["held"] else []) + \
+            ([f"a gap in the index: {', '.join(f'[[{name}]]' for name in g['index_gaps'])}"] if g["index_gaps"] else [])
+    return (f"{g['asked']:>3}x  {', '.join(g['words'])}  (last {g['last']})"
+            + "".join(f"\n        {q}" for q in shown)
+            + (f"\n        and {more} more (--json has every wording)" if more else "")
+            + (f"\n        start with: {'; '.join(start)}" if start else ""))
 
 
 def listed(title, rows):
@@ -501,6 +523,9 @@ def render(r, args):
                       [", ".join(c) for c in r["schema_candidates"]])
     if "tags" in show:
         out += listed("tags in use", [f"{n:>4}  {t}" for t, n in r["tags"].items()])
+    if "gaps" in show:
+        out += listed("asked and not answered (recall named no page; most asked first)",
+                      [gap_line(g) for g in r["gaps"]])
     if "usage" in show:
         u = r["usage"]
         out += listed("operations logged", [f"{n:>4}  {op}" for op, n in u["operations"].items()])

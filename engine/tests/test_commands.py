@@ -30,8 +30,8 @@ KEYS = {
         "secrets", "shared_names", "stubs", "to_dormant", "tuning", "undated", "untagged"]),
     "introspect": ("introspect", [], SUMMARY),
     "introspect --json": ("introspect", ["--json"], SUMMARY + [
-        "candidate_pairs", "candidates", "contradictions", "decisions", "dormant", "due", "intentions", "open", "queue",
-        "relations", "risk", "stale", "usage"]),
+        "candidate_pairs", "candidates", "contradictions", "decisions", "dormant", "due", "gaps", "intentions", "open",
+        "queue", "relations", "risk", "stale", "usage"]),
     "introspect --due": ("introspect", ["--due"], SUMMARY + ["due", "risk"]),
     "introspect --graph": ("introspect", ["--graph"], SUMMARY + [
         "bridges", "bridges_estimated", "clusters", "cut_points", "hubs", "schema_candidates", "tags"]),
@@ -68,6 +68,7 @@ KEYS = {
     "eval --answers": ("eval", ["--answers", "{tmp}/answers.json"], ["answers", "problems", "retrieval"]),
     "eval --draft": ("eval", ["--draft", "2"], ["questions"]),
     "eval --set": ("eval", ["--set", "recall_floor=0.3"], ["problems", "retrieval", "set"]),
+    "eval --from-log": ("eval", ["--from-log", "--root", "{root}"], ["from_log", "problems", "retrieval"]),
     "synth": ("synth", ["{tmp}/made", "--pages", "12"], ["links", "log_lines", "out", "pages"]),
     "bench": ("bench", ["--pages", "10"], ["commands", "hooks", "links", "log_lines", "pages", "repeat", "seed", "vault"]),
 }
