@@ -69,12 +69,38 @@ class SkillWiring(unittest.TestCase):
         # Scanning and counting on the smallest, writing from one input on the middle one, judging and
         # synthesis on the session's own. A cheaper model saves quota and time, not context.
         expected = {"curator": "haiku", "graph-analyst": "haiku", "watcher": "haiku", "encoder": "sonnet",
-                    "reviewer": "sonnet", "consolidator": "inherit", "critic": "inherit", "researcher": "inherit"}
+                    "reviewer": "sonnet", "consolidator": "inherit", "critic": "inherit", "researcher": "inherit",
+                    "resolver": "inherit", "gatekeeper": "inherit"}
         found = {}
         for name in sorted(os.listdir(os.path.join(ENGINE, "agents"))):
             with open(os.path.join(ENGINE, "agents", name), encoding="utf-8") as fh:
                 found[name[:-3]] = (re.search(r"^model: (\S+)$", fh.read().split("---")[1], re.M) or [None, None])[1]
         self.assertEqual(found, expected)
+
+    def test_only_the_two_writers_can_write(self):
+        # An agent that judges, prepares or reports changes nothing: it has no tool to change anything with.
+        writers = set()
+        for name in sorted(os.listdir(os.path.join(ENGINE, "agents"))):
+            with open(os.path.join(ENGINE, "agents", name), encoding="utf-8") as fh:
+                tools = re.search(r"^tools: (.*)$", fh.read().split("---")[1], re.M).group(1)
+            if {"Write", "Edit"} & {t.strip() for t in tools.split(",")}:
+                writers.add(name[:-3])
+        self.assertEqual(writers, {"encoder", "consolidator"})
+
+    def test_the_agents_a_skill_hands_to_exist_and_the_split_skills_point_at_each_other(self):
+        agents = {name[:-3] for name in os.listdir(os.path.join(ENGINE, "agents"))}
+        for skill, agent in (("maintain", "resolver"), ("export", "gatekeeper"), ("ingest", "encoder"),
+                             ("tend", "consolidator"), ("ask", "researcher")):
+            self.assertIn(agent, agents)
+            self.assertIn(f"`{agent}` agent", self.skill(skill), skill)
+        # The review of a decision is a skill of its own, and `decide` is the shorter for it.
+        self.assertIn("`/review-decision`", self.skill("decide"))
+        self.assertNotIn("## Outcome", self.skill("decide"))
+        self.assertIn("## Outcome", self.skill("review-decision"))
+        self.assertLess(len(self.skill("decide").splitlines()), 100)
+        for name in os.listdir(SKILLS):  # a skill is named as its folder is, in lower case with hyphens
+            self.assertRegex(self.skill(name), rf"(?m)^name: {re.escape(name)}$")
+            self.assertRegex(name, r"^[a-z]+(-[a-z]+)*$")
 
     def test_agent_skills_exist(self):
         for name, text in self.everything().items():

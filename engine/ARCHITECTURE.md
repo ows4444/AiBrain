@@ -36,12 +36,12 @@ scans live in code and run as hooks or `brain` commands.
 | Folder | Role | Written by | Rule |
 |--------|------|-----------|------|
 | `inbox/` | quick notes from anywhere | owner | swept into `senses/inbox/` by `/ingest` |
-| `senses/` | input as it arrived (`assets/` holds images) | owner, `brain fetch`, `brain chats` | never edited after landing; only `/forget` removes, on the owner's yes |
+| `senses/` | input as it arrived (`assets/` holds images) | owner, `brain fetch`, `brain chats`, `brain import` | never edited after landing; only `/forget` removes, on the owner's yes |
 | `cortex/episodes/` | one page per input: what that source said | `/ingest` | "this source says X", not "X is true" |
 | `cortex/concepts/` | one idea per page | `/sleep` | needs 2+ distinct sources or one salient (`salience` 4+) |
 | `cortex/entities/` | people, organisations, products, tools | `/sleep` | what it is and why it is here |
 | `cortex/insights/` | what no single episode said | `/sleep` | agreements, conflicts, patterns |
-| `cortex/decisions/` | choices: options, frozen `## Expected`, outcome | `/decide` | `## Expected` never rewritten once decided |
+| `cortex/decisions/` | choices: options, frozen `## Expected`, outcome | `/decide`, `/review-decision` (the outcome) | `## Expected` never rewritten once decided |
 | `hippocampus/` | `index.md`, `log.md`, `metrics.md`, `fingerprints.md`, `intentions.md`, `tuning.md` | skills (the log only through `brain log`, the index's listing through `brain index`) and `brain fingerprint` | the log is append-only; the index's listing is rewritten every run, its Gaps kept by hand; `tuning.md` holds the thresholds this brain keeps at its own value |
 | `prefrontal/<name>/` | projects, one goal each (`CLAUDE.md` is page `[[name]]`) | `/focus` | pages linked from live goals and active projects never fade |
 | `dormant/` | faded pages: out of index and graph, still searchable | `/maintain` | moved only on approval; `/restore` moves one back |
@@ -98,7 +98,7 @@ the dict with `--json`, which every command takes. Another program makes the sam
 |-------|----------|
 | Find | `search` (BM25), `recall` (words, then links), `since` (period view) |
 | Check | `check` (links, schema, index drift, edited inputs), `introspect` (18 views; `--gaps` is what was asked and not answered), `eval` (a question set, or with `--from-log` the log's own questions, each replayed as the brain was that day; `--set` tries a threshold at another value and writes nothing), `ground` (a drafted answer or piece held to the pages it cites: the sensor for the core rule of `/ask` and `/write`) |
-| Input | `capture` (a note in `inbox/`), `fetch`, `chats`, `session`, `fingerprint`, `fit` (the pages an input's own words reach, the held ideas it names), `new` |
+| Input | `capture` (a note in `inbox/`), `fetch`, `chats`, `session`, `import` (the notes of an Obsidian vault into `senses/`, one input each, never twice and never over one that is there), `fingerprint`, `fit` (the pages an input's own words reach, the held ideas it names), `new` |
 | Record | `log` (the one writer of log lines: it checks the operation and every page name), `index` (rewrites the index's listing from the pages) |
 | Output | `export` (clean copies of chosen pages; it stops on a credential), `graph` |
 | Remove and continue | `forget` (remove an input), `restore` (a faded page back from `dormant/`), `resume` (write where the work stands) |
@@ -136,14 +136,14 @@ swallowed crash is not invisible.
 
 ## 5. The procedure layer
 
-### 5.1 Skills (22), grouped by the stage they serve
+### 5.1 Skills (25), grouped by the stage they serve
 
 | Stage | Skills |
 |-------|--------|
 | Set up | `/start`, `/owner` |
-| Encode | `/capture` (one line into `inbox/`), `/ingest` |
+| Encode | `/capture` (one line into `inbox/`), `/import` (a vault into `senses/`, then `/ingest`), `/ingest` |
 | Consolidate | `/sleep`, `/tend` (encode + consolidate + check + report) |
-| Recall | `/ask`, `/rehearse`, `/explore` (generated, never evidence), `/decide` |
+| Recall | `/ask`, `/brief` (one subject, a fixed format), `/rehearse`, `/explore` (generated, never evidence), `/decide`, `/review-decision` (the outcome against what was expected) |
 | Purpose | `/focus`, `/remind` |
 | Output | `/write` |
 | Review and repair | `/reflect`, `/health`, `/maintain`, `/restore` (back from `dormant/`), `/guard`, `/export` |
@@ -152,7 +152,7 @@ swallowed crash is not invisible.
 `/commit`, `/forget`, `/rollback`, `/start`, `/owner` and `/tend` are manual-only
 (`disable-model-invocation`). Skills that answer or write from pages also append a `recall` log line.
 
-### 5.2 Agents (8)
+### 5.2 Agents (10)
 
 | Agent | Model | Tools | Called by |
 |-------|-------|-------|-----------|
@@ -164,9 +164,13 @@ swallowed crash is not invisible.
 | reviewer | sonnet | read only | `/reflect` |
 | graph-analyst | haiku | read + bash | `/health` |
 | watcher | haiku | read + bash | the owner, or a schedule |
+| resolver | inherit | read + bash | `/maintain settle` |
+| gatekeeper | inherit | read + bash | `/export` |
 
 Only encoder and consolidator write. The critic judges a run in a clean context against its log line. The
-watcher runs `brain tend --check` and reports it: the one thing meant to run with nobody there.
+watcher runs `brain tend --check` and reports it: the one thing meant to run with nobody there. The resolver
+lays out both sides of a disputed page (sources, dates, strength) and settles nothing: the owner's word does.
+The gatekeeper runs `/guard` over the pages chosen for an export in a clean context and answers clear or stop.
 
 ## 6. The flows
 

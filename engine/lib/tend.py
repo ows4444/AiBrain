@@ -79,7 +79,7 @@ def render(d, args):
          "/sleep records both sides"),
         ("rehearse", "due to rehearse", d["rehearse"], "/rehearse: yours alone"),
         ("reminders", "reminders due", [f"{r['text']} ({r['when']})" for r in d["reminders"]], ""),
-        ("review", "to review", [f"{r['page']} ({r['review']})" for r in d["review"]], "/decide"),
+        ("review", "to review", [f"{r['page']} ({r['review']})" for r in d["review"]], "/review-decision"),
         ("revisit", "to revisit", d["revisit"], "the event the decision named has come"),
         ("late", "goals past date", [f"{g['goal']} ({g['due']})" for g in d["late"]], "close, re-date or drop"),
         ("at_risk", "goals at risk", [f"{g['goal']} ({g['days_left']} days left)" for g in d["at_risk"]],

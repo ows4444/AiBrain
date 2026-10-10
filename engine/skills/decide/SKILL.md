@@ -1,13 +1,13 @@
 ---
 name: decide
 description: >-
-  Frame a choice from the pages, record what the owner expects, later review the outcome. Use for /decide, "help me decide", "I decided X", "how did X turn out". Not for plain questions (ask).
-argument-hint: "<question> | made <decision> | review [decision]"
+  Frame a choice from the pages and record what the owner expects before the outcome is known. Use for /decide, "help me decide", "I decided X". Not for questions (ask) or outcomes (review-decision).
+argument-hint: "<question> | made <decision>"
 ---
 
 # Decide
 
-Decide $ARGUMENTS: frame a new choice, record one already made, or review how one turned out.
+Decide $ARGUMENTS: frame a new choice, or record one already made.
 
 The orbitofrontal cortex weighs options against expected value; the striatum
 learns from the gap between what was expected and what happened. Without that
@@ -63,28 +63,13 @@ guesses never look alike (tags and what each must carry:
    ask the owner if unsure. Default three months.
 5. Log: `brain log decide "<decision>" --pages <page> --result "review <date>"`.
 
-**Review** (`review`, or the briefing lists decisions due or to revisit):
-1. `brain introspect --decisions` lists what is due, and marks the ones tagged
-   `to-revisit` because their `revisit_if` event was seen. Take one at a time;
-   a triggered decision is reviewed now, whatever its date.
-2. Ask the owner what happened. Write it under `## Outcome` with the date.
-   Then repeat each `[assumption]` and `[hypothesis]` there with how it turned
-   out, on the owner's word: `- [assumption] <text> -> held | failed | unknown`,
-   the text exactly as under Expected (the probability may be repeated in the
-   tag; the Brier score finds it either way).
-3. Compare with `## Expected` and set `outcome:` to `as-expected`, `better`,
-   `worse` or `mixed`. Set `status: reviewed`.
-4. Under `## Lessons`, what this suggests for the next similar choice, only if
-   the owner agrees it follows. Name each reusable lesson under
-   `## Candidates`; sleep weighs it like an episode's candidate.
-5. Remove the `to-revisit` tag if it was set.
-6. Log: `brain log review "[[page]]" --result "<outcome>, <n> lessons"`.
+**Review** is its own skill, `/review-decision`, so that it can be run or
+scheduled alone: what happened, how each guess turned out, the outcome, the
+lessons. A decision is never reopened: the hook blocks taking `status` back.
+When a `reviewed` decision is triggered, or the owner changes their mind,
+frame a new decision that links the old one.
 
-A decision is never reopened: the hook blocks taking `status` back. When a
-`reviewed` decision is triggered, or the owner changes their mind, frame a new
-decision that links the old one.
-
-In every mode, also log `brain log recall "decide <short question>" --pages <page> ...`
+In both modes, also log `brain log recall "decide <short question>" --pages <page> ...`
 for the pages read, the decision page included; the recall hook checks for it.
 
 ## Output
@@ -99,12 +84,8 @@ Not covered: <what the brain could not inform>
 
 ## Calibration
 
-An outcome that turned out `better` is not proof the reasoning was good, and
-`worse` is not proof it was bad; say so when the outcome looks like luck.
-After five or more reviews, `brain introspect` shows the spread of outcomes;
-mention it in `/reflect` when it leans one way. Once ten stated probabilities
-are scored, `brain introspect --decisions` gives a Brier score and, for each
-level, how often guesses at that level held: tell the owner when their 80%
-guesses hold half the time. A decision with more
-assumptions and hypotheses than observations rests mostly on guesses: say so
-before it is made, without arguing against it.
+A decision with more assumptions and hypotheses than observations rests
+mostly on guesses: say so before it is made, without arguing against it.
+Before the owner puts a number on a guess, the reference class is the
+calibration they have: once ten stated probabilities are scored, `brain
+introspect --decisions` says how often guesses at each level held.

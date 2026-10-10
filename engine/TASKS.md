@@ -259,13 +259,15 @@ Not ordered: pick any whose tags are met. Each is smaller once 12 is done.
   - [ ] Name the one concrete door first (the roadmap does not name one)
   - [ ] Build that door only, into `inbox/`
   - [ ] Done when: a note taken away from the desk is in `inbox/` at the next session
-- [ ] **36. Importers, one per source** (ROADMAP F7, score 5, M each)
-  - [ ] An Obsidian vault first: it is already Markdown
-  - [ ] Never overwrite; one input per note, into `senses/`
-  - [ ] Done when: an import run twice adds nothing the second time
+- [x] **36. Importers, one per source** (ROADMAP F7, score 5, M each)
+  - [x] An Obsidian vault first: it is already Markdown. `brain import obsidian VAULT [--dry-run]` (`lib/importer.py`; `import` is a Python keyword, so the module has the longer name). `SOURCES` there holds one importer; a second source is one more function
+  - [x] Never overwrite; one input per note, into `senses/`. Each `.md` note is copied byte for byte to `senses/obsidian/<vault folder>/<path in the vault>`. A note edited in the vault after its import is listed as changed and not brought in, because an input is never edited. Left out and counted: text that is already an input under another path, empty notes, `.obsidian/`, `.trash/` and other hidden folders, attachments, and the brain itself when it is kept inside the vault. A vault inside the brain is refused
+  - [x] Added, not in the item: what you had removed with `brain forget` does not come back, by its path or by its text (`fingerprint.forgotten_hashes`), so a note moved in the vault stays forgotten. A note named `README.md` is listed and not imported: `senses/` reads no file of that name as an input, so it would land and never be encoded
+  - [x] Done when: an import run twice adds nothing the second time. `tests/test_importer.py`, 8 tests: the second run imports 0 and leaves `senses/` byte for byte as it was
+  - Not on the allow-list: it writes into `senses/`, so it asks. Not tried on a real vault: this folder has none
 - [ ] **37. `/import`** (ROADMAP S2, score 8, M, after 36)
-  - [ ] Picks the importer, writes to `senses/`, hands off to `/ingest`
-  - [ ] Done when: the skill passes `test_skills.py` and one real import ends in episodes
+  - [x] Picks the importer, writes to `senses/`, hands off to `/ingest`. `skills/import/SKILL.md`: a dry run and the owner's yes first, the import, `brain check --guard` over what landed before any of it is encoded, then `/ingest` in archive batches; one `ingest` log line for the import itself
+  - [ ] Done when: the skill passes `test_skills.py` and one real import ends in episodes. The first half holds. The second is yours: one vault imported in the real brain and taken through `/ingest`
 - [ ] **38. Ingestion scout agent** (ROADMAP A3, score 6, M)
   - [ ] Sonnet; sorts `inbox/` before `/ingest`: duplicates by fingerprint, secrets by `brain check --guard`, items that need a person
   - [ ] Done when: `/ingest` on a mixed inbox encodes only what the scout passed
@@ -294,23 +296,23 @@ Not ordered: pick any whose tags are met. Each is smaller once 12 is done.
   - [x] A wrapper for `brain export`, with `/guard` run first: choose, guard, export, log `guard export`
   - [x] The refusal is the command's, not the skill's: `brain export` now scans the chosen pages, stops on a credential (file, kind and line, never the value) and writes nothing; personal data in what was exported is listed for the owner (`personal` in the JSON)
   - [x] Done when: an export with a credential in a chosen page is refused
-- [ ] **44. Contradiction resolver agent** (ROADMAP A2, score 7, S)
-  - [ ] Prepares each side of a `disputed` page for `/maintain settle`: sources, dates, strength
-  - [ ] It does not settle
-  - [ ] Done when: `/maintain settle` reads its output and the page is unchanged until your word
-- [ ] **45. Privacy gatekeeper agent** (ROADMAP A5, score 4, S)
-  - [ ] A clean-context pass of `/guard` before any export; the critic already covers part of this
-  - [ ] Done when: 43 calls it
+- [x] **44. Contradiction resolver agent** (ROADMAP A2, score 7, S)
+  - [x] Prepares each side of a `disputed` page for `/maintain settle`: sources, dates, strength. `agents/resolver.md` (inherit): each claim quoted, the records behind it (two episodes of one address are one source), which side is stronger on the records alone, and what would settle it
+  - [x] It does not settle: its tools are Read, Glob, Grep and Bash, and `test_skills.py` holds that only the encoder and the consolidator can write
+  - [x] Done when: `/maintain settle` reads its output and the page is unchanged until your word. Settle now hands the page to the resolver first and puts its report to you before anything changes. Not run on a real dispute: this brain has no disputed page, and the plugin a session loads here is the other folder's
+- [x] **45. Privacy gatekeeper agent** (ROADMAP A5, score 4, S)
+  - [x] A clean-context pass of `/guard` before any export; the critic already covers part of this. `agents/gatekeeper.md` (inherit, the `guard` skill preloaded): `brain check --guard`, each chosen page read whole, the titles that would leave through links; it answers `VERDICT: clear | stop` and exports nothing
+  - [x] Done when: 43 calls it. `/export` step 2 hands the chosen pages to it and stops on `stop`. `brain export` still refuses a credential on its own (item 43), so the agent is the second reader, not the only wall
 
 ### Recall and review
 
-- [ ] **46. `/brief`** (ROADMAP S6, score 5, S)
-  - [ ] A short cited summary of one person, project or topic: `/ask` with a fixed format
-  - [ ] It logs its recall line
-  - [ ] Done when: the skill passes `test_skills.py`
-- [ ] **47. `/review-decision`** (ROADMAP S7, score 5, S)
-  - [ ] The review step split out of `/decide`, so it can be run or scheduled alone
-  - [ ] Done when: `/decide` is shorter and both skills pass `test_skills.py`
+- [x] **46. `/brief`** (ROADMAP S6, score 5, S)
+  - [x] A short cited summary of one person, project or topic: `/ask` with a fixed format. `skills/brief/SKILL.md`: recall, the brief in one fixed shape, then `brain ground -` over it before it is shown
+  - [x] It logs its recall line: `brain log recall "brief <subject>" --pages ...`; `brief` is in `check_recall.RECALL_SKILLS`, so the Stop hook asks for the line when it is missing
+  - [x] Done when: the skill passes `test_skills.py`
+- [x] **47. `/review-decision`** (ROADMAP S7, score 5, S)
+  - [x] The review step split out of `/decide`, so it can be run or scheduled alone. `skills/review-decision/SKILL.md` holds it; `/sleep`, `/start` and `brain tend --check` point at the new name, and CLAUDE.md names both new skills among those that write a recall line
+  - [x] Done when: `/decide` is shorter and both skills pass `test_skills.py`. `/decide` went from 110 lines to 91; the review is 61 lines of its own
 - [ ] **48. Quiz writer agent** (ROADMAP A4, score 5, S)
   - [ ] Only if quizzes feel thin: `/rehearse` already builds its own
   - [ ] Done when: you say the questions are better with it than without

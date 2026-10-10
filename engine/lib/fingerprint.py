@@ -79,6 +79,26 @@ def forgotten(root):
         return {m.group(2) for m in (FORGOTTEN.match(line.rstrip("\n")) for line in fh) if m}
 
 
+def forgotten_hashes(root):
+    """The sha256 of each input the owner had removed, where one was recorded before it went.
+
+    The text stays forgotten under any path: `brain import` reads this, so a note
+    moved or renamed at its source does not come back as a new input.
+    """
+    path = os.path.join(root, FINGERPRINTS)
+    if not os.path.exists(path):
+        return set()
+    seen, out = {}, set()
+    with open(path, encoding="utf-8") as fh:
+        for line in fh:
+            m, gone = LINE.match(line.rstrip("\n")), FORGOTTEN.match(line.rstrip("\n"))
+            if m:
+                seen.setdefault(m.group(3), m.group(2))
+            elif gone and gone.group(2) in seen:
+                out.add(seen.pop(gone.group(2)))
+    return out
+
+
 def fingerprint_problems(root):
     """What changed in senses/ against its recorded hashes: removed or changed inputs."""
     problems = []

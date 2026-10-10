@@ -21,11 +21,13 @@ never a credential.
 
 1. **Choose.** The pages the owner named, or `published`. Asked for the
    whole brain: ask which pages, and what to do about the private ones.
-2. **Guard.** `brain check --guard` for credentials and personal data
-   anywhere in the brain, then read the chosen pages for what a pattern
-   cannot see: other people's private information, material under NDA or an
-   employer's restriction (the categories of `/guard`). Report before
-   exporting; stop on anything critical.
+2. **Guard.** Hand the chosen pages to the `gatekeeper` agent. It reads
+   them in a clean context, with none of this session's reasons for sharing
+   them: `brain check --guard` for credentials and personal data, then each
+   page for what a pattern cannot see (other people's private information,
+   material under NDA or an employer's restriction, titles that would leak).
+   Show the owner its verdict before exporting. On `stop`, stop: fix the
+   page at the source, or leave it out.
 3. **Export.** `brain export <page> ...` or `brain export --published`
    writes clean copies to `motor/export/`: brain-only frontmatter dropped,
    links to pages outside the export made plain text. It refuses, writing

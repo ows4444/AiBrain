@@ -19,6 +19,6 @@ between steps:
 5. Run `/ask` on what they just added, so they see a cited answer and a recall
    line.
 6. Close with the rhythm: `/ingest` when `senses/` fills, `/sleep` weekly,
-   `/rehearse` when the briefing says pages are due, `/decide review` when it
+   `/rehearse` when the briefing says pages are due, `/review-decision` when it
    says decisions are due, `/health` monthly. Mention `/explore` for pushing a
    concept further and `/decide` for the next real choice.

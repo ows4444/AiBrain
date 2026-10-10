@@ -61,6 +61,9 @@ KEYS = {
         "author", "headings", "part", "path", "published", "raw_bytes", "saved", "saved_bytes", "title", "url",
         "words"]),
     "fit": ("fit", ["senses/cepeda.md"], ["held", "input", "pages", "words"]),
+    "import --dry-run": ("import", ["obsidian", "{tmp}/vault", "--dry-run"], [
+        "already", "attachments", "changed", "duplicates", "empty", "forgotten", "from", "imported", "into",
+        "not_inputs", "source", "written"]),
     "new": ("new", ["concept", "--title", "A new idea"], ["filled", "page"]),
     "chats": ("chats", ["{tmp}/chats.json", "{tmp}/chats"], ["out", "short", "unknown", "written"]),
     "resume": ("resume", [], ["note", "text"]),
@@ -104,7 +107,9 @@ class Brain(TempBrain):
                                             "chat_messages": [{"sender": "human", "text": "hello there " * 80}]}])),
                 ("transcript.jsonl", json.dumps({"type": "user", "timestamp": "2026-10-07T11:05:09.000Z",
                                                  "message": {"role": "user", "content": "first words"}}) + "\n"),
-                ("answers.json", json.dumps({"q01": "See [[spacing-effect]]."}))):
+                ("answers.json", json.dumps({"q01": "See [[spacing-effect]]."})),
+                ("vault/A note.md", "A note kept in another tool.\n")):
+            os.makedirs(os.path.dirname(os.path.join(self.tmp_dir, name)), exist_ok=True)
             with open(os.path.join(self.tmp_dir, name), "w", encoding="utf-8") as fh:
                 fh.write(text)
 

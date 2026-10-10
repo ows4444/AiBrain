@@ -107,8 +107,8 @@ written have none). Operations: `ingest`, `recall`,
 `health`, `guard`, `rehearse`, `rollback`, `owner`, `engine`, `remind`, `forget`.
 Write each line with `brain log <operation> <what> --pages <page> ... --result <text>`:
 it checks the operation and every page name and sets the date and time. Never
-write the file by hand. Every skill that answers or writes from pages (ask, rehearse,
-explore, decide, write, focus) also writes a `recall` line naming them; a missed
+write the file by hand. Every skill that answers or writes from pages (ask, brief,
+rehearse, explore, decide, review-decision, write, focus) also writes a `recall` line naming them; a missed
 rehearsal is `DATE rehearse missed -> [[page]]`. The log is append-only. Run
 `brain index` in the same run: it rewrites the listing of `index.md` from the
 pages; `## Gaps` there is written by hand. Example lines are in `engine/templates/README.md`.

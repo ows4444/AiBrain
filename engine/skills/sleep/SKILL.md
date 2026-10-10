@@ -46,7 +46,7 @@ updates earlier pages, never the reverse.
    - the episode reports the event a decision's `revisit_if` names
      (`brain introspect --decisions` lists them): tag that decision
      `to-revisit` and link the episode from it under `## Context`. Nothing
-     else on the decision changes; `/decide review` takes it from there.
+     else on the decision changes; `/review-decision` takes it from there.
    Then set the episode's (or decision's) `consolidated:` to today.
 2. **Integrate.** Where two episodes disagree, or three describe the same
    pattern, and no insight covers it, write one in `cortex/insights/`.

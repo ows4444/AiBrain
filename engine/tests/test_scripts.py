@@ -468,7 +468,7 @@ class TendCheck(TempBrain):
             "  contradictions    1: cortex/episodes/blog.md against cortex/concepts/spacing.md  (/sleep records both sides)",
             "  due to rehearse   1: cortex/concepts/spacing.md  (/rehearse: yours alone)",
             f"  reminders due     1: Renew the domain ({ago(2)})",
-            f"  to review         1: cortex/decisions/raise.md ({ago(5)})  (/decide)",
+            f"  to review         1: cortex/decisions/raise.md ({ago(5)})  (/review-decision)",
             "  to revisit        1: cortex/decisions/hire.md  (the event the decision named has come)",
             f"  goals past date   1: Move ({ago(10)})  (close, re-date or drop)",
             "  goals at risk     1: Hand in (12 days left)  (nothing done toward them lately)",

@@ -65,7 +65,11 @@ not be duplicates: ask.
 new pages from `${CLAUDE_PLUGIN_ROOT}/templates/`; point each inbound link at the right page; log.
 
 **Settle** (on the owner's word, or newer evidence that is clearly better).
-For a `disputed` page from `brain introspect --open`: keep both claims with
+For a `disputed` page from `brain introspect --open`: first hand it to the
+`resolver` agent, which lays out both sides in a context of its own (each
+claim, the sources behind it with their dates, which side is stronger on the
+records, what would settle it) and changes nothing. Put its report to the
+owner; the page stays as it is until they say. Then keep both claims with
 their sources and dates, mark the losing one superseded with what settled it,
 remove the `disputed` tag, and change a `contradicts` link that no longer
 holds to plain text. Log `brain log maintain "settle [[page]]" --result

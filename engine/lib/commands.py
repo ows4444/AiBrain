@@ -54,6 +54,7 @@ COMMANDS = {
     "errors": ("errlog", True, {}),
     "fetch": ("fetch", True, {}),
     "fit": ("fit", True, {}),
+    "import": ("importer", True, {}),
     "ground": ("ground", True, {}),
     "new": ("new_page", True, {}),
     "chats": ("chat_export_to_md", False, {}),

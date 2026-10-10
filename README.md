@@ -64,12 +64,15 @@ Then, inside Claude Code:
 | `/owner`     | Fill in or update who you are, your goals and projects           |
 | `/ingest`    | Encode new input (files, URLs, PDFs, transcripts, chat exports)  |
 | `/capture`   | Keep one line for later: a note in `inbox/`, encoded by `/ingest` |
+| `/import`    | Bring an Obsidian vault into `senses/`, one input a note         |
 | `/tend`      | Clear the queues in one go: encode, consolidate, check, report   |
 | `/sleep`     | Consolidate episodes into concepts, entities and insights        |
 | `/ask`       | Answer from your pages, with citations                           |
+| `/brief`     | One page on a person, project or topic, every line cited         |
 | `/rehearse`  | Quiz yourself on what is due                                     |
 | `/explore`   | Push an idea past what the brain holds                           |
-| `/decide`    | Frame a choice, record what you expect, review it later          |
+| `/decide`    | Frame a choice and record what you expect, before the outcome    |
+| `/review-decision` | Hold a decision's outcome against what you expected        |
 | `/focus`     | Create or check a project with one measurable goal               |
 | `/write`     | Draft an outline, article, report or brief into `motor/`         |
 | `/remind`    | "Remind me to X when Y"                                          |
@@ -94,6 +97,7 @@ brain recall QUERY    # words, then associations along links
 brain since 2026-09-01
 brain capture "a line" # keep it for later: a note in inbox/, which /ingest encodes
 brain fit senses/FILE # what an input bears on, before it is encoded; /ingest runs it
+brain import obsidian VAULT   # every note of a vault into senses/, once; --dry-run to look first
 brain restore PAGE    # bring a faded page back from dormant/; the move is logged
 brain ground FILE     # a draft: links, numbers and quotations with no page behind them
 brain tend --check    # everything that needs you, in one read-only digest
