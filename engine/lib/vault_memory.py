@@ -1,0 +1,728 @@
+"""Memory over time: the log, recall strength, the sleep queue, evidence, decay.
+
+Mixed into vaultlib.Vault; relies on its pages, edges, tuning, resolve() and kept().
+"""
+import os
+import re
+from collections import Counter
+from itertools import chain
+
+from vault_events import as_written, is_rehearsal_pass, is_rehearsal_miss, rehearsal_grade
+from vault_model import (CLAIM_RESULTS, CLAIM_SECTIONS, CLAIM_TAGS, FADE_IGNORES_LINKS_FROM, LINK, OPS, OUTCOMES,
+                         PROBABILITY_TAGS, RELATIONS, REHEARSED_TYPES, SALIENT, STUB_TYPES, FENCE, as_list,
+                         parse_date, same_idea, tag_vocabulary, tokens)
+from vault_schema import claim_problems
+
+# What vaultlib hands on to the commands. The rest is for the parts, which import it from here.
+__all__ = ["MemoryMixin", "inbox_notes"]
+
+# Query parameters that say how a reader arrived, not which page it is.
+TRACKING = re.compile(r"^(utm_\w+|fbclid|gclid|igshid|mc_[ce]id|ref|ref_src)$")
+WEB = re.compile(r"https?://", re.I)
+
+
+# A fact that goes out of date: a count of things, or a word that means "at the moment".
+COUNT = re.compile(r"[$€£]\d|(?<![\w.-])\d[\d,]*(?:\.\d+)?%?\s+(?!(?:or|and|to|of|in|at|by|per)\b)[a-z][a-z-]+",
+                   re.I)
+NOW_WORD = re.compile(r"\b(?:currently|at present|at the moment|right now|now|today|so far|latest|newest|"
+                      r"most recent|still|not yet|no longer)\b", re.I)
+PRESENT = re.compile(r"\b(?:is|are|has|have|holds|contains|remains|supports|runs|ships)\b", re.I)
+# What makes such a fact safe: a date on it, or a pointer to where the truth lives.
+DATED = re.compile(r"\b(?:1[5-9]|20)\d\d\b|\bas of\b", re.I)
+POINTER = re.compile(r"\bsee\b|https?://", re.I)
+SENTENCE = re.compile(r"(?<=[.!?])\s+(?=[A-Z\[(])")
+BLOCK = re.compile(r"\n\s*\n|\n(?=\s*(?:[-*+]|\d+\.)\s)")
+
+
+def inbox_notes(root):
+    """The notes waiting in the inbox/ of the brain at `root`, by name: what /ingest has not moved into senses/ yet.
+
+    The briefing, the status line, the digest and `brain inbox` all count these. The folder's own README.md is
+    no note, and neither is a hidden file (the door's link is one).
+    """
+    folder = os.path.join(root, "inbox")
+    return sorted(f for f in (os.listdir(folder) if os.path.isdir(folder) else [])
+                  if not f.startswith(".") and f != "README.md")
+
+
+def relayed(page):
+    """What an episode reports at second hand (`relays:`): a url, or the name of whose work it is. "" for none."""
+    return " ".join(str(page.fields.get("relays") or "").split()) if page.type == "episode" else ""
+
+
+class MemoryMixin:
+    def log_lines(self):
+        """(date, op, rest) for every dated line in the log, in order."""
+        return [(e.date, e.op, e.rest) for e in self.events]
+
+    def log_problems(self):
+        """Log lines whose operation is not in the vocabulary (CLAUDE.md > Log)."""
+        return [as_written(e) for e in self.events if e.op not in OPS]
+
+    def log_unresolved(self):
+        """(line, names) for recall and rehearse lines naming a page that is neither here nor in dormant/.
+
+        Such a name strengthens nothing and pairs with nothing: a misspelling, or a page
+        renamed without an alias, merged or removed since. `brain log` refuses one when
+        the line is written; this lists the ones written before it, or around it.
+        """
+        out = []
+        for e in self.events:
+            if e.op not in ("recall", "rehearse") or not e.arrow:
+                continue
+            lost = [t for t in e.targets if self.resolve(t) is None and t.lower() not in self.dormant_names]
+            if lost:
+                out.append((as_written(e), lost))
+        return out
+
+    def usage(self):
+        """What has actually been used, from the log and the pages, to decide what stays.
+
+        Operations by count and by month; the operations, typed-link relations
+        and vocabulary tags never used; progress to the calibration checkpoint;
+        every threshold with its default, its range and this brain's value; and
+        every trait with its value here and the thresholds it moves.
+        """
+        t = self.tuning
+        lines = self.log_lines()
+        ops = Counter(op for _, op, _ in lines)
+        months = {}
+        for day, op, _ in lines:
+            months.setdefault(day[:7], Counter())[op] += 1
+        relations = {r for p in self.knowledge for r, _ in p.relations}
+        tags = {tag for p in self.knowledge for tag in as_list(p.fields.get("tags"))}
+        inputs = sum(not p.generated for p in self.of_type("episode"))
+        return {
+            "operations": {op: ops[op] for op in sorted(ops, key=lambda o: (-ops[o], o))},
+            "by_month": {m: dict(sorted(c.items())) for m, c in sorted(months.items())},
+            "unused": {"operations": [op for op in OPS if not ops[op]],
+                       "relations": [r for r in RELATIONS if r not in relations],
+                       "tags": sorted((tag_vocabulary(self.root) or set()) - tags)},
+            "checkpoint": {"inputs": inputs, "inputs_needed": t.checkpoint_inputs,
+                           "sleeps": ops["sleep"], "sleeps_needed": t.checkpoint_sleeps,
+                           "reached": inputs >= t.checkpoint_inputs and ops["sleep"] >= t.checkpoint_sleeps,
+                           "reviewed": any(op == "health" and rest.startswith("calibration")
+                                           for _, op, rest in lines)},
+            "thresholds": t.rows(),
+            "traits": t.trait_rows(),
+        }
+
+    def _event_pages(self):
+        """For each event of the log, the pages its targets reach (None for a name that reaches none).
+
+        Worked out once and shared with every copy as_of makes: a copy holds the first events
+        of the same log, so the first entries here are its own. Read from the log, then, and
+        still not kept as what the log taught (kept): as_of sees that the whole log's are here
+        before it makes a copy, and a copy reads them from the front.
+        """
+        return self.kept("event_pages", lambda: [tuple(self.resolve(t) for t in e.targets) for e in self.events])
+
+    def _recalls(self):
+        """Page -> sorted dates of every `DATE recall <question> -> [[page]], ...` line naming it."""
+        dates = {}
+        for e, pages in zip(self.events, self._event_pages()):
+            if e.op != "recall" or not e.arrow or not e.day:
+                continue
+            for page in pages:
+                if page:
+                    dates.setdefault(page, []).append(e.day)
+        return {p: sorted(d) for p, d in dates.items()}
+
+    def _rehearsal_grades(self):
+        """Page -> (date, grade) for every rehearsal of it by the owner, in the order they happened.
+
+        `DATE recall rehearse fully -> [[page]]` is a pass, graded `fully` or `partly`;
+        `DATE rehearse missed -> [[page]]` is a miss, graded `missed`. A pass from before
+        answers were graded has None. Any other recall line is the model reading the page,
+        which keeps it from fading but is not the owner remembering it. Two on one day
+        stand in the order of their times (the events come in that order).
+        `rehearsals` is the same record as (date, passed): the schedule reads only that.
+        """
+        out = {}
+        for e, pages in zip(self.events, self._event_pages()):
+            if not e.day or not e.arrow or not (is_rehearsal_pass(e) or is_rehearsal_miss(e)):
+                continue
+            for page in pages:
+                if page:
+                    out.setdefault(page, []).append((e.day, rehearsal_grade(e)))
+        return out
+
+    def strength(self, page):
+        """Spaced rehearsals passed: one counts only once the interval earned so far has passed; a miss starts over."""
+        level, anchor, ladder = 0, None, self.tuning.rehearsal_days
+        for day, passed in self.rehearsals.get(page, []):
+            if not passed:
+                level, anchor = 0, day
+            elif anchor is None or (day - anchor).days >= ladder[min(level, len(ladder) - 1)]:
+                level, anchor = level + 1, day
+        return level
+
+    def missing_from_index(self):
+        """Memory pages no index page links to: index drift."""
+        listed = set().union(*(self.out_links[i] for i in self.of_type("index")))
+        return sorted((p for p in self.knowledge if p not in listed), key=lambda p: p.rel)
+
+    def stale_concepts(self, days=None):
+        """(every concept, those not edited in `days`: the brain's stale_days unless given), oldest first."""
+        days = self.tuning.stale_days if days is None else days
+        concepts = self.of_type("concept")
+        stale = [p for p in concepts if p.updated and (self.today - p.updated).days > days]
+        return concepts, sorted(stale, key=lambda p: p.updated)
+
+    def undated_facts(self):
+        """(page, sentence) for present-tense counts and statuses that carry no date and no pointer.
+
+        Every stored fact should be timeless, dated, or a pointer to where the
+        truth lives. Episodes and decisions are dated pages, so only concepts,
+        entities and insights are read. A sentence is listed when it states a
+        count or uses a word meaning "at the moment", in the present tense, and
+        its paragraph or list item holds no year, no "as of", no address and no
+        link to an episode or decision. A heuristic: it reads words, not
+        meaning, so it lists some timeless sentences; report only.
+        """
+        dated_types = ("episode", "decision")
+        out = []
+        for page in sorted(self.knowledge, key=lambda p: p.rel):
+            if page.type not in STUB_TYPES:
+                continue
+            for block in BLOCK.split(FENCE.sub("", page.body)):
+                text = " ".join(block.split())
+                if not text or text.startswith(("#", "|")) or DATED.search(text) or POINTER.search(text):
+                    continue
+                linked = (self.resolve(t.strip()) for t in LINK.findall(text))
+                if any(p is not None and p.type in dated_types for p in linked):
+                    continue
+                for sentence in SENTENCE.split(text):
+                    bare = LINK.sub("", sentence)
+                    if PRESENT.search(bare) and (COUNT.search(bare) or NOW_WORD.search(bare)):
+                        out.append((page, sentence.lstrip("-*+ ").strip()))
+        return out
+
+    def stubs(self):
+        return [p for p in self.knowledge
+                if p.type in STUB_TYPES and p.words < self.tuning.stub_words and not p.targets]
+
+    def unencoded(self):
+        """Files in senses/ no episode has encoded yet, as paths from the brain's root.
+
+        A file counts as encoded when an episode names it in its `input:` field
+        (or, for older pages, mentions its root-relative path). A PDF or an image
+        whose text `brain extract` wrote beside it as `<file>.md` is not counted
+        apart from that text: the two are one input.
+        """
+        episodes = self.of_type("episode")
+        claimed = {p.removeprefix("./") for ep in episodes for p in as_list(ep.fields.get("input"))}
+        blob = "\n".join(ep.body for ep in episodes)
+        pending = []
+        for dirpath, dirnames, files in os.walk(os.path.join(self.root, "senses")):
+            dirnames[:] = sorted(d for d in dirnames if d != "assets" and not d.startswith("."))
+            for f in sorted(files):
+                if f.startswith(".") or f == "README.md" or (f + ".md" in files and not f.endswith(".md")):
+                    continue
+                rel = os.path.relpath(os.path.join(dirpath, f), self.root)
+                if rel not in claimed and rel not in blob:
+                    pending.append(rel)
+        return pending
+
+    def unconsolidated(self):
+        """Episodes and reviewed decisions not yet replayed into the cortex, oldest first.
+
+        A decision's evidence is its outcome, so it is dated by its review, not its creation.
+        """
+        def when(p):
+            return p.fields.get("updated" if p.type == "decision" else "created", "")
+        queue = [p for p in self.pages if p.replayed_by_sleep and not p.consolidated]
+        return sorted(queue, key=lambda p: (when(p), p.rel))
+
+    @staticmethod
+    def source_of(page):
+        """What an episode is evidence from: what it relays, else its url, else its input, else itself.
+
+        Two episodes from one article (two clips, a re-encode) are one source,
+        and so are two that relay one piece of work (`relays:`): a relay is
+        evidence from what it reports, not from the page that reports it. A
+        decision is its own source.
+        """
+        told = relayed(page)
+        if told and not WEB.match(told):
+            return "relay:" + told.lower()
+        url, _, query = str(told or page.fields.get("url") or "").strip().split("#", 1)[0].partition("?")
+        kept = "&".join(p for p in query.split("&") if p and not TRACKING.match(p.split("=", 1)[0].lower()))
+        host, slash, path = re.sub(r"^https?://(www\.)?", "", url.rstrip("/"), flags=re.I).partition("/")
+        url = host.lower() + slash + path + ("?" + kept if kept else "")  # only the host ignores case
+        if url and page.type == "episode":
+            return "url:" + url
+        if page.fields.get("input") and page.type == "episode":
+            return "input:" + ",".join(sorted(str(i).removeprefix("./") for i in as_list(page.fields["input"])))
+        return "page:" + page.rel
+
+    def candidate_tally(self):
+        """Candidate ideas: name -> pages naming them, and its page if any.
+
+        `episodes` holds the evidence: encoded episodes and reviewed decisions;
+        `sources` counts how many distinct sources those are, which is what the
+        concept bar needs (two or more). `generated` holds /explore episodes,
+        which raise an idea but never count, since imagining something is not
+        evidence for it. Names that reach one page (its title or an alias) are
+        one candidate; without a page, names made of the same words once stemmed
+        are (same_idea), under the spelling met first.
+        """
+        tally = {}
+        for src in self.pages:
+            for name in src.candidates:
+                page = self.resolve(name)
+                row = tally.setdefault(("page", page.rel) if page else ("name", same_idea(name)),
+                                       {"name": name, "episodes": [], "generated": [], "page": page})
+                bucket = row["generated" if src.generated else "episodes"]
+                if src not in bucket:
+                    bucket.append(src)
+        for row in tally.values():
+            row["sources"] = len({self.source_of(p) for p in row["episodes"]})
+            row["salient"] = any(p.salience >= SALIENT for p in row["episodes"])
+        return sorted(tally.values(), key=lambda r: (-r["sources"], -len(r["episodes"]), -len(r["generated"]),
+                                                     r["name"].lower()))
+
+    def held_candidates(self):
+        """[(row, notes)] for each idea held on an episode: a row of the tally with no page yet that an
+        encoded episode names, and what those episodes say of it in a line, each note that says anything.
+
+        An idea raised only by /explore is not held: imagining it is no evidence for it.
+        """
+        return [(row, [note for src in row["episodes"] for name, note in src.candidate_notes
+                       if note and same_idea(name) == same_idea(row["name"])])
+                for row in self.candidate_tally() if not row["page"] and row["episodes"]]
+
+    def candidate_pairs(self):
+        """Held candidates that may be one idea under two names, or part of a page: [{a, b, why}].
+
+        The tally counts sources by exact name, so one idea named differently
+        by two episodes is two candidates with one source each, and neither is
+        ever promoted. This lists the likely pairs for sleep to read; nothing
+        merges by itself. `b` is another candidate's name or a page.
+        """
+        held = [(row["name"], set(tokens(row["name"])), set(tokens(" ".join([row["name"], *notes]))),
+                 {self.source_of(p) for p in row["episodes"]}) for row, notes in self.held_candidates()]
+
+        nothing = frozenset()
+        min_words, overlap = self.tuning.pair_min_words, self.tuning.pair_overlap
+
+        def shared(words, other):
+            common = words & other
+            return common if len(common) >= min_words and len(common) >= overlap * min(len(words), len(other)) \
+                else nothing
+
+        # Nothing is compared with everything. A pair can be listed only when its names share a
+        # word, or its names and notes share pair_min_words words; both are found from the words:
+        # each word remembers the candidates and the pages holding it.
+        by_name, by_word, holding = {}, {}, {}
+        for at, (_, named, words, _) in enumerate(held):
+            for word in named:
+                by_name.setdefault(word, []).append(at)
+            for word in words:
+                by_word.setdefault(word, []).append(at)
+        paged = [(p, set(tokens(" ".join([p.title, *p.aliases, p.summary or ""]))))
+                 for p in self.knowledge if p.type not in ("episode", "project")]
+        for at, (_, page_words) in enumerate(paged):
+            for word in page_words:
+                holding.setdefault(word, []).append(at)
+
+        def sharing(words, index):
+            """Positions in `index` that hold pair_min_words or more of these words."""
+            counts = Counter(chain.from_iterable(index.get(word, ()) for word in words))
+            return {at for at, count in counts.items() if count >= min_words}
+
+        pairs = []
+        for i, (name, named, words, sources) in enumerate(held):
+            alike = sharing(words, by_word).union(chain.from_iterable(by_name[word] for word in named))
+            for j in sorted(j for j in alike if j > i):  # the order the tally gives them
+                other, other_named, other_words, other_sources = held[j]
+                if sources == other_sources:
+                    continue  # one source listing two ideas means two ideas
+                both = named & other_named  # half the words of the two names together, or more
+                same_name = bool(both) and 2 * len(both) >= len(named) + len(other_named) - len(both)
+                common = both if same_name else shared(words, other_words)
+                if common:
+                    pairs.append({"a": name, "b": other, "page": None, "why": "names" if same_name else "notes",
+                                  "words": sorted(common)})
+            for at in sorted(sharing(words, holding)):  # the pages' own order
+                p, page_words = paged[at]
+                common = shared(words, page_words)
+                if common:
+                    pairs.append({"a": name, "b": p.title, "page": p, "why": "page", "words": sorted(common)})
+        return pairs
+
+    def decisions_due(self):
+        """Decided pages whose review date has come, most overdue first."""
+        due = []
+        for p in self.of_type("decision"):
+            review = parse_date(p.fields.get("review", ""))
+            if p.fields.get("status") == "decided" and review and review <= self.today:
+                due.append((p, review))
+        return [p for p, _ in sorted(due, key=lambda t: (t[1], t[0].rel))]
+
+    def calibration(self):
+        """How reviewed decisions turned out against what was expected: outcome -> count."""
+        counts = dict.fromkeys(OUTCOMES, 0)
+        for p in self.of_type("decision"):
+            if p.fields.get("status") == "reviewed" and p.fields.get("outcome") in counts:
+                counts[p.fields["outcome"]] += 1
+        return counts
+
+    def decision_report(self):
+        """Each decided or reviewed decision: its revisit line, its claims by tag, whether it is tagged to-revisit."""
+        out = []
+        for p in sorted(self.of_type("decision"), key=lambda p: p.rel):
+            if p.fields.get("status") in ("decided", "reviewed"):
+                mix = Counter(c["tag"] for c in p.claims if c["section"] in CLAIM_SECTIONS and c["tag"] in CLAIM_TAGS)
+                out.append({"page": p.rel, "status": p.fields["status"], "revisit_if": p.fields.get("revisit_if", ""),
+                            "claims": {t: mix[t] for t in CLAIM_TAGS if mix[t]},
+                            "triggered": "to-revisit" in as_list(p.fields.get("tags"))})
+        return out
+
+    def claim_results(self):
+        """How the guesses in reviewed decisions turned out: tag -> {held, failed, unknown}."""
+        counts = {t: dict.fromkeys(CLAIM_RESULTS, 0) for t in ("assumption", "hypothesis")}
+        for p in self.of_type("decision"):
+            for c in p.claims if p.fields.get("status") == "reviewed" else []:
+                if c["section"] == "Outcome" and c["tag"] in counts and c["result"] in CLAIM_RESULTS:
+                    counts[c["tag"]][c["result"]] += 1
+        return counts
+
+    def claim_link_problems(self):
+        """(page, claim) for observations on a decision that cite only /explore episodes: imagining is not observing."""
+        out = []
+        for p in self.of_type("decision"):
+            for c in p.claims:
+                cited = [self.resolve(t) for t in LINK.findall(c["text"])]
+                if c["tag"] == "observation" and any(cited) and all(d.generated for d in cited if d):
+                    out.append((p, c["text"]))
+        return out
+
+    def untagged_open(self):
+        """Open decisions whose reasoning is not tagged yet: it must be before they are decided."""
+        return sorted((p for p in self.of_type("decision")
+                       if p.fields.get("status") == "open" and claim_problems(p.body)), key=lambda p: p.rel)
+
+    def last_touched(self, page):
+        dates = [d for d in (page.updated, self.last_recall.get(page)) if d]
+        return max(dates) if dates else None
+
+    def last_rehearsed(self, page):
+        """When the rehearsal clock last started: the owner's last rehearsal of the page, else its creation.
+
+        Editing a page does not move it (CLAUDE.md > How memory forms > Rehearse):
+        sleep touches every page it updates, and that is the model writing, not
+        the owner remembering. A page with no `created:` falls back to `updated:`.
+        """
+        events = self.rehearsals.get(page, [])
+        if events:
+            return events[-1][0]
+        return page.came
+
+    def miss_risk(self, page):
+        """(risk, attempts): the share of the owner's rehearsals of this page that missed, smoothed.
+
+        (misses + 1) / (attempts + 2), so an unrehearsed page sits at 0.5 and a
+        single result moves it only part of the way. Shown only from
+        risk_min_attempts attempts; used for ordering at any count.
+        """
+        events = self.rehearsals.get(page, [])
+        misses = sum(not passed for _, passed in events)
+        return (misses + 1) / (len(events) + 2), len(events)
+
+    def due_for_rehearsal(self):
+        """Concepts and insights whose spaced-retrieval interval has passed.
+
+        Pages the owner's goals depend on come first, then the more salient
+        (salience_of: a page's own mark, or its episodes'), then those the owner
+        most often misses, then the most overdue.
+        """
+        due = []
+        purpose, ladder = self.purpose(), self.tuning.rehearsal_days
+        for p in (p for p in self.pages if p.type in REHEARSED_TYPES):
+            last = self.last_rehearsed(p)
+            if not last:
+                continue
+            interval = ladder[min(self.strength(p), len(ladder) - 1)]
+            overdue = (self.today - last).days - interval
+            if overdue >= 0:
+                due.append((p, overdue))
+        return [p for p, _ in sorted(due, key=lambda t: (t[0] not in purpose, -self.salience_of(t[0]),
+                                                         -self.miss_risk(t[0])[0], -t[1], t[0].rel))]
+
+    def salience_of(self, page):
+        """How much a page matters, 0 to 5: the mark it carries, or the highest behind it, up to 3.
+
+        /ingest marks the episode, and an episode is never rehearsed and never fades:
+        the mark is meant for what is built on it. So a concept, entity or insight
+        takes the highest salience among the records it rests on and the ones that
+        say the opposite of it (a contradiction is one reason an input is marked);
+        an /explore episode gives none. Never above 3 this way: from 4 up a page
+        never fades, and that call is the owner's, made on the page that carries it.
+        Worked out when asked, like everything derived; a record keeps its own.
+        """
+        if page.is_system or page.type in ("episode", "decision"):
+            return page.salience
+        behind = set(self.evidence_for(page)) | {p for p in self.contradicted_by(page) if not p.generated}
+        return max([page.salience] + [min(p.salience, SALIENT - 1) for p in behind])
+
+    def salience_report(self):
+        """How the mark of what matters is spread: {episodes, marked, built, unexplained, unasked}.
+
+        marked       encoded episodes by the level they carry, 1 to 5
+        built        the pages sleep builds (concepts, entities, insights): how many
+                     carry a mark of their own, and how many take one from an episode
+        unexplained  episodes marked 1 to 3 that link no page a live goal or project
+                     depends on and say the opposite of none. Of the three reasons
+                     for such a mark, high stakes is the one left, or a goal since
+                     closed: when most marks are here, the mark has stopped telling
+        unasked      pages that carry 4 or more, which never fade, that no live goal
+                     or project reaches (the page, or one it links) and that nothing
+                     has recalled or edited for dormant_days: the longest first.
+                     Whether each still matters is the owner's to say
+        """
+        purpose = self.purpose()
+        episodes = [p for p in self.of_type("episode") if not p.generated]
+        built = [p for p in self.knowledge if p.type not in ("episode", "decision")]
+        against = {a for a, rel, _ in self.typed_edges() if rel == "contradicts"}
+
+        def reached(p):
+            return bool(({p} | self.links_from(p)) & purpose)
+
+        unasked = [(p, self.last_touched(p)) for p in self.knowledge if p.salience >= SALIENT and not reached(p)]
+        unasked = sorted(((p, last) for p, last in unasked
+                          if last and (self.today - last).days > self.tuning.dormant_days), key=lambda t: (t[1], t[0].rel))
+        return {"episodes": len(episodes),
+                "marked": {str(level): sum(p.salience == level for p in episodes) for level in range(1, 6)},
+                "built": {"pages": len(built), "carry": sum(p.salience > 0 for p in built),
+                          "reach": sum(self.salience_of(p) > p.salience for p in built)},
+                "unexplained": [p.rel for p in episodes
+                                if 0 < p.salience < SALIENT and p not in against and not reached(p)],
+                "unasked": [{"page": p.rel, "salience": p.salience, "last": last.isoformat()} for p, last in unasked]}
+
+    def fade_days(self, page, days=None):
+        """How long this page may go untouched before it is proposed for dormant/: longer the more salient.
+
+        `days` is the brain's dormant_days unless given.
+        """
+        days = self.tuning.dormant_days if days is None else days
+        return days * (1 + self.tuning.salience_stretch * min(self.salience_of(page), SALIENT - 1))
+
+    def dormant_candidates(self, days=None):
+        """Unlinked, unrecalled, untouched for `days` (the brain's dormant_days): what sleep would scale down.
+
+        Episodes and decisions are records of what happened, so they never fade;
+        nor does anything a goal or a live project depends on. A link from an
+        episode does not count: every page sleep builds has one. Salience 1-3,
+        the page's or its episodes', stretches `days` (fade_days); a page that
+        carries 4 or more never fades.
+        """
+        linked = {b for a, b in self.knowledge_edges() if a.type not in FADE_IGNORES_LINKS_FROM}
+        purpose = self.purpose()
+        out = []
+        for p in self.knowledge:
+            last = self.last_touched(p)
+            if (p.type not in ("episode", "decision") and not p.protected and p not in linked
+                    and p not in purpose and last and (self.today - last).days > self.fade_days(p, days)):
+                out.append(p)
+        return sorted(out, key=self.last_touched)
+
+    def evidence_for(self, page):
+        """The records a page rests on: encoded episodes and reviewed decisions linked to or from it.
+
+        An episode rests on itself; an insight on the evidence of the pages it
+        links. /explore episodes are never evidence, and neither is a record
+        that says it contradicts the page.
+        """
+        if page.type == "episode":
+            return [] if page.generated else [page]
+        against = self.contradicted_by(page)
+        near = self.links_from(page) | self.in_links.get(page, frozenset())
+        found = {p for p in near if p.replayed_by_sleep and not p.generated and p not in against}
+        if page.type == "insight":
+            for p in (b for b in self.links_from(page) if b.type in ("concept", "entity")):
+                found |= set(self.evidence_for(p))
+        found.discard(page)
+        return sorted(found, key=lambda p: p.rel)
+
+    def origins(self, pages):
+        """`pages` grouped by the origin each is evidence from: a list of lists, in the order given.
+
+        Two sources are one origin when they are on one site, or by one author:
+        an author's four documents say a thing four times and vouch for it once.
+        A source with no url is an origin of its own, unless its `author` ties it
+        to another. A relay (`relays:`) is of the origin it reports, the site of
+        that url or the author it names, and whoever wrote the relay adds none.
+        Names are compared without case or spacing.
+        """
+        origin = {}  # a site, an input or an author -> the key it was joined to
+
+        def root(key):
+            while origin.setdefault(key, key) != key:
+                key = origin[key]
+            return key
+
+        site = {}
+        for p in pages:
+            source = self.source_of(p)
+            site[p] = ("author:" + source[6:] if source.startswith("relay:")
+                       else source.split("/", 1)[0] if source.startswith("url:") else source)
+            author = "" if relayed(p) else " ".join(str(p.fields.get("author") or "").lower().split())
+            if author:
+                origin[root("author:" + author)] = root(site[p])
+        groups = {}
+        for p in pages:
+            groups.setdefault(root(site[p]), []).append(p)
+        return list(groups.values())
+
+    def independent(self, pages):
+        """How many independent origins `pages` are evidence from (`origins`)."""
+        return len(self.origins(pages))
+
+    def origin_name(self, group):
+        """What to call an origin: its authors as written (a relay names whose work it is), or else its sites."""
+        authors, sites = {}, set()
+        for p in sorted(group, key=lambda p: bool(relayed(p))):  # an author's own spelling before a relay's
+            told = relayed(p)
+            name = ("" if WEB.match(told) else told) if told else " ".join(str(p.fields.get("author") or "").split())
+            if name:
+                authors.setdefault(name.lower(), name)
+            source = self.source_of(p)
+            sites.add(source.split("/", 1)[0][4:] if source.startswith("url:") else source.partition(":")[2])
+        return ", ".join(sorted(authors.values()) or sorted(sites))
+
+    def claims_built(self):
+        """What sleep built, as claims: (origins, {episode: its origin}, [(page, evidence, origins behind it, against)]).
+
+        `origins` groups every encoded episode (`origins`), and an origin is known by its
+        place in that list. A claim is a concept, an entity or an insight: `evidence` is
+        the records it rests on, `against` the records that say the opposite of it, an
+        /explore episode never among them. Read by track_records for each source, and by
+        relationships for each person, so the two count alike.
+        """
+        groups = self.origins([p for p in self.of_type("episode") if not p.generated])
+        of = {p: i for i, group in enumerate(groups) for p in group}
+        built = sorted((p for p in self.knowledge if p.type not in ("episode", "decision")), key=lambda p: p.rel)
+        return groups, of, [(page, evidence, {of[e] for e in evidence if e in of},
+                             sorted((c for c in self.contradicted_by(page) if not c.generated), key=lambda c: c.rel))
+                            for page in built for evidence in [self.evidence_for(page)]]
+
+    def track_records(self):
+        """How each source's claims fared: [{source, episodes, relayed, claims, shared, alone, contradicted}].
+
+        A source is an origin (`origins`): an author, or a site, with every
+        encoded episode from it; `relayed` counts the ones that only report it
+        at second hand. A claim is a page sleep built (a concept, an entity, an
+        insight) that one of its episodes is evidence for. `shared` counts the
+        claims a second, independent origin is evidence for too; `alone` lists
+        the ones only this source stands behind; `contradicted` the ones
+        another record says the opposite of. Most episodes first. Counted from
+        the pages when asked and never stored. It counts claims: what a source
+        got right says nothing of what it meant.
+        """
+        groups, _, claims = self.claims_built()
+        rows = [{"source": self.origin_name(group), "episodes": len(group),
+                 "relayed": sum(1 for p in group if relayed(p)), "claims": 0, "shared": 0, "alone": [],
+                 "contradicted": []} for group in groups]
+        for page, _, behind, against in claims:
+            for i in behind:
+                rows[i]["claims"] += 1
+                rows[i]["shared"] += len(behind) > 1
+                rows[i]["alone"] += [page.rel] * (len(behind) == 1)
+                rows[i]["contradicted"] += [page.rel] * bool(against)
+        return sorted(rows, key=lambda row: (-row["episodes"], row["source"]))
+
+    def confidence(self, page):
+        """How well supported a page is: the feeling of knowing, from the evidence only.
+
+        level: high (3+ sources from 2+ independent origins), medium (2+ sources),
+        low (one or none, or tagged disputed); an episode is `source`: it reports
+        what one source said and is as good as that source. Independent means a
+        different site or input, and a different author where the episodes name
+        one (`independent`); a relay is counted as what it reports, so two posts
+        about one study are one source (`relayed` says how many there are). A
+        contradiction sleep has not
+        weighed yet is flagged (`contradicted`) without lowering the level; once
+        sleep tags the page `disputed`, the level is low. `strength` is how well
+        the owner remembers it, shown beside the level but not part of it:
+        remembering a claim does not make it better supported.
+        """
+        evidence = self.evidence_for(page)
+        sources = {self.source_of(p) for p in evidence}
+        contradicted = bool(self.contradicted_by(page))
+        disputed = "disputed" in as_list(page.fields.get("tags"))
+        n, k = len(sources), self.independent(evidence)
+        told = sum(1 for p in evidence if relayed(p))
+        if page.type == "episode":
+            level = "low" if page.generated else "source"
+        else:
+            level = "low" if disputed or n < 2 else "high" if n >= 3 and k >= 2 else "medium"
+        why = ("an /explore hypothesis" if page.generated else "what one source said") if page.type == "episode" \
+            else f"{n} source{'s' * (n != 1)}, {k} independent" + (f", {told} relayed" if told else "")
+        why += (", disputed" if disputed else "") + (", contradicted by new input" if contradicted else "")
+        return {"level": level, "sources": n, "independent": k, "relayed": told, "disputed": disputed,
+                "contradicted": contradicted, "strength": self.strength(page), "why": why}
+
+    def contradiction_queue(self):
+        """(episode, page) where an episode not yet consolidated says it contradicts a page.
+
+        Prediction error: new input against what the brain already holds. Sleep
+        records both positions and tags the page `disputed` (CLAUDE.md > Disagreement).
+        """
+        return sorted(((a, b) for a, rel, b in self.typed_edges()
+                       if rel == "contradicts" and a.type == "episode" and not a.consolidated),
+                      key=lambda e: (e[1].rel, e[0].rel))
+
+    def _scored_guesses(self, decisions):
+        """(p, held) for each reviewed hypothesis or assumption with a probability and a held/failed result.
+
+        The probability is on the Outcome line, or on the identical line under a claim section.
+        """
+        out = []
+        for page in decisions:
+            if page.fields.get("status") != "reviewed":
+                continue
+            stated = {c["text"]: c["p"] for c in page.claims if c["section"] in CLAIM_SECTIONS and c["p"] is not None}
+            for c in page.claims:
+                if c["section"] == "Outcome" and c["tag"] in PROBABILITY_TAGS and c["result"] in ("held", "failed"):
+                    p = c["p"] if c["p"] is not None else stated.get(c["text"])
+                    if p is not None and 0 <= p <= 1:
+                        out.append((p, c["result"] == "held"))
+        return out
+
+    def _brier(self, pairs):
+        n = len(pairs)
+        buckets = {}
+        for p, held in pairs:
+            row = buckets.setdefault(f"{int(round(p * 10)) * 10}%", {"n": 0, "held": 0})
+            row["n"] += 1
+            row["held"] += held
+        return {"n": n, "score": round(sum((p - held) ** 2 for p, held in pairs) / n, 3) if n else None,
+                "enough": n >= self.tuning.brier_min,
+                "buckets": dict(sorted(buckets.items(), key=lambda kv: int(kv[0][:-1])))}
+
+    def brier(self):
+        """Calibration of the owner's stated probabilities on reviewed decisions.
+
+        Brier score: the mean of (probability - outcome)^2, 0 is perfect, 0.25 is
+        always saying 50%. Buckets show, of everything called 70%, how much held.
+        `enough` is False below brier_min scored guesses: show the count, no verdict.
+        """
+        return self._brier(self._scored_guesses(self.of_type("decision")))
+
+    def reference_class(self):
+        """For each tag on reviewed decisions: how they turned out, and the Brier score of their guesses.
+
+        What to look at before setting a probability on a new decision with that tag.
+        """
+        groups = {}
+        for p in self.of_type("decision"):
+            if p.fields.get("status") == "reviewed":
+                for tag in as_list(p.fields.get("tags")) or ["(untagged)"]:
+                    groups.setdefault(tag, []).append(p)
+        out = {}
+        for tag, pages in sorted(groups.items()):
+            outcomes = Counter(p.fields.get("outcome") for p in pages if p.fields.get("outcome") in OUTCOMES)
+            out[tag] = {"n": len(pages), "outcomes": {o: outcomes[o] for o in OUTCOMES if outcomes[o]},
+                        "brier": self._brier(self._scored_guesses(pages))}
+        return out

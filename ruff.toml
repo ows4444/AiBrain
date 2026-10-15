@@ -1,0 +1,9 @@
+# The linter CI runs (`ruff check engine engine/bin/brain`); the engine itself stays standard-library only.
+# The rules are the ones the `# noqa` markers in the engine name: pyflakes (F), imports at the top and
+# other errors of form (E4, E7, E9), and a blind `except Exception` (BLE), each such one with its reason.
+# Line length is not checked.
+line-length = 120
+target-version = "py39"
+
+[lint]
+select = ["E4", "E7", "E9", "F", "BLE"]

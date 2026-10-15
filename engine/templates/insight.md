@@ -1,0 +1,22 @@
+---
+title:
+summary:
+type: insight
+created:
+updated:
+aliases: []
+answers:
+tags: []
+---
+
+# {{title}}
+
+## The question
+
+## What the sources say
+
+## Where they disagree
+
+## Current position
+
+## What would change it

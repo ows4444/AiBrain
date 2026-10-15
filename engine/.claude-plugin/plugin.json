@@ -1,0 +1,8 @@
+{
+  "name": "aibrain",
+  "displayName": "aibrain",
+  "description": "The engine of a brain-modelled knowledge base: encode, consolidate, recall, rehearse, maintain. Any folder with cortex/ and hippocampus/ is a brain.",
+  "author": { "name": "Muhammad Awais" },
+  "license": "MIT",
+  "keywords": ["knowledge-base", "memory", "obsidian", "ai-brain"]
+}

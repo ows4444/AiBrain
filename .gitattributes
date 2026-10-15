@@ -1,0 +1,6 @@
+# The append-only files: when two copies of the brain have both added lines,
+# a merge keeps the lines of both, with no conflict. The log's lines carry
+# their time, so they are read in the order they happened wherever they land.
+hippocampus/log.md merge=union
+hippocampus/metrics.md merge=union
+hippocampus/fingerprints.md merge=union

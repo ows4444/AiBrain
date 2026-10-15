@@ -1,0 +1,22 @@
+.DS_Store
+.obsidian/workspace*
+.obsidian/cache
+*.pyc
+__pycache__/
+.venv/
+node_modules/
+# the door (brain door): a link to a folder of this machine, so each machine opens its own
+inbox/.door
+# graph exports (brain graph); a CSV dropped into senses/ is still tracked
+motor/graph/
+# exports (brain export): regenerated from cortex/ on demand
+motor/export/
+# search cache (brain cache): rebuilt on demand from the pages
+.cache/
+# where the work stood before a compaction (brain resume): overwritten each time
+prefrontal/*/process/resume.md
+# what a write cut short leaves beside the file it was replacing (lib/files.py)
+*.tmp
+# coverage data (CI and local runs of coverage.py)
+.coverage
+.coverage.*

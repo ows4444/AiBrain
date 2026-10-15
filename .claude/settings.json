@@ -1,0 +1,54 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(./**)",
+      "Bash(brain check*)",
+      "Bash(brain introspect*)",
+      "Bash(brain search *)",
+      "Bash(brain recall *)",
+      "Bash(brain since *)",
+      "Bash(brain statusline*)",
+      "Bash(brain tend --check*)",
+      "Bash(brain session*)",
+      "Bash(brain eval*)",
+      "Bash(brain capture *)",
+      "Bash(brain errors*)",
+      "Bash(brain test*)",
+      "Bash(brain fingerprint*)",
+      "Bash(brain fit *)",
+      "Bash(brain feel*)",
+      "Bash(brain character*)",
+      "Bash(brain handover*)",
+      "Bash(brain inbox*)",
+      "Bash(brain ground *)",
+      "Bash(brain log *)",
+      "Bash(brain index*)",
+      "Bash(brain new *)",
+      "Bash(brain resume*)",
+      "Bash(brain help*)",
+      "Bash(python3 -m unittest*)",
+      "Bash(git status*)",
+      "Bash(git diff*)",
+      "Bash(git log*)"
+    ],
+    "deny": [
+      "Bash(rm -rf*)",
+      "Bash(rm -fr*)",
+      "Bash(git push*)",
+      "Bash(git reset --hard*)",
+      "Bash(git clean*)",
+      "Read(./**/.env)",
+      "Read(./**/.env.*)",
+      "Read(./**/*.key)",
+      "Read(./**/*.pem)"
+    ]
+  },
+  "env": {
+    "BRAIN_PROMPT_RECALL": "1"
+  },
+  "statusLine": {
+    "type": "command",
+    "command": "brain statusline --bar"
+  },
+  "enabledPlugins": {}
+}

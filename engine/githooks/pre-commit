@@ -1,0 +1,37 @@
+#!/bin/sh
+# Refuse a commit that breaks the brain: the same gate CI runs.
+# Turn it on once per clone:   git config core.hooksPath engine/githooks
+# Skip it once (on purpose):   git commit --no-verify
+root=$(git rev-parse --show-toplevel) || exit 1
+brain="$root/engine/bin/brain"
+
+if ! out=$(python3 "$brain" check --guard 2>&1); then
+    printf '%s\n\npre-commit: brain check failed; fix the above or commit with --no-verify\n' "$out" >&2
+    exit 1
+fi
+# An engine change must not answer this brain's own questions worse. Its question set
+# (motor/eval-questions.json, which /health writes) is asked twice on the same pages: with the
+# engine as last committed and as it is now. Only when the commit changes engine/.
+questions="$root/motor/eval-questions.json"
+if [ -f "$questions" ] && [ -d "$root/engine" ] && git rev-parse -q --verify HEAD >/dev/null \
+        && ! git diff --cached --quiet -- engine; then
+    before=$(mktemp -d) || exit 1
+    git archive HEAD engine | tar -x -C "$before"
+    BRAIN_CACHE=0 PYTHONHASHSEED=0 python3 "$before/engine/bin/brain" eval --root "$root" \
+        --questions "$questions" --json >"$before/answers.json" 2>/dev/null
+    if [ -s "$before/answers.json" ] && ! out=$(BRAIN_CACHE=0 PYTHONHASHSEED=0 python3 "$brain" eval \
+            --root "$root" --questions "$questions" --not-below "$before/answers.json" 2>&1); then
+        rm -r "$before"
+        printf '%s\n\npre-commit: with this engine change the brain answers its own questions worse than with the last commit; fix it, or commit with --no-verify\n' "$out" >&2
+        exit 1
+    fi
+    rm -r "$before"
+fi
+# The tests make git repositories of their own. Git hands a hook GIT_INDEX_FILE
+# (and GIT_DIR in a worktree); left set, the tests' `git add` writes into the
+# index of the commit being made and it fails with "invalid object".
+if ! out=$(unset $(git rev-parse --local-env-vars); python3 "$brain" test 2>&1); then
+    printf '%s\n\npre-commit: engine tests failed\n' "$out" | tail -40 >&2
+    exit 1
+fi
+exit 0
