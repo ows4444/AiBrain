@@ -27,6 +27,12 @@ if [ -f "$questions" ] && [ -d "$root/engine" ] && git rev-parse -q --verify HEA
     fi
     rm -r "$before"
 fi
+# The engine tests check the engine's code on throwaway brains, never this brain's pages, so
+# they run only when the commit changes engine/: a commit of notes or log lines cannot change
+# their result. (The first commit, with no HEAD to compare, runs them.)
+if git rev-parse -q --verify HEAD >/dev/null && git diff --cached --quiet -- engine; then
+    exit 0
+fi
 # The tests make git repositories of their own. Git hands a hook GIT_INDEX_FILE
 # (and GIT_DIR in a worktree); left set, the tests' `git add` writes into the
 # index of the commit being made and it fails with "invalid object".
