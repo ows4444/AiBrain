@@ -649,7 +649,17 @@ class PreCommit(unittest.TestCase):
             r = git("commit", "-qm", "harmless")
             self.assertNotIn("answers its own questions worse", r.stderr)
             self.assertIn("pre-commit: engine tests failed", r.stderr)  # the next stage: this copy has no tests
-
+            # a commit of pages alone does not run the engine tests: they cannot answer differently
+            self.assertEqual(git("commit", "-qm", "harmless", "--no-verify").returncode, 0)
+            spacing = os.path.join(repo, "cortex", "concepts", "spacing.md")
+            with open(spacing, encoding="utf-8") as fh:
+                page = fh.read()
+            with open(spacing, "w", encoding="utf-8") as fh:
+                fh.write(page.replace("is kept longer.", "is kept longer, by weeks.", 1))
+            git("add", "cortex/concepts/spacing.md")  # the page alone: running the engine leaves caches under engine/
+            r = git("commit", "-qm", "a page")
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertNotIn("engine tests failed", r.stderr)
 
 class VerdictLine(TempBrain):
     def test_a_brain_big_enough_to_judge_gets_no_size_warning(self):
